@@ -525,6 +525,30 @@ ${message}`;
           ? `Free Consultation (${freeConsultation.selectedItem || 'General'})`
           : formData.service;
 
+    const packageName = selectedPackage
+      ? selectedPackage.packageName
+      : selectedBlueprint
+        ? selectedBlueprint.projectName
+        : freeConsultation
+          ? `Free Consultation (${freeConsultation.selectedItem || 'General'})`
+          : 'Not Selected';
+
+    const packagePrice = selectedPackage
+      ? (selectedPackage.packagePrice || selectedPackage.totalAmount || 'Custom Quote')
+      : selectedBlueprint
+        ? (selectedBlueprint.estimatedBudget || 'Custom Quote')
+        : 'Custom Quote';
+
+    const budget =
+      localStorage.getItem('qbench_prefilled_budget') ||
+      (selectedPackage
+        ? (selectedPackage.totalAmount || selectedPackage.packagePrice)
+        : selectedBlueprint
+          ? selectedBlueprint.estimatedBudget
+          : 'Not specified');
+
+    const startDate = selectedPackage?.duration || 'Immediate / Flexible';
+
     try {
       const responseData = await sendEmailJS({
         name: trimmedName,
@@ -532,7 +556,12 @@ ${message}`;
         phone: trimmedPhone,
         company: trimmedCompany,
         service: resolvedService,
+        package: packageName,
+        price: packagePrice,
+        budget: budget,
+        start_date: startDate,
         message: finalMessage,
+        lead_source: 'QBENCH Website',
         selectedPackage,
         selectedBlueprint,
         freeConsultation
@@ -570,7 +599,7 @@ ${message}`;
       setFreeConsultation(null);
       setAdditionalMessage('');
       
-      // Reset form inputs & clear errors
+      // Reset form inputs & clear errors only after successful submission
       setFormData({
         name: '',
         phone: '',
@@ -580,9 +609,10 @@ ${message}`;
         message: ''
       });
       setErrors({});
-    } catch {
+    } catch (err) {
+      console.error('[QBENCH Enquiry Submission Error]:', err);
       setFormError(
-        "Sorry, we couldn't submit your enquiry. Please try again or contact us on WhatsApp."
+        'Something went wrong while submitting your enquiry. Please try again or contact QBENCH directly.'
       );
       setFormState('idle');
     } finally {
@@ -1138,7 +1168,7 @@ ${message}`;
                           transition={{ delay: 0.32, duration: 0.35, ease: "easeOut" }}
                           className="font-sans text-xs sm:text-sm text-brand-text-muted leading-relaxed max-w-md mx-auto"
                         >
-                          Thank you! Your enquiry has been received. We'll contact you shortly.
+                          Thank you! Your enquiry has been submitted successfully. We’ll get back to you shortly.
                         </motion.p>
                       </div>
 
@@ -1402,7 +1432,7 @@ ${message}`;
                         {formState === 'submitting' ? (
                           <>
                             <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                            <span>Submitting Enquiry...</span>
+                            <span>Submitting...</span>
                           </>
                         ) : (
                           <>
@@ -1569,10 +1599,10 @@ ${message}`;
                   </button>
                 </div>
                 <p className="font-display text-xs sm:text-sm font-bold text-white leading-snug">
-                  Thank you! Your enquiry has been received.
+                  Thank you! Your enquiry has been submitted successfully.
                 </p>
                 <p className="font-sans text-[11px] text-white/75 leading-relaxed">
-                  We'll contact you shortly.
+                  We’ll get back to you shortly.
                 </p>
               </div>
             </div>
@@ -1644,7 +1674,7 @@ ${message}`;
                   Your Inquiry Has Been Sent!
                 </h3>
                 <p className="font-sans text-xs sm:text-sm text-brand-text-muted leading-relaxed">
-                  Thank you! Your enquiry has been received. We'll contact you shortly.
+                  Thank you! Your enquiry has been submitted successfully. We’ll get back to you shortly.
                 </p>
               </div>
 

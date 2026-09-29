@@ -65,5 +65,29 @@
     "emailStatus": "Pending",
     "emailSentAt": "",
     "error": "Google Sheets Webhook returned HTTP 401 (Set Apps Script deployment access to \"Anyone\") | Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to"
+  },
+  {
+    "id": "mumj77jeuq3",
+    "timestamp": "2026-09-29T10:26:25.115Z",
+    "submissionDateTime": "29 Sept 2026, 3:56:25 pm IST",
+    "fullName": "Verification Client",
+    "name": "Verification Client",
+    "businessName": "QBENCH Test",
+    "phoneNumber": "+91 7356525932",
+    "phone": "+91 7356525932",
+    "emailAddress": "client@example.com",
+    "email": "client@example.com",
+    "subject": "New QBENCH Website Enquiry — Verification Client",
+    "message": "Testing enquiry email delivery diagnostic",
+    "service": "Branding",
+    "source": "QBENCH Website",
+    "routedTo": "qbench.official@gmail.com",
+    "selectedPackage": null,
+    "selectedBlueprint": null,
+    "sheetsSaved": false,
+    "emailStatus": "Pending",
+    "emailSentAt": "",
+    "error": "SMTP: getaddrinfo ENOTFOUND mail.qbench.official@gmail.com | Google Apps Script returned HTTP 401 (Set deployment access to \"Anyone\")",
+    "deliveryChannel": "Pending"
   }
 ]

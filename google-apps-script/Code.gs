@@ -28,11 +28,17 @@ const DEFAULT_SOURCE = 'QBENCH Website';
 const DEFAULT_HEADERS = [
   'Timestamp',
   'Name',
+  'Company',
   'Email',
   'Phone',
   'Service',
+  'Package',
+  'Price',
+  'Budget',
+  'Start Date',
   'Message',
-  'Source',
+  'Lead Source',
+  'Lead Status',
   'Email Status',
   'Email Sent At'
 ];
@@ -64,6 +70,9 @@ function doPost(e) {
     const name = String(
       payload.name || payload.Name || payload.fullName || ''
     ).trim();
+    const company = String(
+      payload.company || payload.Company || payload.businessName || 'Not specified'
+    ).trim();
     const email = String(
       payload.email || payload.Email || payload.emailAddress || ''
     ).trim();
@@ -73,19 +82,36 @@ function doPost(e) {
     const service = String(
       payload.service || payload.Service || payload.serviceRequired || 'General Enquiry'
     ).trim();
+    const packageName = String(
+      payload.package || payload.Package || payload.packageName || 'Not Selected'
+    ).trim();
+    const price = String(
+      payload.price || payload.Price || payload.packagePrice || 'Custom Quote'
+    ).trim();
+    const budget = String(
+      payload.budget || payload.Budget || 'Not specified'
+    ).trim();
+    const startDate = String(
+      payload.start_date || payload.startDate || 'Immediate / Flexible'
+    ).trim();
     const message = String(
       payload.message || payload.Message || ''
     ).trim();
+    const leadSource = String(
+      payload.lead_source || payload.source || DEFAULT_SOURCE
+    ).trim();
+    const leadStatus = String(
+      payload.lead_status || 'New'
+    ).trim();
 
-    if (!name || !email || !phone || !service || !message) {
+    if (!name || !email || !phone || !service) {
       return jsonResponse_({
         success: false,
-        error: "Sorry, we couldn't submit your enquiry. Please try again or contact us on WhatsApp."
+        error: "Something went wrong while submitting your enquiry. Please try again or contact QBENCH directly."
       });
     }
 
     const timestamp = formatSubmissionDate_(new Date());
-    const source = DEFAULT_SOURCE;
     const leadId = String(payload.lead_id || payload.id || ('QB-' + new Date().getTime())).trim();
 
     // STEP 1: Open the Google Sheet and ensure required columns exist
@@ -98,12 +124,17 @@ function doPost(e) {
 
     setCellByHeader_(rowValues, colMap, ['timestamp', 'date', 'submitted', 'submission date/time', 'submitted at'], timestamp);
     setCellByHeader_(rowValues, colMap, ['name', 'customer name', 'full name', 'fullname'], name);
+    setCellByHeader_(rowValues, colMap, ['company', 'company name', 'business name'], company);
     setCellByHeader_(rowValues, colMap, ['email', 'email address', 'emailaddress'], email);
     setCellByHeader_(rowValues, colMap, ['phone', 'phone number', 'phonenumber', 'whatsapp', 'phone/whatsapp'], phone);
     setCellByHeader_(rowValues, colMap, ['service', 'service requested', 'servicerequired'], service);
+    setCellByHeader_(rowValues, colMap, ['package', 'package name', 'selected package'], packageName);
+    setCellByHeader_(rowValues, colMap, ['price', 'package price', 'rate'], price);
+    setCellByHeader_(rowValues, colMap, ['budget', 'estimated budget'], budget);
+    setCellByHeader_(rowValues, colMap, ['start date', 'start_date', 'timeline'], startDate);
     setCellByHeader_(rowValues, colMap, ['message', 'enquiry', 'inquiry', 'details'], message);
-    setCellByHeader_(rowValues, colMap, ['source'], source);
-    setCellByHeader_(rowValues, colMap, ['status', 'lead status'], 'New');
+    setCellByHeader_(rowValues, colMap, ['lead source', 'lead_source', 'source'], leadSource);
+    setCellByHeader_(rowValues, colMap, ['lead status', 'lead_status', 'status'], leadStatus);
     setCellByHeader_(rowValues, colMap, ['email status'], 'Pending');
     setCellByHeader_(rowValues, colMap, ['email sent at'], '');
 
@@ -122,16 +153,17 @@ function doPost(e) {
       service: service,
       message: message,
       submittedAt: timestamp,
-      source: source
+      source: leadSource
     });
 
     return jsonResponse_({
       success: true,
-      message: "Thank you! Your enquiry has been received. We'll contact you shortly.",
+      message: "Thank you! Your enquiry has been submitted successfully. We’ll get back to you shortly.",
       row: newRowIndex,
       leadId: leadId,
       timestamp: timestamp,
-      source: source,
+      source: leadSource,
+      lead_status: leadStatus,
       emailStatus: emailResult.status,
       emailSentAt: emailResult.sentAt || ''
     });

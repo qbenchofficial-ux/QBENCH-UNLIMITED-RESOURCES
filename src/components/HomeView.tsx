@@ -121,22 +121,34 @@ export default function HomeView({ onNavigate }: HomeViewProps) {
     setFormError(null);
 
     try {
-      const responseData = await sendEmailJS({
+      await sendEmailJS({
         name: trimmedName,
         email: trimmedEmail,
         phone: trimmedPhone,
         company: trimmedCompany,
         service: 'Free Brand Visibility Audit',
-        message: auditMessage
+        package: 'Free Brand Visibility Audit',
+        price: 'Free',
+        budget: 'Not specified',
+        start_date: 'Immediate / Flexible',
+        message: auditMessage,
+        lead_source: 'QBENCH Website'
       });
 
-      if (responseData.success) {
-        setFormState('success');
-      } else {
-        setFormState('success');
-      }
-    } catch {
       setFormState('success');
+      setFormData({
+        fullName: '',
+        businessName: '',
+        phoneNumber: '',
+        emailAddress: '',
+        websiteUrl: ''
+      });
+    } catch (err) {
+      console.error('[QBENCH Audit Form Submission Error]:', err);
+      setFormError(
+        'Something went wrong while submitting your enquiry. Please try again or contact QBENCH directly.'
+      );
+      setFormState('idle');
     } finally {
       isSubmittingRef.current = false;
     }
@@ -713,7 +725,7 @@ export default function HomeView({ onNavigate }: HomeViewProps) {
                     </span>
                     <h4 className="font-display text-xl font-bold">Audit Requested Successfully!</h4>
                     <p className="font-sans text-xs text-white/70 max-w-md mx-auto leading-relaxed">
-                      Thank you! Your enquiry has been received. We'll contact you shortly.
+                      Thank you! Your enquiry has been submitted successfully. We’ll get back to you shortly.
                     </p>
                     <button 
                       onClick={() => {
@@ -827,7 +839,7 @@ export default function HomeView({ onNavigate }: HomeViewProps) {
                       {formState === 'submitting' ? (
                         <>
                           <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                          <span>Submitting Enquiry...</span>
+                          <span>Submitting...</span>
                         </>
                       ) : (
                         <>
