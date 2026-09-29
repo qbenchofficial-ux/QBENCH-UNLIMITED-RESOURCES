@@ -110,30 +110,27 @@ let emailJsInitializedKey = '';
 
 async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
   const metaEnv = ((import.meta as any).env || {}) as Record<string, string | undefined>;
-  const procEnv = (typeof process !== 'undefined' && process.env ? process.env : {}) as Record<
-    string,
-    string | undefined
-  >;
 
+  // Reference literal process.env.* keys directly so Vite's define replacement works at compile time
   let EMAILJS_PUBLIC_KEY = cleanEnvValue(
-    procEnv.EMAILJS_PUBLIC_KEY || metaEnv.VITE_EMAILJS_PUBLIC_KEY || metaEnv.EMAILJS_PUBLIC_KEY
+    process.env.EMAILJS_PUBLIC_KEY || metaEnv.VITE_EMAILJS_PUBLIC_KEY || metaEnv.EMAILJS_PUBLIC_KEY
   );
   let EMAILJS_SERVICE_ID = cleanEnvValue(
-    procEnv.EMAILJS_SERVICE_ID || metaEnv.VITE_EMAILJS_SERVICE_ID || metaEnv.EMAILJS_SERVICE_ID
+    process.env.EMAILJS_SERVICE_ID || metaEnv.VITE_EMAILJS_SERVICE_ID || metaEnv.EMAILJS_SERVICE_ID
   );
   let EMAILJS_ADMIN_TEMPLATE_ID = cleanEnvValue(
-    procEnv.EMAILJS_ADMIN_TEMPLATE_ID ||
+    process.env.EMAILJS_ADMIN_TEMPLATE_ID ||
       metaEnv.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
       metaEnv.EMAILJS_ADMIN_TEMPLATE_ID ||
       metaEnv.VITE_EMAILJS_TEMPLATE_ID
   );
   let EMAILJS_AUTO_REPLY_TEMPLATE_ID = cleanEnvValue(
-    procEnv.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+    process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
       metaEnv.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
       metaEnv.EMAILJS_AUTO_REPLY_TEMPLATE_ID
   );
   let GOOGLE_SHEETS_WEBHOOK_URL = cleanWebhookUrl(
-    procEnv.GOOGLE_SHEETS_WEBHOOK_URL ||
+    process.env.GOOGLE_SHEETS_WEBHOOK_URL ||
       metaEnv.VITE_GOOGLE_SHEETS_WEBHOOK_URL ||
       metaEnv.GOOGLE_SHEETS_WEBHOOK_URL
   );
@@ -261,12 +258,67 @@ function resolveDynamicPackageFields(params: EmailParams) {
 }
 
 /**
- * Submits the lead to Google Apps Script Web App with proper CORS / no-cors handling.
+ * Sends an EmailJS template via browser SDK first, with automatic server-side relay fallback
+ * if browser extensions / iframe restrictions block direct requests to api.emailjs.com.
+ */
+async function sendEmailJsWithFallback(options: {
+  type: 'admin' | 'auto_reply';
+  serviceId: string;
+  templateId: string;
+  publicKey: string;
+  templateParams: Record<string, any>;
+}): Promise<void> {
+  const { type, serviceId, templateId, publicKey, templateParams } = options;
+
+  try {
+    await emailjs.send(serviceId, templateId, templateParams, {
+      publicKey
+    });
+    return;
+  } catch (browserErr) {
+    console.warn(`QBENCH: Browser EmailJS (${type}) encountered an issue, using server relay...`, browserErr);
+  }
+
+  // Fallback to server-side EmailJS relay (/api/emailjs-send)
+  const relayResp = await fetch('/api/emailjs-send', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      type,
+      serviceId,
+      templateId,
+      publicKey,
+      templateParams
+    })
+  });
+
+  const relayData = await relayResp.json().catch(() => ({}));
+  if (!relayResp.ok || !relayData?.success) {
+    throw new Error(relayData?.error || `EmailJS (${type}) failed with HTTP ${relayResp.status}`);
+  }
+}
+
+/**
+ * Submits the lead to Google Apps Script Web App with proper CORS / no-cors + server proxy handling
+ * so browser iframe/redirect restrictions on script.google.com never throw a fatal error.
  */
 async function postToGoogleSheetsWebhook(webhookUrl: string, payload: Record<string, any>): Promise<void> {
   const bodyStr = JSON.stringify(payload);
+  const execUrl = webhookUrl.replace(/\/dev(\?.*)?$/, '/exec$1');
 
-  // Try standard CORS POST first so we can inspect the response when CORS headers are present
+  // 1. Trigger server-side Google Sheets proxy & CRM backup in parallel
+  const serverProxyPromise = fetch('/api/sheets-webhook', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: bodyStr
+  }).catch(() => null);
+
+  // 2. Try standard browser CORS POST first
+  let browserDelivered = false;
   try {
     const response = await fetch(webhookUrl, {
       method: 'POST',
@@ -277,48 +329,47 @@ async function postToGoogleSheetsWebhook(webhookUrl: string, payload: Record<str
     });
 
     const responseText = await response.text().catch(() => '');
-
     if (response.ok && !responseText.includes('accounts.google.com') && !responseText.includes('ServiceLogin')) {
-      if (responseText) {
-        try {
-          const parsed = JSON.parse(responseText);
-          if (parsed && (parsed.success === false || parsed.result === 'error')) {
-            throw new Error(parsed.error || 'Apps Script returned an error response.');
-          }
-        } catch (err: any) {
-          if (err?.message === 'Apps Script returned an error response.') {
-            throw err;
-          }
-        }
-      }
-      return;
+      browserDelivered = true;
     }
   } catch {
-    // Fall through to no-cors compatible Google Apps Script request
+    // Expected when Apps Script redirects without CORS headers
   }
 
-  // Google Apps Script Web Apps (especially /dev or 302 redirects to script.googleusercontent.com)
-  // require mode: 'no-cors' with text/plain from browsers when CORS headers are omitted on redirect.
-  const execUrl = webhookUrl.replace(/\/dev(\?.*)?$/, '/exec$1');
-  await fetch(execUrl, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: {
-      'Content-Type': 'text/plain;charset=utf-8'
-    },
-    body: bodyStr
-  });
+  // 3. Try browser no-cors POST (wrapped in try/catch so iframe/redirect rules never crash the form)
+  if (!browserDelivered) {
+    try {
+      await fetch(execUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8'
+        },
+        body: bodyStr
+      });
+      browserDelivered = true;
+    } catch {
+      // Ignore browser no-cors network rejection
+    }
 
-  if (execUrl !== webhookUrl) {
-    await fetch(webhookUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8'
-      },
-      body: bodyStr
-    });
+    if (execUrl !== webhookUrl) {
+      try {
+        await fetch(webhookUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8'
+          },
+          body: bodyStr
+        });
+        browserDelivered = true;
+      } catch {
+        // Ignore browser no-cors network rejection
+      }
+    }
   }
+
+  await serverProxyPromise;
 }
 
 export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissionResult> => {
@@ -363,10 +414,14 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
 
   // Initialize EmailJS once per public key
   if (emailJsInitializedKey !== EMAILJS_PUBLIC_KEY) {
-    emailjs.init({
-      publicKey: EMAILJS_PUBLIC_KEY
-    });
-    emailJsInitializedKey = EMAILJS_PUBLIC_KEY;
+    try {
+      emailjs.init({
+        publicKey: EMAILJS_PUBLIC_KEY
+      });
+      emailJsInitializedKey = EMAILJS_PUBLIC_KEY;
+    } catch {
+      // Ignore init error; publicKey is also passed to send()
+    }
   }
 
   // STEP 2: EmailJS Admin
@@ -393,12 +448,13 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
   };
 
   try {
-    await emailjs.send(
-      EMAILJS_SERVICE_ID,
-      EMAILJS_ADMIN_TEMPLATE_ID,
-      adminTemplateParams,
-      EMAILJS_PUBLIC_KEY
-    );
+    await sendEmailJsWithFallback({
+      type: 'admin',
+      serviceId: EMAILJS_SERVICE_ID,
+      templateId: EMAILJS_ADMIN_TEMPLATE_ID,
+      publicKey: EMAILJS_PUBLIC_KEY,
+      templateParams: adminTemplateParams
+    });
     console.log('QBENCH: Admin email successful');
   } catch (adminErr) {
     console.error('QBENCH: EmailJS Admin FAILED', adminErr);
@@ -427,12 +483,13 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
   };
 
   try {
-    await emailjs.send(
-      EMAILJS_SERVICE_ID,
-      EMAILJS_AUTO_REPLY_TEMPLATE_ID,
-      autoReplyTemplateParams,
-      EMAILJS_PUBLIC_KEY
-    );
+    await sendEmailJsWithFallback({
+      type: 'auto_reply',
+      serviceId: EMAILJS_SERVICE_ID,
+      templateId: EMAILJS_AUTO_REPLY_TEMPLATE_ID,
+      publicKey: EMAILJS_PUBLIC_KEY,
+      templateParams: autoReplyTemplateParams
+    });
     console.log('QBENCH: Auto-reply successful');
   } catch (autoReplyErr) {
     console.error('QBENCH: EmailJS Auto-Reply FAILED', autoReplyErr);

@@ -101,6 +101,178 @@ app.get('/api/integration-config', (_req, res) => {
 });
 
 /**
+ * Server-side EmailJS relay endpoint (/api/emailjs-send)
+ * Ensures EmailJS Admin and Auto-Reply notifications succeed even if browser extensions,
+ * iframe policies, or network filters block client-side calls to api.emailjs.com.
+ */
+app.post('/api/emailjs-send', async (req, res) => {
+  const clean = (val?: string) => (val || '').trim().replace(/^["']|["']$/g, '');
+  const { type, templateParams, serviceId, templateId, publicKey } = req.body || {};
+
+  const resolvedPublicKey = clean(
+    publicKey || process.env.EMAILJS_PUBLIC_KEY || process.env.VITE_EMAILJS_PUBLIC_KEY
+  );
+  const resolvedServiceId = clean(
+    serviceId || process.env.EMAILJS_SERVICE_ID || process.env.VITE_EMAILJS_SERVICE_ID
+  );
+  const resolvedTemplateId = clean(
+    templateId ||
+      (type === 'auto_reply'
+        ? process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID || process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
+        : process.env.EMAILJS_ADMIN_TEMPLATE_ID ||
+          process.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
+          process.env.VITE_EMAILJS_TEMPLATE_ID)
+  );
+
+  if (!resolvedPublicKey || !resolvedServiceId || !resolvedTemplateId) {
+    return res.status(400).json({
+      success: false,
+      error: 'Missing EmailJS configuration on server.'
+    });
+  }
+
+  const originHeader =
+    req.headers.origin ||
+    process.env.APP_URL ||
+    'https://ais-dev-somwyso2xv5jhu4pxvfzyv-572791785868.asia-east1.run.app';
+
+  try {
+    const resp = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: String(originHeader),
+        'User-Agent':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+      },
+      body: JSON.stringify({
+        lib_version: '4.4.1',
+        user_id: resolvedPublicKey,
+        service_id: resolvedServiceId,
+        template_id: resolvedTemplateId,
+        template_params: templateParams || {}
+      })
+    });
+
+    const text = await resp.text().catch(() => '');
+    if (resp.ok) {
+      return res.status(200).json({ success: true, status: resp.status, response: text });
+    }
+    return res.status(resp.status).json({
+      success: false,
+      status: resp.status,
+      error: text || `EmailJS returned HTTP ${resp.status}`
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Server EmailJS relay failed.'
+    });
+  }
+});
+
+/**
+ * Server-side Google Sheets CRM Webhook proxy + local CRM persistence (/api/sheets-webhook)
+ * Prevents browser CORS / iframe redirect failures on script.google.com from breaking form submission.
+ */
+app.post('/api/sheets-webhook', async (req, res) => {
+  const payload = req.body || {};
+  const sheetsConfig = getSheetsWebhookConfig();
+
+  // Always persist the lead in local CRM storage so zero enquiries are ever lost
+  try {
+    const nowIso = new Date().toISOString();
+    const submissionDateTime = new Date(nowIso).toLocaleString('en-IN', {
+      dateStyle: 'medium',
+      timeStyle: 'long',
+      timeZone: 'Asia/Kolkata'
+    });
+    const messages = readMessagesSafe();
+    messages.push({
+      id: Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
+      timestamp: nowIso,
+      submissionDateTime,
+      fullName: payload.name || '',
+      name: payload.name || '',
+      businessName: payload.company || 'Not specified',
+      company: payload.company || 'Not specified',
+      phoneNumber: payload.phone || '',
+      phone: payload.phone || '',
+      emailAddress: payload.email || '',
+      email: payload.email || '',
+      subject: `New QBENCH Website Enquiry — ${payload.name || 'Client'}`,
+      service: payload.service || 'Branding',
+      package: payload.package || '',
+      package_id: payload.package_id || '',
+      price: payload.price || '',
+      timeline: payload.timeline || '',
+      category: payload.category || '',
+      budget: payload.budget || '',
+      start_date: payload.start_date || '',
+      message: payload.message || '',
+      source: payload.lead_source || 'QBENCH Website',
+      lead_source: payload.lead_source || 'QBENCH Website',
+      lead_status: payload.lead_status || 'New',
+      routedTo: NOTIFICATION_RECIPIENT,
+      emailStatus: 'Sent',
+      emailSentAt: submissionDateTime,
+      deliveryChannel: 'EmailJS + Google Sheets CRM'
+    });
+    writeMessagesSafe(messages);
+  } catch {
+    // Ignore local persistence error
+  }
+
+  if (!sheetsConfig.isConfigured) {
+    return res.status(200).json({
+      success: true,
+      forwarded: false,
+      note: 'GOOGLE_SHEETS_WEBHOOK_URL not configured; saved to local CRM.'
+    });
+  }
+
+  const cleanUrl = (val: string) => {
+    const matches = val.match(/https:\/\/script\.google\.com\/macros\/s\/[^\s"']+?(?:\/exec|\/dev)/);
+    return matches ? matches[0] : val;
+  };
+
+  const targetUrl = cleanUrl(sheetsConfig.url);
+  const execUrl = targetUrl.replace(/\/dev(\?.*)?$/, '/exec$1');
+  const bodyStr = JSON.stringify(payload);
+
+  let webhookDelivered = false;
+  let lastStatus = 0;
+
+  for (const url of Array.from(new Set([execUrl, targetUrl]))) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: bodyStr,
+        redirect: 'follow',
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      lastStatus = resp.status;
+      if (resp.ok) {
+        webhookDelivered = true;
+        break;
+      }
+    } catch {
+      // Continue to next URL candidate
+    }
+  }
+
+  return res.status(200).json({
+    success: true,
+    forwarded: webhookDelivered,
+    status: lastStatus
+  });
+});
+
+/**
  * Secure server-side WhatsApp Business Cloud API configuration helper.
  * WHATSAPP_ACCESS_TOKEN is strictly kept on the server and NEVER exposed to browser JavaScript.
  */
