@@ -1,0 +1,46 @@
+[
+  {
+    "id": "mum91krzdgl",
+    "timestamp": "2026-09-29T05:42:06.191Z",
+    "fullName": "AKHIL SURESH",
+    "businessName": "Not specified",
+    "phoneNumber": "07356525932",
+    "emailAddress": "akhilsureshthodupuzha@gmail.com",
+    "subject": "General Inquiry",
+    "message": "Hi Q BENCH team! I would like to book the following service package:\n\n- Selected Package: Branding — Premium Package\n- Package ID: branding_premium\n- Price Quote: ₹25,000\n- Estimated Delivery: Continuous Sprint Delivery\n\nKindly coordinate my onboarding details and launch files. Thank you!",
+    "service": "Branding",
+    "routedTo": "qbench.official@gmail.com",
+    "selectedPackage": {
+      "packageName": "Branding — Premium Package",
+      "packageId": "branding_premium",
+      "packagePrice": "₹25,000",
+      "packageCategory": "Branding",
+      "duration": "Continuous Sprint Delivery",
+      "addonsOrOptions": [],
+      "totalAmount": "₹25,000"
+    },
+    "selectedBlueprint": null
+  },
+  {
+    "id": "mumajwn0zue",
+    "timestamp": "2026-09-29T06:24:20.988Z",
+    "fullName": "Akhil",
+    "businessName": "Not specified",
+    "phoneNumber": "7356525932",
+    "emailAddress": "akhilsureshthodupuzha@gmail.com",
+    "subject": "New QBENCH Website Enquiry — Akhil",
+    "message": "Hi Q BENCH team! I would like to book the following service package:\n\n- Selected Package: Branding — Basic Package\n- Package ID: branding_basic\n- Price Quote: ₹5,000\n- Estimated Delivery: approx. 1-2 Weeks\n\nKindly coordinate my onboarding details and launch files. Thank you!",
+    "service": "Branding",
+    "routedTo": "qbench.official@gmail.com",
+    "selectedPackage": {
+      "packageName": "Branding — Basic Package",
+      "packageId": "branding_basic",
+      "packagePrice": "₹5,000",
+      "packageCategory": "Branding",
+      "duration": "approx. 1-2 Weeks",
+      "addonsOrOptions": [],
+      "totalAmount": "₹5,000"
+    },
+    "selectedBlueprint": null
+  }
+]

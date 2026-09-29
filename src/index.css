@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-brand-primary: #00685b;
+  --color-brand-primary-light: #178373;
+  --color-brand-primary-dim: #238a7a;
+  --color-brand-secondary: #006c4b;
+  --color-brand-accent: #45b88a;
+  --color-brand-accent-light: #88f8c5;
+  --color-brand-background: #faf9f9;
+  --color-brand-surface: #ffffff;
+  --color-brand-surface-low: #f5f3f3;
+  --color-brand-surface-container: #efeded;
+  --color-brand-text: #1b1c1c;
+  --color-brand-text-muted: #595d5c;
+  --color-brand-text-variant: #3e4946;
+  --color-brand-outline: #bdc9c5;
+  --color-brand-dark: #1e2020;
+  --color-brand-dark-card: #2d3030;
+  
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Space Grotesk", ui-monospace, SFMono-Regular, monospace;
+  --font-tech: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  background-color: var(--color-brand-background);
+  color: var(--color-brand-text);
+  font-family: var(--font-sans);
+}
+
+/* Custom Hide Scrollbar for interactive sidebar */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Custom animation classes */
+@keyframes pulseGlow {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.05);
+  }
+}
+
+.pulse-glow {
+  animation: pulseGlow 8s ease-in-out infinite;
+}
+

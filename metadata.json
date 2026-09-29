@@ -1,0 +1,6 @@
+{
+  "name": "QBench",
+  "description": "Modern organic-futurist agency profile for QBench, highlighting core strengths, services, portfolio, precision process, and inquiry portal.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
