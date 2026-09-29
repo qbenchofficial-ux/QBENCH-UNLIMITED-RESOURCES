@@ -78,6 +78,11 @@ app.get('/api/health', (_req, res) => {
  */
 app.get('/api/integration-config', (_req, res) => {
   const clean = (val?: string) => (val || '').trim().replace(/^["']|["']$/g, '');
+  const cleanUrl = (val?: string) => {
+    const raw = clean(val);
+    const matches = raw.match(/https:\/\/script\.google\.com\/macros\/s\/[^\s"']+?(?:\/exec|\/dev)/);
+    return matches ? matches[0] : raw;
+  };
   return res.status(200).json({
     EMAILJS_PUBLIC_KEY: clean(process.env.EMAILJS_PUBLIC_KEY || process.env.VITE_EMAILJS_PUBLIC_KEY),
     EMAILJS_SERVICE_ID: clean(process.env.EMAILJS_SERVICE_ID || process.env.VITE_EMAILJS_SERVICE_ID),
@@ -89,11 +94,320 @@ app.get('/api/integration-config', (_req, res) => {
     EMAILJS_AUTO_REPLY_TEMPLATE_ID: clean(
       process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID || process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
     ),
-    GOOGLE_SHEETS_WEBHOOK_URL: clean(
+    GOOGLE_SHEETS_WEBHOOK_URL: cleanUrl(
       process.env.GOOGLE_SHEETS_WEBHOOK_URL || process.env.VITE_GOOGLE_SHEETS_WEBHOOK_URL
     )
   });
 });
+
+/**
+ * Secure server-side WhatsApp Business Cloud API configuration helper.
+ * WHATSAPP_ACCESS_TOKEN is strictly kept on the server and NEVER exposed to browser JavaScript.
+ */
+function getWhatsAppConfig() {
+  const clean = (val?: string) => (val || '').trim().replace(/^["']|["']$/g, '');
+  const isPlaceholder = (val: string) =>
+    !val ||
+    val.startsWith('your_') ||
+    val.includes('YOUR_') ||
+    val === 'undefined' ||
+    val === 'null';
+
+  const rawApiUrl = clean(process.env.WHATSAPP_API_URL);
+  const accessToken = clean(process.env.WHATSAPP_ACCESS_TOKEN);
+  const phoneNumberId = clean(process.env.WHATSAPP_PHONE_NUMBER_ID);
+  const rawRecipient = clean(process.env.WHATSAPP_RECIPIENT_NUMBER);
+  const templateName = clean(process.env.WHATSAPP_TEMPLATE_NAME);
+  const templateLanguage = clean(process.env.WHATSAPP_TEMPLATE_LANGUAGE) || 'en';
+
+  const recipientNumber = isPlaceholder(rawRecipient)
+    ? ''
+    : rawRecipient.replace(/[^\d]/g, '');
+
+  let endpointUrl = '';
+  if (!isPlaceholder(rawApiUrl) && rawApiUrl.endsWith('/messages')) {
+    endpointUrl = rawApiUrl;
+  } else if (!isPlaceholder(phoneNumberId)) {
+    const baseUrl = (!isPlaceholder(rawApiUrl) ? rawApiUrl : 'https://graph.facebook.com/v20.0').replace(/\/$/, '');
+    endpointUrl = `${baseUrl}/${phoneNumberId}/messages`;
+  } else if (!isPlaceholder(rawApiUrl)) {
+    endpointUrl = rawApiUrl;
+  }
+
+  const isConfigured = Boolean(
+    !isPlaceholder(accessToken) &&
+      !isPlaceholder(endpointUrl) &&
+      !isPlaceholder(recipientNumber)
+  );
+
+  return {
+    endpointUrl,
+    accessToken,
+    phoneNumberId: isPlaceholder(phoneNumberId) ? '' : phoneNumberId,
+    recipientNumber,
+    templateName: isPlaceholder(templateName) ? '' : templateName,
+    templateLanguage,
+    isConfigured
+  };
+}
+
+function sanitizeWhatsAppParam(val: unknown, fallback = 'Not specified'): string {
+  const cleaned = String(val ?? '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return cleaned ? cleaned.slice(0, 1024) : fallback;
+}
+
+function buildOrderedWhatsAppParams(
+  data: Record<string, string>,
+  count: number
+): Array<{ type: 'text'; text: string }> {
+  if (count <= 0) return [];
+
+  const parameterSetsByCount: Record<number, string[]> = {
+    1: [data.name],
+    2: [data.name, data.phone],
+    3: [data.name, data.phone, data.service],
+    4: [data.name, data.phone, data.service, data.package],
+    5: [data.name, data.phone, data.email, data.service, data.message],
+    6: [data.name, data.phone, data.email, data.service, data.package, data.message],
+    7: [data.name, data.phone, data.email, data.service, data.package, data.price, data.message],
+    8: [data.name, data.company, data.email, data.phone, data.service, data.package, data.price, data.message],
+    9: [
+      data.name,
+      data.company,
+      data.email,
+      data.phone,
+      data.service,
+      data.package,
+      data.price,
+      data.timeline,
+      data.message
+    ],
+    10: [
+      data.name,
+      data.company,
+      data.email,
+      data.phone,
+      data.service,
+      data.package,
+      data.price,
+      data.budget,
+      data.start_date,
+      data.message
+    ],
+    11: [
+      data.name,
+      data.company,
+      data.email,
+      data.phone,
+      data.service,
+      data.package,
+      data.price,
+      data.budget,
+      data.start_date,
+      data.message,
+      data.lead_source
+    ],
+    12: [
+      data.name,
+      data.company,
+      data.email,
+      data.phone,
+      data.service,
+      data.package,
+      data.package_id,
+      data.price,
+      data.timeline,
+      data.budget,
+      data.start_date,
+      data.message
+    ]
+  };
+
+  const fullList = parameterSetsByCount[count] || [
+    data.name,
+    data.company,
+    data.email,
+    data.phone,
+    data.service,
+    data.package,
+    data.price,
+    data.budget,
+    data.start_date,
+    data.message,
+    data.lead_source,
+    data.timeline,
+    data.package_id
+  ].slice(0, count);
+
+  return fullList.map((val) => ({
+    type: 'text',
+    text: sanitizeWhatsAppParam(val)
+  }));
+}
+
+async function handleWhatsAppNotification(req: express.Request, res: express.Response) {
+  const waConfig = getWhatsAppConfig();
+
+  if (!waConfig.isConfigured) {
+    const missing: string[] = [];
+    if (!waConfig.accessToken) missing.push('WHATSAPP_ACCESS_TOKEN');
+    if (!waConfig.endpointUrl) missing.push('WHATSAPP_PHONE_NUMBER_ID / WHATSAPP_API_URL');
+    if (!waConfig.recipientNumber) missing.push('WHATSAPP_RECIPIENT_NUMBER');
+
+    return res.status(503).json({
+      success: false,
+      configured: false,
+      error: `WhatsApp Cloud API secrets not configured: ${missing.join(', ')}`
+    });
+  }
+
+  const body = req.body || {};
+  const normalizedData: Record<string, string> = {
+    name: sanitizeWhatsAppParam(body.name, 'Not provided'),
+    company: sanitizeWhatsAppParam(body.company, 'Not specified'),
+    email: sanitizeWhatsAppParam(body.email, 'Not provided'),
+    phone: sanitizeWhatsAppParam(body.phone, 'Not provided'),
+    service: sanitizeWhatsAppParam(body.service, 'Branding'),
+    package: sanitizeWhatsAppParam(body.package || body.packageName, 'Not Selected'),
+    package_id: sanitizeWhatsAppParam(body.package_id || body.packageId, 'general_enquiry'),
+    price: sanitizeWhatsAppParam(body.price || body.packagePrice, 'Custom Quote'),
+    timeline: sanitizeWhatsAppParam(body.timeline, 'Flexible'),
+    category: sanitizeWhatsAppParam(body.category || body.service, 'Branding'),
+    budget: sanitizeWhatsAppParam(body.budget || body.price, 'Custom Quote'),
+    start_date: sanitizeWhatsAppParam(body.start_date || body.startDate || body.timeline, 'Flexible'),
+    message: sanitizeWhatsAppParam(body.message, 'No additional message provided'),
+    lead_source: sanitizeWhatsAppParam(body.lead_source, 'QBENCH Website')
+  };
+
+  const sendToMeta = async (payload: Record<string, any>) => {
+    const resp = await fetch(waConfig.endpointUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${waConfig.accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    const data: any = await resp.json().catch(() => ({}));
+    return { ok: resp.ok, status: resp.status, data };
+  };
+
+  try {
+    // 1. If a WhatsApp Template is configured, send using template mode first
+    if (waConfig.templateName) {
+      const initialParamCount = waConfig.templateName === 'hello_world' ? 0 : 10;
+      const buildTemplatePayload = (langCode: string, paramCount: number) => {
+        const parameters = buildOrderedWhatsAppParams(normalizedData, paramCount);
+        const templateObj: Record<string, any> = {
+          name: waConfig.templateName,
+          language: { code: langCode }
+        };
+        if (parameters.length > 0) {
+          templateObj.components = [
+            {
+              type: 'body',
+              parameters
+            }
+          ];
+        }
+        return {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: waConfig.recipientNumber,
+          type: 'template',
+          template: templateObj
+        };
+      };
+
+      let activeLang = waConfig.templateLanguage;
+      let attempt = await sendToMeta(buildTemplatePayload(activeLang, initialParamCount));
+
+      // If language code translation error (132001), retry with fallback language ('en_US' <-> 'en')
+      if (!attempt.ok && attempt.data?.error?.code === 132001) {
+        activeLang = activeLang === 'en' ? 'en_US' : 'en';
+        attempt = await sendToMeta(buildTemplatePayload(activeLang, initialParamCount));
+      }
+
+      // If parameter count mismatch (132000), extract expected parameter count from Meta error details and retry
+      if (!attempt.ok && attempt.data?.error?.code === 132000) {
+        const detailsStr = String(attempt.data?.error?.error_data?.details || attempt.data?.error?.message || '');
+        const match = detailsStr.match(/expected number of params \((\d+)\)/i);
+        if (match) {
+          const expectedCount = Number(match[1]);
+          attempt = await sendToMeta(buildTemplatePayload(activeLang, expectedCount));
+        }
+      }
+
+      if (attempt.ok) {
+        return res.status(200).json({
+          success: true,
+          mode: 'template',
+          messageId: attempt.data?.messages?.[0]?.id || null
+        });
+      }
+
+      // Fall through to text message fallback if template failed
+      console.warn('[QBENCH WhatsApp Template Notice]:', attempt.data?.error?.message || attempt.status);
+    }
+
+    // 2. Fallback / Direct formatted text message via WhatsApp Business Cloud API
+    const formattedText = [
+      '🔔 *New QBENCH Website Enquiry*',
+      '',
+      `*Name:* ${normalizedData.name}`,
+      `*Company:* ${normalizedData.company}`,
+      `*Email:* ${normalizedData.email}`,
+      `*Phone:* ${normalizedData.phone}`,
+      `*Service:* ${normalizedData.service}`,
+      `*Package:* ${normalizedData.package}`,
+      `*Package ID:* ${normalizedData.package_id}`,
+      `*Price:* ${normalizedData.price}`,
+      `*Timeline:* ${normalizedData.timeline}`,
+      `*Budget:* ${normalizedData.budget}`,
+      `*Start Date:* ${normalizedData.start_date}`,
+      `*Message:* ${normalizedData.message}`,
+      `*Lead Source:* ${normalizedData.lead_source}`
+    ].join('\n');
+
+    const textAttempt = await sendToMeta({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: waConfig.recipientNumber,
+      type: 'text',
+      text: {
+        preview_url: false,
+        body: formattedText
+      }
+    });
+
+    if (textAttempt.ok) {
+      return res.status(200).json({
+        success: true,
+        mode: 'text',
+        messageId: textAttempt.data?.messages?.[0]?.id || null
+      });
+    }
+
+    return res.status(textAttempt.status || 500).json({
+      success: false,
+      configured: true,
+      error: textAttempt.data?.error?.message || 'WhatsApp Business Cloud API request failed.'
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      configured: true,
+      error: err?.message || 'Unexpected error calling WhatsApp Business Cloud API.'
+    });
+  }
+}
+
+app.post('/api/whatsapp-notify', handleWhatsAppNotification);
+app.post('/api/whatsapp', handleWhatsAppNotification);
+app.post('/api/send-whatsapp', handleWhatsAppNotification);
 
 /**
  * Centralized, secure server-side Gmail SMTP configuration helper.

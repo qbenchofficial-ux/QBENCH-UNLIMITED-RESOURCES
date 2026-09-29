@@ -507,7 +507,7 @@ ${message}`;
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
-      console.warn('⚠️ [Form Validation Failed]:', newErrors);
+      console.error('QBENCH: Form validation FAILED', newErrors);
       return;
     }
 
@@ -518,36 +518,12 @@ ${message}`;
     setFormError(null);
 
     const resolvedService = selectedPackage
-      ? (selectedPackage.packageCategory || 'Branding')
+      ? (selectedPackage.packageCategory || formData.service)
       : selectedBlueprint
-        ? (selectedBlueprint.projectCategory || 'Branding')
+        ? (selectedBlueprint.projectCategory || formData.service)
         : freeConsultation
           ? `Free Consultation (${freeConsultation.selectedItem || 'General'})`
           : formData.service;
-
-    const packageName = selectedPackage
-      ? selectedPackage.packageName
-      : selectedBlueprint
-        ? selectedBlueprint.projectName
-        : freeConsultation
-          ? `Free Consultation (${freeConsultation.selectedItem || 'General'})`
-          : 'Not Selected';
-
-    const packagePrice = selectedPackage
-      ? (selectedPackage.packagePrice || selectedPackage.totalAmount || 'Custom Quote')
-      : selectedBlueprint
-        ? (selectedBlueprint.estimatedBudget || 'Custom Quote')
-        : 'Custom Quote';
-
-    const budget =
-      localStorage.getItem('qbench_prefilled_budget') ||
-      (selectedPackage
-        ? (selectedPackage.totalAmount || selectedPackage.packagePrice)
-        : selectedBlueprint
-          ? selectedBlueprint.estimatedBudget
-          : 'Not specified');
-
-    const startDate = selectedPackage?.duration || 'Immediate / Flexible';
 
     try {
       const responseData = await sendEmailJS({
@@ -556,12 +532,7 @@ ${message}`;
         phone: trimmedPhone,
         company: trimmedCompany,
         service: resolvedService,
-        package: packageName,
-        price: packagePrice,
-        budget: budget,
-        start_date: startDate,
         message: finalMessage,
-        lead_source: 'QBENCH Website',
         selectedPackage,
         selectedBlueprint,
         freeConsultation
@@ -609,8 +580,7 @@ ${message}`;
         message: ''
       });
       setErrors({});
-    } catch (err) {
-      console.error('[QBENCH Enquiry Submission Error]:', err);
+    } catch (error) {
       setFormError(
         'Something went wrong while submitting your enquiry. Please try again or contact QBENCH directly.'
       );
@@ -1248,8 +1218,10 @@ ${message}`;
                       <div className={(selectedPackage || selectedBlueprint || freeConsultation) ? "grid grid-cols-1 gap-4" : "grid grid-cols-1 sm:grid-cols-2 gap-4"}>
                         
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Full Name *</label>
+                          <label htmlFor="name" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Full Name *</label>
                           <input
+                            id="name"
+                            name="name"
                             type="text"
                             required
                             value={formData.name}
@@ -1273,8 +1245,10 @@ ${message}`;
                         
                         {!selectedPackage && !selectedBlueprint && !freeConsultation && (
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Company Name</label>
+                            <label htmlFor="company" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Company Name</label>
                             <input
+                              id="company"
+                              name="company"
                               type="text"
                               value={formData.company}
                               onChange={(e) => setFormData({...formData, company: e.target.value})}
@@ -1290,8 +1264,10 @@ ${message}`;
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Phone Number *</label>
+                          <label htmlFor="phone" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Phone Number *</label>
                           <input
+                            id="phone"
+                            name="phone"
                             type="tel"
                             required
                             value={formData.phone}
@@ -1314,8 +1290,10 @@ ${message}`;
                         </div>
                         
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Email Address *</label>
+                          <label htmlFor="email" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Email Address *</label>
                           <input
+                            id="email"
+                            name="email"
                             type="email"
                             required
                             value={formData.email}
@@ -1341,7 +1319,7 @@ ${message}`;
                       
                       {/* Service Required Select */}
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Service Required *</label>
+                        <label htmlFor="service" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Service Required *</label>
                         {selectedPackage ? (
                           <div className="w-full bg-[#00685b]/5 border border-[#00685b]/25 rounded-xl px-4 py-2.5 text-xs text-[#00685b] font-bold flex items-center justify-between">
                             <span>{selectedPackage.packageCategory || 'Linked Service'}</span>
@@ -1359,6 +1337,8 @@ ${message}`;
                           </div>
                         ) : (
                           <select
+                            id="service"
+                            name="service"
                             required
                             value={formData.service}
                             onChange={(e) => setFormData({...formData, service: e.target.value})}
@@ -1381,8 +1361,10 @@ ${message}`;
                       {/* Message description box */}
                       {!selectedPackage && !selectedBlueprint && (
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Your Message *</label>
+                          <label htmlFor="message" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Your Message *</label>
                           <textarea
+                            id="message"
+                            name="message"
                             required
                             rows={5}
                             readOnly={!!freeConsultation}

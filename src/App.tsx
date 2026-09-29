@@ -15,7 +15,6 @@ import PortfolioView from './components/PortfolioView';
 import ProcessView from './components/ProcessView';
 import ContactView from './components/ContactView';
 import PackagesView from './components/PackagesView';
-import DriveView from './components/DriveView';
 import SkeletonRouter from './components/SkeletonLoader';
 import { NavSection, ServiceTab } from './types';
 import { HelpCircle, ChevronRight, MessageSquare, Laptop, ShieldAlert, MessageCircle } from 'lucide-react';
@@ -134,12 +133,6 @@ export default function App() {
               {activeSection === 'contact' && (
                 <div id="view-contact-screen">
                   <ContactView onNavigate={handleNavigate} />
-                </div>
-              )}
-
-              {activeSection === 'drive' && (
-                <div id="view-drive-screen">
-                  <DriveView />
                 </div>
               )}
             </motion.div>

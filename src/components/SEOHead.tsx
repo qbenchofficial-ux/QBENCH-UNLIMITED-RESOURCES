@@ -65,12 +65,6 @@ export default function SEOHead({ section, activeServiceTab }: SEOHeadProps) {
       keywords = 'contact web agency, hire React engineers, system administration project, custom integration quote, WhatsApp developers';
       break;
 
-    case 'drive':
-      title = 'Drive Portal | QBench — Secure Workspace Collaboration';
-      description = 'Access your digital creative assets, vector design kits, video project briefs, and marketing spreadsheets securely connected directly to your Google Drive.';
-      keywords = 'client portal, Google Drive integration, secure workspace, asset delivery, client deliverables';
-      break;
-
     default:
       break;
   }

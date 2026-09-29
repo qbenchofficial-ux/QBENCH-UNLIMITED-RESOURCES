@@ -421,8 +421,6 @@ export default function SkeletonRouter({ section }: SkeletonRouterProps) {
       return <PackagesSkeleton />;
     case 'contact':
       return <ContactSkeleton />;
-    case 'drive':
-      return <PortfolioSkeleton />;
     default:
       return <HomeSkeleton />;
   }

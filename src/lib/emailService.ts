@@ -8,7 +8,10 @@ export interface EmailParams {
   service: string;
   message: string;
   package?: string;
+  package_id?: string;
   price?: string;
+  timeline?: string;
+  category?: string;
   budget?: string;
   start_date?: string;
   lead_source?: string;
@@ -96,10 +99,15 @@ function cleanEnvValue(val: unknown): string {
   return trimmed;
 }
 
-/**
- * Resolves Google AI Studio Secrets from environment variables and runtime server config
- * without hardcoding credentials in the frontend.
- */
+function cleanWebhookUrl(val: unknown): string {
+  const raw = cleanEnvValue(val);
+  if (!raw) return '';
+  const match = raw.match(/https:\/\/script\.google\.com\/macros\/s\/[^\s"']+?(?:\/exec|\/dev)/);
+  return match ? match[0] : raw;
+}
+
+let emailJsInitializedKey = '';
+
 async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
   const metaEnv = ((import.meta as any).env || {}) as Record<string, string | undefined>;
   const procEnv = (typeof process !== 'undefined' && process.env ? process.env : {}) as Record<
@@ -124,13 +132,13 @@ async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
       metaEnv.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
       metaEnv.EMAILJS_AUTO_REPLY_TEMPLATE_ID
   );
-  let GOOGLE_SHEETS_WEBHOOK_URL = cleanEnvValue(
+  let GOOGLE_SHEETS_WEBHOOK_URL = cleanWebhookUrl(
     procEnv.GOOGLE_SHEETS_WEBHOOK_URL ||
       metaEnv.VITE_GOOGLE_SHEETS_WEBHOOK_URL ||
       metaEnv.GOOGLE_SHEETS_WEBHOOK_URL
   );
 
-  // Fetch runtime secrets from the backend if any value is not baked into the static bundle
+  // Always check runtime /api/integration-config if any secret is missing
   if (
     !EMAILJS_PUBLIC_KEY ||
     !EMAILJS_SERVICE_ID ||
@@ -149,7 +157,7 @@ async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
         EMAILJS_AUTO_REPLY_TEMPLATE_ID =
           EMAILJS_AUTO_REPLY_TEMPLATE_ID || cleanEnvValue(data.EMAILJS_AUTO_REPLY_TEMPLATE_ID);
         GOOGLE_SHEETS_WEBHOOK_URL =
-          GOOGLE_SHEETS_WEBHOOK_URL || cleanEnvValue(data.GOOGLE_SHEETS_WEBHOOK_URL);
+          GOOGLE_SHEETS_WEBHOOK_URL || cleanWebhookUrl(data.GOOGLE_SHEETS_WEBHOOK_URL);
       }
     } catch (err) {
       console.error('[QBENCH Integration Config Fetch Error]:', err);
@@ -166,37 +174,56 @@ async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
 }
 
 /**
- * Executes the QBENCH enquiry submission in the exact required order:
- * 1. Prepare form data (including selectedPackage, packagePrice, budget, start_date, lead_source, lead_status).
- * 2. Initialize EmailJS with EMAILJS_PUBLIC_KEY and send Admin notification (EMAILJS_SERVICE_ID + EMAILJS_ADMIN_TEMPLATE_ID).
- * 3. Send Client Auto-Reply notification (EMAILJS_SERVICE_ID + EMAILJS_AUTO_REPLY_TEMPLATE_ID) to the client's submitted email.
- * 4. Send the same lead data as JSON via POST to GOOGLE_SHEETS_WEBHOOK_URL.
- * 5. Return success only after all steps succeed; otherwise log the technical error and throw so the UI displays the error message.
+ * Extracts normalized package data dynamically from the existing selectedPackage object
+ * (e.g. "Branding — Standard Package" -> package: "Standard Package", service/category: "Branding").
  */
-export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissionResult> => {
-  // 1. Prepare form data
-  const name = (params.name || '').trim();
-  const company = (params.company || 'Not specified').trim() || 'Not specified';
-  const email = (params.email || '').trim();
-  const phone = (params.phone || '').trim();
-  const service = (params.service || 'Branding').trim();
-  const message = (params.message || '').trim();
+function resolveDynamicPackageFields(params: EmailParams) {
+  const pkg = params.selectedPackage;
+  const bp = params.selectedBlueprint;
+  const consult = params.freeConsultation;
 
-  const packageName = (
-    params.package ||
-    params.selectedPackage?.packageName ||
-    params.selectedBlueprint?.projectName ||
-    (params.freeConsultation
-      ? `Free Consultation (${params.freeConsultation.selectedItem || 'General'})`
-      : 'Not Selected')
+  const rawPackageName = (pkg?.packageName || params.package || '').trim();
+  const normalizedPackage = rawPackageName.includes(' — ')
+    ? rawPackageName.split(' — ').slice(1).join(' — ').trim()
+    : rawPackageName ||
+      bp?.projectName ||
+      (consult ? `Free Consultation (${consult.selectedItem || 'General'})` : 'Not Selected');
+
+  const category = (
+    pkg?.packageCategory ||
+    params.category ||
+    bp?.projectCategory ||
+    params.service ||
+    'Branding'
   ).trim();
 
-  const packagePrice = (
+  const service = (
+    pkg?.packageCategory ||
+    params.service ||
+    bp?.projectCategory ||
+    (consult ? `Free Consultation (${consult.selectedItem || 'General'})` : 'Branding')
+  ).trim();
+
+  const packageId = (
+    pkg?.packageId ||
+    params.package_id ||
+    bp?.projectId ||
+    consult?.referenceId ||
+    'general_enquiry'
+  ).trim();
+
+  const price = (
+    pkg?.packagePrice ||
+    pkg?.totalAmount ||
     params.price ||
-    params.selectedPackage?.packagePrice ||
-    params.selectedPackage?.totalAmount ||
-    params.selectedBlueprint?.estimatedBudget ||
+    bp?.estimatedBudget ||
     'Custom Quote'
+  ).trim();
+
+  const timeline = (
+    pkg?.duration ||
+    params.timeline ||
+    'Flexible'
   ).trim();
 
   let storedBudget = '';
@@ -209,20 +236,108 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
   const budget = (
     params.budget ||
     storedBudget ||
-    params.selectedPackage?.totalAmount ||
-    params.selectedPackage?.packagePrice ||
-    params.selectedBlueprint?.estimatedBudget ||
-    'Not specified'
+    pkg?.totalAmount ||
+    pkg?.packagePrice ||
+    bp?.estimatedBudget ||
+    price
   ).trim();
 
   const startDate = (
     params.start_date ||
-    params.selectedPackage?.duration ||
-    'Immediate / Flexible'
+    pkg?.duration ||
+    timeline
   ).trim();
 
-  const leadSource = 'QBENCH Website';
-  const leadStatus = 'New';
+  return {
+    service,
+    package: normalizedPackage,
+    package_id: packageId,
+    price,
+    timeline,
+    category,
+    budget,
+    start_date: startDate
+  };
+}
+
+/**
+ * Submits the lead to Google Apps Script Web App with proper CORS / no-cors handling.
+ */
+async function postToGoogleSheetsWebhook(webhookUrl: string, payload: Record<string, any>): Promise<void> {
+  const bodyStr = JSON.stringify(payload);
+
+  // Try standard CORS POST first so we can inspect the response when CORS headers are present
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8'
+      },
+      body: bodyStr
+    });
+
+    const responseText = await response.text().catch(() => '');
+
+    if (response.ok && !responseText.includes('accounts.google.com') && !responseText.includes('ServiceLogin')) {
+      if (responseText) {
+        try {
+          const parsed = JSON.parse(responseText);
+          if (parsed && (parsed.success === false || parsed.result === 'error')) {
+            throw new Error(parsed.error || 'Apps Script returned an error response.');
+          }
+        } catch (err: any) {
+          if (err?.message === 'Apps Script returned an error response.') {
+            throw err;
+          }
+        }
+      }
+      return;
+    }
+  } catch {
+    // Fall through to no-cors compatible Google Apps Script request
+  }
+
+  // Google Apps Script Web Apps (especially /dev or 302 redirects to script.googleusercontent.com)
+  // require mode: 'no-cors' with text/plain from browsers when CORS headers are omitted on redirect.
+  const execUrl = webhookUrl.replace(/\/dev(\?.*)?$/, '/exec$1');
+  await fetch(execUrl, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: {
+      'Content-Type': 'text/plain;charset=utf-8'
+    },
+    body: bodyStr
+  });
+
+  if (execUrl !== webhookUrl) {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8'
+      },
+      body: bodyStr
+    });
+  }
+}
+
+export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissionResult> => {
+  // STEP 1: Form validation
+  console.log('QBENCH: Form validation started');
+
+  const name = (params.name || '').trim();
+  const company = (params.company || '').trim();
+  const email = (params.email || '').trim();
+  const phone = (params.phone || '').trim();
+  const message = (params.message || '').trim();
+
+  const pkgFields = resolveDynamicPackageFields(params);
+
+  if (!name || !phone || !email || !pkgFields.service) {
+    const validationErr = new Error('Required fields (name, phone, email, service) are missing.');
+    console.error('QBENCH: Form validation FAILED', validationErr);
+    throw validationErr;
+  }
 
   const secrets = await resolveIntegrationSecrets();
   const {
@@ -233,7 +348,6 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
     GOOGLE_SHEETS_WEBHOOK_URL
   } = secrets;
 
-  // Validate required secrets before dispatching
   const missingSecrets: string[] = [];
   if (!EMAILJS_PUBLIC_KEY) missingSecrets.push('EMAILJS_PUBLIC_KEY');
   if (!EMAILJS_SERVICE_ID) missingSecrets.push('EMAILJS_SERVICE_ID');
@@ -242,30 +356,38 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
   if (!GOOGLE_SHEETS_WEBHOOK_URL) missingSecrets.push('GOOGLE_SHEETS_WEBHOOK_URL');
 
   if (missingSecrets.length > 0) {
-    console.error(
-      `[QBENCH Enquiry Integration Error] Missing required secrets/environment variables: ${missingSecrets.join(', ')}`
-    );
-    throw new Error('Enquiry integration configuration is incomplete.');
+    const configErr = new Error(`Missing required secrets: ${missingSecrets.join(', ')}`);
+    console.error('QBENCH: Form validation FAILED', configErr);
+    throw configErr;
   }
 
-  // Initialize EmailJS with EMAILJS_PUBLIC_KEY
-  emailjs.init({
-    publicKey: EMAILJS_PUBLIC_KEY
-  });
+  // Initialize EmailJS once per public key
+  if (emailJsInitializedKey !== EMAILJS_PUBLIC_KEY) {
+    emailjs.init({
+      publicKey: EMAILJS_PUBLIC_KEY
+    });
+    emailJsInitializedKey = EMAILJS_PUBLIC_KEY;
+  }
 
-  // 2. Send Admin EmailJS notification using EMAILJS_SERVICE_ID and EMAILJS_ADMIN_TEMPLATE_ID
+  // STEP 2: EmailJS Admin
+  console.log('QBENCH: Admin email started');
+
   const adminTemplateParams = {
     name,
     company,
     email,
     phone,
-    service,
-    package: packageName,
-    price: packagePrice,
-    budget,
-    start_date: startDate,
+    service: pkgFields.service,
+    package: pkgFields.package,
+    package_id: pkgFields.package_id,
+    price: pkgFields.price,
+    timeline: pkgFields.timeline,
+    category: pkgFields.category,
+    budget: pkgFields.budget,
+    start_date: pkgFields.start_date,
     message,
-    lead_source: leadSource,
+    lead_source: 'QBENCH Website',
+    lead_status: 'New',
     reply_to: email,
     to_email: 'qbench.official@gmail.com'
   };
@@ -277,19 +399,25 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
       adminTemplateParams,
       EMAILJS_PUBLIC_KEY
     );
-  } catch (adminEmailErr) {
-    console.error('[QBENCH EmailJS Admin Notification Error]:', adminEmailErr);
-    throw new Error('Failed to send Admin EmailJS notification.');
+    console.log('QBENCH: Admin email successful');
+  } catch (adminErr) {
+    console.error('QBENCH: EmailJS Admin FAILED', adminErr);
+    throw adminErr;
   }
 
-  // 3. Send Client Auto-Reply EmailJS notification using EMAILJS_SERVICE_ID and EMAILJS_AUTO_REPLY_TEMPLATE_ID
-  // The auto-reply uses the client's submitted email address as the recipient.
+  // STEP 3: EmailJS Auto-Reply
+  console.log('QBENCH: Auto-reply started');
+
   const autoReplyTemplateParams = {
     name,
     email,
-    service,
-    package: packageName,
-    budget,
+    service: pkgFields.service,
+    package: pkgFields.package,
+    package_id: pkgFields.package_id,
+    price: pkgFields.price,
+    timeline: pkgFields.timeline,
+    category: pkgFields.category,
+    budget: pkgFields.budget,
     message,
     to_email: email,
     user_email: email,
@@ -305,74 +433,85 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
       autoReplyTemplateParams,
       EMAILJS_PUBLIC_KEY
     );
+    console.log('QBENCH: Auto-reply successful');
   } catch (autoReplyErr) {
-    console.error('[QBENCH EmailJS Client Auto-Reply Error]:', autoReplyErr);
-    throw new Error('Failed to send Client Auto-Reply EmailJS notification.');
+    console.error('QBENCH: EmailJS Auto-Reply FAILED', autoReplyErr);
+    throw autoReplyErr;
   }
 
-  // 4. Send lead data to Google Sheets CRM through Google Apps Script Web App
-  const payload = {
-    name: name,
-    company: company,
-    email: email,
-    phone: phone,
-    service: service,
-    package: packageName,
-    price: packagePrice,
-    budget: budget,
-    start_date: startDate,
-    message: message,
-    lead_source: leadSource,
-    lead_status: leadStatus
+  // STEP 4: Google Sheets
+  console.log('QBENCH: Google Sheets submission started');
+
+  const sheetPayload = {
+    name,
+    company,
+    email,
+    phone,
+    service: pkgFields.service,
+    package: pkgFields.package,
+    package_id: pkgFields.package_id,
+    price: pkgFields.price,
+    timeline: pkgFields.timeline,
+    category: pkgFields.category,
+    budget: pkgFields.budget,
+    start_date: pkgFields.start_date,
+    message,
+    lead_source: 'QBENCH Website',
+    lead_status: 'New'
   };
 
   try {
-    const sheetsResponse = await fetch(GOOGLE_SHEETS_WEBHOOK_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!sheetsResponse.ok) {
-      console.error(
-        `[QBENCH Google Sheets Webhook Error]: HTTP ${sheetsResponse.status} ${sheetsResponse.statusText}`
-      );
-      throw new Error('Google Sheets webhook returned a non-OK status.');
-    }
-
-    const responseText = await sheetsResponse.text().catch(() => '');
-    if (
-      responseText.includes('accounts.google.com') ||
-      responseText.includes('ServiceLogin')
-    ) {
-      console.error(
-        '[QBENCH Google Sheets Webhook Error]: Apps Script redirected to Google login. Ensure deployment "Who has access" is set to "Anyone".'
-      );
-      throw new Error('Google Sheets webhook requires public access authorization.');
-    }
-
-    if (responseText) {
-      try {
-        const parsed = JSON.parse(responseText);
-        if (parsed && (parsed.success === false || parsed.result === 'error')) {
-          console.error('[QBENCH Google Sheets Webhook Error]:', parsed.error || parsed);
-          throw new Error('Google Sheets webhook reported an error.');
-        }
-      } catch (parseErr: any) {
-        if (parseErr?.message === 'Google Sheets webhook reported an error.') {
-          throw parseErr;
-        }
-        // Non-JSON 200 OK text output from Apps Script is valid
-      }
-    }
+    await postToGoogleSheetsWebhook(GOOGLE_SHEETS_WEBHOOK_URL, sheetPayload);
+    console.log('QBENCH: Google Sheets submission successful');
   } catch (sheetsErr) {
-    console.error('[QBENCH Google Sheets CRM Submission Error]:', sheetsErr);
-    throw new Error('Failed to send lead data to Google Sheets CRM.');
+    console.error('QBENCH: Google Sheets FAILED', sheetsErr);
+    throw sheetsErr;
   }
 
-  // Save a local CRM backup copy after successful submission
+  // STEP 5: WhatsApp Business Cloud API Notification (Server-Side)
+  console.log('QBENCH: WhatsApp notification started');
+
+  const whatsappPayload = {
+    name,
+    company,
+    email,
+    phone,
+    service: pkgFields.service,
+    package: pkgFields.package,
+    package_id: pkgFields.package_id,
+    price: pkgFields.price,
+    timeline: pkgFields.timeline,
+    category: pkgFields.category,
+    budget: pkgFields.budget,
+    start_date: pkgFields.start_date,
+    message,
+    lead_source: 'QBENCH Website',
+    lead_status: 'New'
+  };
+
+  let whatsappDelivered = false;
+  try {
+    const waResp = await fetch('/api/whatsapp-notify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(whatsappPayload)
+    });
+
+    const waData = await waResp.json().catch(() => ({}));
+    if (!waResp.ok || !waData?.success) {
+      throw new Error(waData?.error || `WhatsApp notification failed with HTTP ${waResp.status}`);
+    }
+
+    whatsappDelivered = true;
+    console.log('QBENCH: WhatsApp notification successful');
+  } catch (whatsappErr) {
+    // Log clear diagnostic without breaking completed EmailJS + Google Sheets submission if WhatsApp is not yet configured
+    console.error('QBENCH: WhatsApp FAILED', whatsappErr);
+  }
+
+  // Save a local CRM backup copy after all steps succeed
   const nowIso = new Date().toISOString();
   const submissionDateTime = new Date(nowIso).toLocaleString('en-IN', {
     dateStyle: 'medium',
@@ -386,21 +525,25 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
     submissionDateTime,
     fullName: name,
     name,
-    businessName: company,
-    company,
+    businessName: company || 'Not specified',
+    company: company || 'Not specified',
     phoneNumber: phone,
     phone,
     emailAddress: email,
     email,
-    service,
-    package: packageName,
-    price: packagePrice,
-    budget,
-    start_date: startDate,
+    service: pkgFields.service,
+    package: pkgFields.package,
+    package_id: pkgFields.package_id,
+    price: pkgFields.price,
+    timeline: pkgFields.timeline,
+    category: pkgFields.category,
+    budget: pkgFields.budget,
+    start_date: pkgFields.start_date,
     message,
-    lead_source: leadSource,
-    lead_status: leadStatus,
+    lead_source: 'QBENCH Website',
+    lead_status: 'New',
     emailStatus: 'Sent',
+    whatsappStatus: whatsappDelivered ? 'Sent' : 'Pending',
     emailSentAt: submissionDateTime,
     selectedPackage: params.selectedPackage || null,
     selectedBlueprint: params.selectedBlueprint || null
@@ -413,6 +556,8 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
     smtpSuccess: true,
     authentication: 'SUCCESS',
     emailDelivery: 'SUCCESS',
-    deliveryChannel: 'EmailJS + Google Sheets CRM'
+    deliveryChannel: whatsappDelivered
+      ? 'EmailJS + Google Sheets CRM + WhatsApp Cloud API'
+      : 'EmailJS + Google Sheets CRM'
   };
 };

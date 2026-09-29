@@ -17,7 +17,6 @@ export default function Header({ activeSection, onNavigate }: HeaderProps) {
     { id: 'packages', label: 'Packages' },
     { id: 'portfolio', label: 'Portfolio' },
     { id: 'process', label: 'Process' },
-    { id: 'drive', label: 'Drive Portal' },
     { id: 'contact', label: 'Contact' },
   ];
 
