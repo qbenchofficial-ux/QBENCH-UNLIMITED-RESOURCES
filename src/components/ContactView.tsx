@@ -513,19 +513,6 @@ ${message}`;
 
     setErrors({}); // Reset previous validation states on successful check
 
-    // Track state of duplicate/timestamp in sessionStorage to prevent rapid clicks locally as well
-    const lastSubmissionKey = `qbench_last_submission_epoch_${trimmedEmail}`;
-    const lastSubEpoch = sessionStorage.getItem(lastSubmissionKey);
-    const coolDownSec = 60;
-    if (lastSubEpoch) {
-      const elapsedSec = (Date.now() - parseInt(lastSubEpoch)) / 1000;
-      if (elapsedSec < coolDownSec) {
-        setFormError(`Please wait ${Math.ceil(coolDownSec - elapsedSec)} seconds before submitting this form again.`);
-        setFormState('idle');
-        return;
-      }
-    }
-
     isSubmittingRef.current = true;
     setFormState('submitting');
     setFormError(null);
@@ -539,79 +526,60 @@ ${message}`;
           : formData.service;
 
     try {
-      const response = await fetch('/api/contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: trimmedName,
-          email: trimmedEmail,
-          phone: trimmedPhone,
-          service: resolvedService,
-          message: finalMessage,
-          company: trimmedCompany,
-          fullName: trimmedName,
-          phoneNumber: trimmedPhone,
-          emailAddress: trimmedEmail,
-          businessName: trimmedCompany,
-          subject: `New QBENCH Website Enquiry — ${trimmedName}`,
-          selectedPackage: selectedPackage,
-          selectedBlueprint: selectedBlueprint
-        })
+      const responseData = await sendEmailJS({
+        name: trimmedName,
+        email: trimmedEmail,
+        phone: trimmedPhone,
+        company: trimmedCompany,
+        service: resolvedService,
+        message: finalMessage,
+        selectedPackage,
+        selectedBlueprint,
+        freeConsultation
       });
 
-      const responseData = await response.json();
+      // Capture delivery status
+      setSubmissionDelivery({
+        smtpConfigured: responseData.smtpConfigured ?? true,
+        smtpSuccess: responseData.smtpSuccess ?? true,
+        error: responseData.error,
+        advice: responseData.advice
+      });
 
-      if (response.ok && responseData.success === true) {
-        // Capture server-side Google Sheets + Apps Script status
-        setSubmissionDelivery({
-          smtpConfigured: responseData.smtpConfigured ?? true,
-          smtpSuccess: responseData.smtpSuccess ?? true,
-          error: responseData.error,
-          advice: responseData.advice
-        });
+      // Save snapshot for WhatsApp CTA before clearing form inputs
+      setLastSubmittedSnapshot({
+        name: trimmedName,
+        phone: trimmedPhone,
+        email: trimmedEmail,
+        company: trimmedCompany,
+        service: resolvedService,
+        message: finalMessage
+      });
 
-        // Save snapshot for WhatsApp CTA before clearing form inputs
-        setLastSubmittedSnapshot({
-          name: trimmedName,
-          phone: trimmedPhone,
-          email: trimmedEmail,
-          company: trimmedCompany,
-          service: resolvedService,
-          message: finalMessage
-        });
-
-        // Log epoch of this successful submission
-        sessionStorage.setItem(lastSubmissionKey, Date.now().toString());
-
-        setFormState('success');
-        setShowSuccessModal(true);
-        setShowSuccessToast(true);
-        // Clear selected package & blueprint local state & storage once successfully submitted
-        localStorage.removeItem('qbench_selected_package');
-        localStorage.removeItem('qbench_selected_portfolio_blueprint');
-        localStorage.removeItem('qbench_free_consultation_request');
-        localStorage.removeItem('qbench_prefilled_message');
-        localStorage.removeItem('qbench_prefilled_budget');
-        setSelectedPackage(null);
-        setSelectedBlueprint(null);
-        setFreeConsultation(null);
-        setAdditionalMessage('');
-        
-        // Reset form inputs & clear errors
-        setFormData({
-          name: '',
-          phone: '',
-          email: '',
-          company: '',
-          service: 'Branding',
-          message: ''
-        });
-        setErrors({});
-      } else {
-        throw new Error(
-          "Sorry, we couldn't submit your enquiry. Please try again or contact us on WhatsApp."
-        );
-      }
+      setFormState('success');
+      setShowSuccessModal(true);
+      setShowSuccessToast(true);
+      // Clear selected package & blueprint local state & storage once successfully submitted
+      localStorage.removeItem('qbench_selected_package');
+      localStorage.removeItem('qbench_selected_portfolio_blueprint');
+      localStorage.removeItem('qbench_free_consultation_request');
+      localStorage.removeItem('qbench_prefilled_message');
+      localStorage.removeItem('qbench_prefilled_budget');
+      setSelectedPackage(null);
+      setSelectedBlueprint(null);
+      setFreeConsultation(null);
+      setAdditionalMessage('');
+      
+      // Reset form inputs & clear errors
+      setFormData({
+        name: '',
+        phone: '',
+        email: '',
+        company: '',
+        service: 'Branding',
+        message: ''
+      });
+      setErrors({});
     } catch {
       setFormError(
         "Sorry, we couldn't submit your enquiry. Please try again or contact us on WhatsApp."

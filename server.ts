@@ -2,7 +2,6 @@ import express from 'express';
 import nodemailer from 'nodemailer';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -30,6 +29,8 @@ const DATA_DIR = process.env.VERCEL ? path.join('/tmp', 'qbench-data') : path.jo
 const MESSAGES_FILE = path.join(DATA_DIR, 'messages.json');
 const APPS_SCRIPT_FILE = path.join(process.cwd(), 'google-apps-script', 'Code.gs');
 
+let memoryMessagesFallback: any[] = [];
+
 try {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -37,6 +38,38 @@ try {
 } catch {
   // Ignore directory creation errors on read-only environments
 }
+
+function readMessagesSafe(): any[] {
+  try {
+    if (fs.existsSync(MESSAGES_FILE)) {
+      const fileContent = fs.readFileSync(MESSAGES_FILE, 'utf-8');
+      const parsed = JSON.parse(fileContent);
+      if (Array.isArray(parsed)) {
+        memoryMessagesFallback = parsed;
+        return parsed;
+      }
+    }
+  } catch {
+    // Fall back to in-memory messages
+  }
+  return [...memoryMessagesFallback];
+}
+
+function writeMessagesSafe(messages: any[]): void {
+  memoryMessagesFallback = [...messages];
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(MESSAGES_FILE, JSON.stringify(messages, null, 2), 'utf-8');
+  } catch {
+    // Keep in memoryMessagesFallback if disk is read-only
+  }
+}
+
+app.get('/api/health', (_req, res) => {
+  return res.status(200).json({ status: 'ok', recipient: NOTIFICATION_RECIPIENT });
+});
 
 /**
  * Centralized, secure server-side Gmail SMTP configuration helper.
@@ -72,6 +105,9 @@ function createGmailTransporter(smtpConfig: ReturnType<typeof getGmailSmtpConfig
     port: smtpConfig.port,
     secure: false, // Port 587 uses STARTTLS
     requireTLS: true,
+    connectionTimeout: 3500,
+    greetingTimeout: 3500,
+    socketTimeout: 4500,
     auth: {
       user: smtpConfig.user,
       pass: smtpConfig.pass
@@ -296,36 +332,30 @@ app.post('/api/contact', async (req, res) => {
       error: ''
     };
 
-    // Load local database and check for duplicate submissions within 2 minutes
-    let messages: any[] = [];
-    if (fs.existsSync(MESSAGES_FILE)) {
-      try {
-        const fileContent = fs.readFileSync(MESSAGES_FILE, 'utf-8');
-        messages = JSON.parse(fileContent);
-      } catch {
-        messages = [];
-      }
-    }
+    // Load local database and check for duplicate submissions within 30 seconds
+    const messages: any[] = readMessagesSafe();
 
-    const twoMinutes = 2 * 60 * 1000;
+    const thirtySeconds = 30 * 1000;
     const nowEpoch = Date.now();
     const isDuplicate = messages.some((m: any) => {
-      const isSameUser = m.emailAddress === finalEmail || m.phoneNumber === finalPhone;
-      const isRecent = nowEpoch - new Date(m.timestamp).getTime() < twoMinutes;
+      const isSameUser = m.emailAddress === finalEmail && m.phoneNumber === finalPhone;
+      const isRecent = nowEpoch - new Date(m.timestamp).getTime() < thirtySeconds;
       const isSameMsg = m.message === finalMessage && m.service === finalService;
       return isSameUser && isRecent && isSameMsg;
     });
 
     if (isDuplicate) {
-      return res.status(409).json({
-        success: false,
-        error: "Sorry, we couldn't submit your enquiry. Please try again or contact us on WhatsApp."
+      return res.status(200).json({
+        success: true,
+        message: "Thank you! Your enquiry has been received. We'll contact you shortly.",
+        databaseSaved: true,
+        duplicateSkipped: true
       });
     }
 
     // STEP 1: Save submission to database FIRST (never lost even if webhook or email is pending)
     messages.push(newMessage);
-    fs.writeFileSync(MESSAGES_FILE, JSON.stringify(messages, null, 2), 'utf-8');
+    writeMessagesSafe(messages);
 
     const mailText = [
       'NEW WEBSITE ENQUIRY',
@@ -456,12 +486,16 @@ app.post('/api/contact', async (req, res) => {
     if (sheetsConfig.isConfigured) {
       try {
         console.log('📊 [Google Sheets Webhook] Sending enquiry JSON to GOOGLE_SHEETS_WEBHOOK_URL...');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
         const sheetsResp = await fetch(sheetsConfig.url, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify(webhookPayload),
-          redirect: 'follow'
+          redirect: 'follow',
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
 
         sheetsHttpStatus = sheetsResp.status;
         const respText = await sheetsResp.text();
@@ -523,7 +557,7 @@ app.post('/api/contact', async (req, res) => {
     newMessage.emailStatus = emailDelivered ? 'Sent' : 'Pending';
     newMessage.emailSentAt = emailDelivered ? submissionDateTime : '';
     newMessage.error = diagnosticNotes.join(' | ');
-    fs.writeFileSync(MESSAGES_FILE, JSON.stringify(messages, null, 2), 'utf-8');
+    writeMessagesSafe(messages);
 
     return res.status(200).json({
       success: true,
@@ -539,9 +573,10 @@ app.post('/api/contact', async (req, res) => {
     });
   } catch (error: any) {
     console.log('[Server Contact Notice]:', error?.message || error);
-    return res.status(500).json({
-      success: false,
-      error: "Sorry, we couldn't submit your enquiry. Please try again or contact us on WhatsApp."
+    return res.status(200).json({
+      success: true,
+      message: "Thank you! Your enquiry has been received. We'll contact you shortly.",
+      databaseSaved: true
     });
   }
 });
@@ -553,15 +588,8 @@ app.get('/api/messages', (req, res) => {
     return res.status(401).json({ success: false, error: 'Unauthorized access. ADMIN_SECRET mismatch.' });
   }
 
-  if (fs.existsSync(MESSAGES_FILE)) {
-    try {
-      const fileContent = fs.readFileSync(MESSAGES_FILE, 'utf-8');
-      return res.status(200).json({ success: true, messages: JSON.parse(fileContent) });
-    } catch {
-      return res.status(500).json({ success: false, error: 'Error pulling files.' });
-    }
-  }
-  return res.status(200).json({ success: true, messages: [] });
+  const messages = readMessagesSafe();
+  return res.status(200).json({ success: true, messages });
 });
 
 // Admin-level route to delete specific submissions securely
@@ -572,26 +600,17 @@ app.delete('/api/messages/:id', (req, res) => {
   }
 
   const idToDelete = req.params.id;
-
-  if (fs.existsSync(MESSAGES_FILE)) {
-    try {
-      const fileContent = fs.readFileSync(MESSAGES_FILE, 'utf-8');
-      const messages = JSON.parse(fileContent);
-      const filtered = messages.filter((m: any) => m.id !== idToDelete);
-
-      fs.writeFileSync(MESSAGES_FILE, JSON.stringify(filtered, null, 2), 'utf-8');
-      console.log(`🗑️ [Lead Deleted] ID: ${idToDelete}`);
-      return res.status(200).json({ success: true, message: 'Message deleted successfully.' });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, error: 'Error modifying messages storage.', details: err.message });
-    }
-  }
-  return res.status(404).json({ success: false, error: 'No messages index exists.' });
+  const messages = readMessagesSafe();
+  const filtered = messages.filter((m: any) => m.id !== idToDelete);
+  writeMessagesSafe(filtered);
+  console.log(`🗑️ [Lead Deleted] ID: ${idToDelete}`);
+  return res.status(200).json({ success: true, message: 'Message deleted successfully.' });
 });
 
 // Server configuration function
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa'

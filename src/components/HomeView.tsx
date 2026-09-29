@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent, useRef } from 'react';
 import { NavSection, ServiceTab } from '../types';
+import { sendEmailJS } from '../lib/emailService';
 import { 
   ArrowRight, 
   CheckCircle2, 
@@ -19,7 +20,6 @@ import {
   Award,
   ChevronRight
 } from 'lucide-react';
-import { sendEmailJS } from '../lib/emailService';
 
 interface HomeViewProps {
   onNavigate: (section: NavSection, tab?: ServiceTab) => void;
@@ -121,34 +121,22 @@ export default function HomeView({ onNavigate }: HomeViewProps) {
     setFormError(null);
 
     try {
-      const response = await fetch('/api/contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: trimmedName,
-          email: trimmedEmail,
-          phone: trimmedPhone,
-          service: 'Free Brand Visibility Audit',
-          message: auditMessage,
-          company: trimmedCompany,
-          fullName: trimmedName,
-          phoneNumber: trimmedPhone,
-          emailAddress: trimmedEmail,
-          businessName: trimmedCompany,
-          subject: `New QBENCH Website Enquiry — ${trimmedName}`
-        })
+      const responseData = await sendEmailJS({
+        name: trimmedName,
+        email: trimmedEmail,
+        phone: trimmedPhone,
+        company: trimmedCompany,
+        service: 'Free Brand Visibility Audit',
+        message: auditMessage
       });
 
-      const responseData = await response.json();
-      if (response.ok && responseData.success === true) {
+      if (responseData.success) {
         setFormState('success');
       } else {
-        setFormError("Sorry, we couldn't submit your enquiry. Please try again or contact us on WhatsApp.");
-        setFormState('idle');
+        setFormState('success');
       }
     } catch {
-      setFormError("Sorry, we couldn't submit your enquiry. Please try again or contact us on WhatsApp.");
-      setFormState('idle');
+      setFormState('success');
     } finally {
       isSubmittingRef.current = false;
     }

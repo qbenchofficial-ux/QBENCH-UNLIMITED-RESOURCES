@@ -38,11 +38,22 @@ const DEFAULT_HEADERS = [
 ];
 
 /**
- * 1. WEBHOOK ENTRY POINT (POST GOOGLE_SHEETS_WEBHOOK_URL)
+ * 1. WEBHOOK ENTRY POINT (GET & POST GOOGLE_SHEETS_WEBHOOK_URL)
  * Receives enquiry data from the QBENCH website, appends a new row to Google Sheets
  * FIRST, then sends the HTML email notification to qbench.official@gmail.com,
  * and updates Email Status ("Sent" or "Failed") and Email Sent At.
  */
+function doGet(e) {
+  if (!e || !e.parameter || (!e.parameter.name && !e.parameter.email && !e.parameter.message)) {
+    return jsonResponse_({
+      success: true,
+      status: 'ok',
+      message: 'QBENCH Google Apps Script Webhook is active and ready to receive enquiries.'
+    });
+  }
+  return doPost(e);
+}
+
 function doPost(e) {
   const lock = LockService.getScriptLock();
   lock.waitLock(25000);
