@@ -2,6 +2,7 @@ import { NavSection } from '../types';
 import { Menu, X, ArrowRight } from 'lucide-react';
 import { useState } from 'react';
 import QBenchLogo from './QBenchLogo';
+import { PWAInstallButton } from './PWAInstallPrompt';
 
 interface HeaderProps {
   activeSection: NavSection;
@@ -58,7 +59,8 @@ export default function Header({ activeSection, onNavigate }: HeaderProps) {
         </nav>
 
         {/* CTA Button */}
-        <div id="desktop-cta-container" className="hidden md:flex items-center">
+        <div id="desktop-cta-container" className="hidden md:flex items-center gap-3">
+          <PWAInstallButton />
           <button
             id="start-project-btn-header"
             onClick={() => onNavigate('contact')}
@@ -103,6 +105,7 @@ export default function Header({ activeSection, onNavigate }: HeaderProps) {
                 </button>
               );
             })}
+            <PWAInstallButton mobileFullWidth />
             <button
               id="mobile-start-project-btn"
               onClick={() => {

@@ -16,6 +16,7 @@ import ProcessView from './components/ProcessView';
 import ContactView from './components/ContactView';
 import PackagesView from './components/PackagesView';
 import SkeletonRouter from './components/SkeletonLoader';
+import { OfflineIndicator } from './components/PWAInstallPrompt';
 import { NavSection, ServiceTab } from './types';
 import { HelpCircle, ChevronRight, MessageSquare, Laptop, ShieldAlert, MessageCircle } from 'lucide-react';
 
@@ -143,6 +144,9 @@ export default function App() {
 
       {/* Footer element */}
       <Footer onNavigate={handleNavigate} />
+
+      {/* Offline state toast indicator */}
+      <OfflineIndicator />
 
       {/* Real-time floating contact helper & WhatsApp support hub */}
       <div id="real-time-floating-bubble" className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 items-end select-none">
