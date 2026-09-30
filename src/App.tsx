@@ -15,18 +15,50 @@ import PortfolioView from './components/PortfolioView';
 import ProcessView from './components/ProcessView';
 import ContactView from './components/ContactView';
 import PackagesView from './components/PackagesView';
+import AdminControlView from './components/AdminControlView';
 import SkeletonRouter from './components/SkeletonLoader';
 import { OfflineIndicator } from './components/PWAInstallPrompt';
 import { NavSection, ServiceTab } from './types';
 import { HelpCircle, ChevronRight, MessageSquare, Laptop, ShieldAlert, MessageCircle } from 'lucide-react';
 
 export default function App() {
-  const [activeSection, setActiveSection] = useState<NavSection>('home');
+  const [activeSection, setActiveSection] = useState<NavSection>(() => {
+    if (typeof window !== 'undefined') {
+      const pathname = window.location.pathname.toLowerCase();
+      const hash = window.location.hash.replace('#', '').toLowerCase();
+      const params = new URLSearchParams(window.location.search);
+      if (
+        pathname.startsWith('/admin') ||
+        hash === 'admin' ||
+        params.get('view') === 'admin'
+      ) {
+        return 'admin';
+      }
+    }
+    return 'home';
+  });
   const [initialServiceTab, setInitialServiceTab] = useState<ServiceTab | undefined>(undefined);
   const [transitioningTo, setTransitioningTo] = useState<NavSection | null>(null);
 
+  useEffect(() => {
+    const onPopState = () => {
+      if (window.location.pathname.toLowerCase().startsWith('/admin')) {
+        setActiveSection('admin');
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   // Smooth scroll to top when changing views
   const handleNavigate = (section: NavSection, serviceTab?: ServiceTab) => {
+    if (typeof window !== 'undefined') {
+      if (section === 'admin' && !window.location.pathname.startsWith('/admin')) {
+        window.history.pushState({}, '', '/admin');
+      } else if (section !== 'admin' && window.location.pathname.startsWith('/admin')) {
+        window.history.pushState({}, '', '/');
+      }
+    }
     // Elegant transition of 500ms to allow skeleton presentation layout to render
     setTransitioningTo(section);
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -134,6 +166,12 @@ export default function App() {
               {activeSection === 'contact' && (
                 <div id="view-contact-screen">
                   <ContactView onNavigate={handleNavigate} />
+                </div>
+              )}
+
+              {activeSection === 'admin' && (
+                <div id="view-admin-screen">
+                  <AdminControlView onNavigate={handleNavigate} />
                 </div>
               )}
             </motion.div>

@@ -1,5 +1,5 @@
 import { NavSection } from '../types';
-import { Menu, X, ArrowRight } from 'lucide-react';
+import { Menu, X, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 import QBenchLogo from './QBenchLogo';
 import { PWAInstallButton } from './PWAInstallPrompt';
@@ -59,8 +59,22 @@ export default function Header({ activeSection, onNavigate }: HeaderProps) {
         </nav>
 
         {/* CTA Button */}
-        <div id="desktop-cta-container" className="hidden md:flex items-center gap-3">
+        <div id="desktop-cta-container" className="hidden md:flex items-center gap-2.5">
           <PWAInstallButton />
+          <button
+            id="admin-control-btn-header"
+            type="button"
+            onClick={() => onNavigate('admin')}
+            className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2.5 font-display text-xs font-semibold transition-all duration-200 cursor-pointer ${
+              activeSection === 'admin'
+                ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
+                : 'border-brand-outline/30 bg-white text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-low'
+            }`}
+            title="Open App Admin Control"
+          >
+            <ShieldCheck className="h-3.5 w-3.5 text-brand-primary" />
+            <span>Admin</span>
+          </button>
           <button
             id="start-project-btn-header"
             onClick={() => onNavigate('contact')}
@@ -106,6 +120,18 @@ export default function Header({ activeSection, onNavigate }: HeaderProps) {
               );
             })}
             <PWAInstallButton mobileFullWidth />
+            <button
+              id="mobile-admin-control-btn"
+              type="button"
+              onClick={() => {
+                onNavigate('admin');
+                setIsOpen(false);
+              }}
+              className="flex items-center justify-center gap-2 rounded-xl border border-brand-outline/30 bg-white py-3 text-center font-display text-sm font-semibold text-brand-text cursor-pointer"
+            >
+              <ShieldCheck className="h-4 w-4 text-brand-primary" />
+              <span>Admin Control</span>
+            </button>
             <button
               id="mobile-start-project-btn"
               onClick={() => {

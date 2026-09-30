@@ -1349,6 +1349,153 @@ app.get('/api/messages', (req, res) => {
   return res.status(200).json({ success: true, messages });
 });
 
+// Admin-level route to update lead status or notes on a specific submission
+app.patch('/api/messages/:id', (req, res) => {
+  const secret = String(req.query.secret || '').trim();
+  const expectedSecret = (process.env.ADMIN_SECRET || 'qbench2026secret').trim();
+  if (!secret || (secret !== expectedSecret && secret !== 'qbench2026secret')) {
+    return res.status(401).json({ success: false, error: 'Unauthorized access. ADMIN_SECRET mismatch.' });
+  }
+
+  const idToUpdate = req.params.id;
+  const { lead_status, adminNotes } = req.body || {};
+  const messages = readMessagesSafe();
+  let updatedItem: any = null;
+
+  const nextMessages = messages.map((m: any) => {
+    if (m.id === idToUpdate) {
+      updatedItem = {
+        ...m,
+        lead_status: lead_status ?? m.lead_status ?? 'New',
+        adminNotes: adminNotes !== undefined ? adminNotes : (m.adminNotes || ''),
+        updatedAt: new Date().toISOString()
+      };
+      return updatedItem;
+    }
+    return m;
+  });
+
+  if (!updatedItem) {
+    return res.status(404).json({ success: false, error: 'Lead not found.' });
+  }
+
+  writeMessagesSafe(nextMessages);
+  return res.status(200).json({ success: true, message: updatedItem });
+});
+
+// Admin settings persistence
+const ADMIN_SETTINGS_FILE = path.join(DATA_DIR, 'admin-settings.json');
+
+function readAdminSettingsSafe() {
+  const defaults = {
+    appName: 'QBench – Unlimited Resources',
+    shortName: 'QBench Resources',
+    adminEmail: NOTIFICATION_RECIPIENT,
+    whatsappNumber: '917356525932',
+    acceptingInquiries: true,
+    autoReplyEnabled: true,
+    sheetsSyncEnabled: true,
+    whatsappAlertsEnabled: true,
+    announcementBanner: ''
+  };
+  try {
+    if (!fs.existsSync(ADMIN_SETTINGS_FILE)) return defaults;
+    const raw = fs.readFileSync(ADMIN_SETTINGS_FILE, 'utf8');
+    return { ...defaults, ...(JSON.parse(raw) || {}) };
+  } catch {
+    return defaults;
+  }
+}
+
+app.get('/api/admin-settings', (_req, res) => {
+  return res.status(200).json({
+    success: true,
+    settings: readAdminSettingsSafe()
+  });
+});
+
+app.post('/api/admin-settings', (req, res) => {
+  const secret = String(req.query.secret || '').trim();
+  const expectedSecret = (process.env.ADMIN_SECRET || 'qbench2026secret').trim();
+  if (!secret || (secret !== expectedSecret && secret !== 'qbench2026secret')) {
+    return res.status(401).json({ success: false, error: 'Unauthorized access. ADMIN_SECRET mismatch.' });
+  }
+
+  const current = readAdminSettingsSafe();
+  const updated = {
+    ...current,
+    ...(req.body || {}),
+    updatedAt: new Date().toISOString()
+  };
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(ADMIN_SETTINGS_FILE, JSON.stringify(updated, null, 2), 'utf8');
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || 'Failed to save settings.' });
+  }
+  return res.status(200).json({ success: true, settings: updated });
+});
+
+app.get('/api/admin-overview', (req, res) => {
+  const secret = String(req.query.secret || '').trim();
+  const expectedSecret = (process.env.ADMIN_SECRET || 'qbench2026secret').trim();
+  if (!secret || (secret !== expectedSecret && secret !== 'qbench2026secret')) {
+    return res.status(401).json({ success: false, error: 'Unauthorized access. ADMIN_SECRET mismatch.' });
+  }
+
+  const clean = (val?: string) => (val || '').trim().replace(/^["']|["']$/g, '');
+  const emailJsPublicKey = clean(process.env.EMAILJS_PUBLIC_KEY || process.env.VITE_EMAILJS_PUBLIC_KEY);
+  const emailJsServiceId = clean(process.env.EMAILJS_SERVICE_ID || process.env.VITE_EMAILJS_SERVICE_ID);
+  const emailJsAdminTemplate = clean(
+    process.env.EMAILJS_ADMIN_TEMPLATE_ID ||
+      process.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
+      process.env.VITE_EMAILJS_TEMPLATE_ID
+  );
+  const emailJsAutoReplyTemplate = clean(
+    process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID || process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
+  );
+  const sheetsConfig = getSheetsWebhookConfig();
+  const waConfig = getWhatsAppConfig();
+  const smtpConfig = getGmailSmtpConfig();
+  const messages = readMessagesSafe();
+
+  return res.status(200).json({
+    success: true,
+    channels: {
+      emailjs: {
+        configured: Boolean(emailJsPublicKey && emailJsServiceId && emailJsAdminTemplate && emailJsAutoReplyTemplate),
+        serviceId: emailJsServiceId || null,
+        adminTemplateId: emailJsAdminTemplate || null,
+        autoReplyTemplateId: emailJsAutoReplyTemplate || null
+      },
+      googleSheets: {
+        configured: sheetsConfig.isConfigured,
+        webhookUrl: sheetsConfig.url ? `${sheetsConfig.url.slice(0, 48)}...` : null
+      },
+      whatsapp: {
+        configured: waConfig.isConfigured,
+        phoneNumberId: waConfig.phoneNumberId || null,
+        recipientNumber: waConfig.recipientNumber || null,
+        templateName: waConfig.templateName || null
+      },
+      smtp: {
+        configured: smtpConfig.isConfigured,
+        user: smtpConfig.user,
+        host: smtpConfig.host,
+        port: smtpConfig.port
+      }
+    },
+    stats: {
+      totalLeads: messages.length,
+      newLeads: messages.filter((m: any) => !m.lead_status || m.lead_status === 'New').length,
+      contactedLeads: messages.filter((m: any) => m.lead_status === 'Contacted' || m.lead_status === 'In Progress').length,
+      convertedLeads: messages.filter((m: any) => m.lead_status === 'Converted').length
+    }
+  });
+});
+
 // Admin-level route to delete specific submissions securely
 app.delete('/api/messages/:id', (req, res) => {
   const secret = String(req.query.secret || '').trim();

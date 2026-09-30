@@ -190,6 +190,14 @@ export default function Footer({ onNavigate }: FooterProps) {
                   Contact
                 </button>
               </li>
+              <li>
+                <button 
+                  onClick={() => onNavigate('admin')}
+                  className="font-sans text-[11px] text-white/60 hover:text-[#45b88a] cursor-pointer block leading-none transition-colors"
+                >
+                  Admin Control
+                </button>
+              </li>
             </ul>
           </div>
           

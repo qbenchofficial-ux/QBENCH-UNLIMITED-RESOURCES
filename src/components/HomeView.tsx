@@ -1,6 +1,7 @@
 import { useState, useEffect, FormEvent, useRef } from 'react';
 import { NavSection, ServiceTab } from '../types';
 import { sendEmailJS } from '../lib/emailService';
+import PublicResourcesSection from './PublicResourcesSection';
 import { 
   ArrowRight, 
   CheckCircle2, 
@@ -932,6 +933,9 @@ export default function HomeView({ onNavigate }: HomeViewProps) {
           
         </div>
       </section>
+
+      {/* 7. SUPABASE PUBLIC RESOURCES, FEATURED MATERIALS & ANNOUNCEMENTS */}
+      <PublicResourcesSection />
 
     </div>
   );
