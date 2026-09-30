@@ -100,7 +100,7 @@ export default function SEOHead({ section, activeServiceTab }: SEOHeadProps) {
       {/* Semantic/Organic Search Enhancements */}
       <meta name="author" content="QBench Architects" />
       <meta name="robots" content="index, follow" />
-      <meta name="theme-color" content="#00685b" />
+      <meta name="theme-color" content="#4CAF50" />
     </Helmet>
   );
 }

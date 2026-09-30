@@ -1,12 +1,147 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#05211c" />
-      <stop offset="100%" stop-color="#00685b" />
+    <!-- Outer frame gradient: deep teal-blue to vibrant lime green -->
+    <linearGradient id="frameGrad" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#0A5C84" />
+      <stop offset="50%" stop-color="#158D6E" />
+      <stop offset="100%" stop-color="#68D430" />
     </linearGradient>
+
+    <!-- Brand emblem & QBENCH gradient -->
+    <linearGradient id="brandGrad" x1="15%" y1="50%" x2="85%" y2="50%">
+      <stop offset="0%" stop-color="#074875" />
+      <stop offset="48%" stop-color="#0F7F63" />
+      <stop offset="100%" stop-color="#6CE02B" />
+    </linearGradient>
+
+    <!-- Soft drop shadow for inner white squircle -->
+    <filter id="cardShadow" x="-8%" y="-8%" width="116%" height="116%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#042B3D" flood-opacity="0.22" />
+    </filter>
   </defs>
-  <rect width="512" height="512" rx="112" fill="url(#bg)" />
-  <circle cx="256" cy="248" r="132" fill="none" stroke="#88f8c5" stroke-width="38" />
-  <circle cx="256" cy="248" r="42" fill="#ffffff" />
-  <path d="M312 304 L396 388" stroke="#ffffff" stroke-width="40" stroke-linecap="round" />
+
+  <!-- Full-bleed outer gradient background -->
+  <rect width="1024" height="1024" fill="url(#frameGrad)" />
+
+  <!-- Rounded white squircle card -->
+  <rect x="56" y="56" width="912" height="912" rx="196" ry="196" fill="#FFFFFF" filter="url(#cardShadow)" />
+
+  <!-- ==================== QBENCH EMBLEM ==================== -->
+  <g fill="url(#brandGrad)" stroke="url(#brandGrad)">
+    <!-- Outer Q Ring -->
+    <path
+      fill-rule="evenodd"
+      stroke="none"
+      d="M 512 156
+         A 236 236 0 1 0 512 628
+         A 236 236 0 1 0 512 156 Z
+         M 512 214
+         A 178 178 0 1 1 512 570
+         A 178 178 0 1 1 512 214 Z"
+    />
+
+    <!-- Q Tail (Bottom-Right) -->
+    <polygon stroke="none" points="585,548 665,548 746,628 652,628" />
+
+    <!-- Horizontal Bench / Table Bar -->
+    <rect x="288" y="446" width="448" height="24" rx="8" stroke="none" />
+    <rect x="424" y="408" width="176" height="18" rx="8" stroke="none" />
+
+    <!-- Top Wi-Fi Arcs -->
+    <path d="M 476 246 A 54 54 0 0 1 548 246" fill="none" stroke-width="11" stroke-linecap="round" />
+    <path d="M 488 262 A 36 36 0 0 1 536 262" fill="none" stroke-width="11" stroke-linecap="round" />
+    <path d="M 500 278 A 18 18 0 0 1 524 278" fill="none" stroke-width="11" stroke-linecap="round" />
+
+    <!-- Circuit Nodes & Gear Base -->
+    <circle cx="496" cy="292" r="7" stroke="none" />
+    <circle cx="528" cy="292" r="7" stroke="none" />
+    <circle cx="472" cy="308" r="7" stroke="none" />
+    <circle cx="552" cy="308" r="7" stroke="none" />
+    <path d="M 496 292 L 504 316 M 528 292 L 520 316 M 472 308 L 492 322 M 552 308 L 532 322" fill="none" stroke-width="8" stroke-linecap="round" />
+    <path d="M 468 320 A 44 44 0 0 0 556 320 L 542 320 A 30 30 0 0 1 482 320 Z" stroke="none" />
+    <!-- Gear Teeth -->
+    <rect x="470" y="334" width="14" height="16" rx="3" transform="rotate(28 477 342)" stroke="none" />
+    <rect x="505" y="346" width="14" height="18" rx="3" stroke="none" />
+    <rect x="540" y="334" width="14" height="16" rx="3" transform="rotate(-28 547 342)" stroke="none" />
+
+    <!-- Left Person (Outline Style matching icon) -->
+    <circle cx="424" cy="328" r="22" fill="#FFFFFF" stroke-width="12" />
+    <path
+      d="M 404 362
+         C 386 364, 372 396, 366 436
+         L 424 436
+         L 462 504
+         A 14 14 0 0 0 486 490
+         L 448 418
+         L 414 418
+         L 424 384
+         L 462 406
+         A 12 12 0 0 0 476 388
+         L 430 362 Z"
+      fill="#FFFFFF"
+      stroke-width="12"
+      stroke-linejoin="round"
+    />
+    <!-- Left Person Front Leg -->
+    <path
+      d="M 426 456 L 402 496 A 14 14 0 0 0 426 510 L 450 470 Z"
+      fill="#FFFFFF"
+      stroke-width="12"
+      stroke-linejoin="round"
+    />
+
+    <!-- Right Person (Mirrored Outline Style matching icon) -->
+    <circle cx="600" cy="328" r="22" fill="#FFFFFF" stroke-width="12" />
+    <path
+      d="M 620 362
+         C 638 364, 652 396, 658 436
+         L 600 436
+         L 562 504
+         A 14 14 0 0 1 538 490
+         L 576 418
+         L 610 418
+         L 600 384
+         L 562 406
+         A 12 12 0 0 1 548 388
+         L 594 362 Z"
+      fill="#FFFFFF"
+      stroke-width="12"
+      stroke-linejoin="round"
+    />
+    <!-- Right Person Front Leg -->
+    <path
+      d="M 598 456 L 622 496 A 14 14 0 0 1 598 510 L 574 470 Z"
+      fill="#FFFFFF"
+      stroke-width="12"
+      stroke-linejoin="round"
+    />
+  </g>
+
+  <!-- ==================== QBENCH TYPOGRAPHY ==================== -->
+  <text
+    x="512"
+    y="780"
+    text-anchor="middle"
+    font-family="'Plus Jakarta Sans', 'Arial Black', sans-serif"
+    font-weight="900"
+    font-size="158"
+    letter-spacing="2"
+    fill="url(#brandGrad)"
+  >
+    QBENCH
+  </text>
+
+  <!-- ==================== SUBTITLE ==================== -->
+  <text
+    x="565"
+    y="852"
+    text-anchor="middle"
+    font-family="'Plus Jakarta Sans', Arial, sans-serif"
+    font-weight="500"
+    font-size="56"
+    letter-spacing="1"
+    fill="#074E25"
+  >
+    Unlimited Resources
+  </text>
 </svg>
