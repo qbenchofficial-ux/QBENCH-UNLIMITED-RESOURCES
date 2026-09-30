@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { HelmetProvider } from 'react-helmet-async';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import SEOHead from './components/SEOHead';
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -221,6 +222,7 @@ export default function App() {
       </div>
 
     </div>
+    <SpeedInsights />
     </HelmetProvider>
   );
 }
