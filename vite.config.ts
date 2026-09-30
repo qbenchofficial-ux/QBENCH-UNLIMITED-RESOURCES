@@ -121,6 +121,8 @@ export default defineConfig(({ mode }) => {
               urlPattern: ({ url }) => {
                 return (
                   url.pathname.startsWith('/api/') ||
+                  url.pathname.startsWith('/node_modules/') ||
+                  url.pathname.startsWith('/@') ||
                   url.hostname !== self.location.hostname
                 );
               },
@@ -166,9 +168,23 @@ export default defineConfig(({ mode }) => {
     },
 
     resolve: {
+      dedupe: ['react', 'react-dom'],
       alias: {
         '@': path.resolve(__dirname, '.'),
+        react: path.resolve(__dirname, 'node_modules/react'),
+        'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
       },
+    },
+
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-dom/client',
+        'react/jsx-runtime',
+        'react/jsx-dev-runtime',
+        '@supabase/supabase-js',
+      ],
     },
 
     server: {

@@ -270,7 +270,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
 
     if (!isSupabaseConfigured) {
       setAuthError(
-        'Supabase environment variables (VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY) are not configured.'
+        'Supabase environment variables (VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY) are not configured.'
       );
       return;
     }
@@ -683,7 +683,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
               </p>
               <p className="leading-relaxed">
                 Set <code className="font-mono font-bold">VITE_SUPABASE_URL</code> and{' '}
-                <code className="font-mono font-bold">VITE_SUPABASE_ANON_KEY</code> in your environment variables to connect your Supabase project.
+                <code className="font-mono font-bold">VITE_SUPABASE_PUBLISHABLE_KEY</code> in your environment variables to connect your Supabase project.
               </p>
             </div>
           )}

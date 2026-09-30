@@ -1,18 +1,33 @@
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabasePublishableKey =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+// Security guard: ensure no service_role or secret key is ever used in frontend code
+const isForbiddenSecretKey = Boolean(
+  supabasePublishableKey &&
+    (String(supabasePublishableKey).startsWith("sb_secret_") ||
+      String(supabasePublishableKey).includes("service_role"))
+);
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
-    supabaseAnonKey &&
+    supabasePublishableKey &&
+    !isForbiddenSecretKey &&
     !String(supabaseUrl).includes("your-project-id") &&
+    !String(supabaseUrl).includes("placeholder-project") &&
     String(supabaseUrl).startsWith("http")
 );
 
 export const supabase = createClient(
-  supabaseUrl || "https://placeholder-project.supabase.co",
-  supabaseAnonKey || "placeholder-anon-key"
+  supabaseUrl && !String(supabaseUrl).includes("your-project-id")
+    ? supabaseUrl
+    : "https://placeholder-project.supabase.co",
+  supabasePublishableKey && !isForbiddenSecretKey
+    ? supabasePublishableKey
+    : "placeholder-publishable-key"
 );
 
 export const STORAGE_BUCKET = "qbench-resources";
@@ -86,4 +101,92 @@ export async function verifyAdminProfile(userId: string): Promise<{
   }
 
   return { isAdmin: true, profile: data };
+}
+
+export interface SupabaseDiagnosticsResult {
+  envConfigured: boolean;
+  urlPresent: boolean;
+  publishableKeyPresent: boolean;
+  noSecretKeyExposed: boolean;
+  authReachable: boolean;
+  databaseReachable: boolean;
+  adminSessionActive: boolean;
+  adminRoleVerified: boolean;
+  detailMessage: string;
+}
+
+/**
+ * Non-destructive diagnostic check for Supabase client, Auth, Database, and admin_profiles.
+ */
+export async function runSupabaseDiagnostics(): Promise<SupabaseDiagnosticsResult> {
+  const urlPresent = Boolean(
+    supabaseUrl &&
+      !String(supabaseUrl).includes("your-project-id") &&
+      !String(supabaseUrl).includes("placeholder-project")
+  );
+  const publishableKeyPresent = Boolean(
+    supabasePublishableKey &&
+      !String(supabasePublishableKey).includes("your-supabase-publishable-key") &&
+      !String(supabasePublishableKey).includes("placeholder-publishable-key")
+  );
+  const noSecretKeyExposed = !isForbiddenSecretKey;
+
+  if (!urlPresent || !publishableKeyPresent) {
+    return {
+      envConfigured: false,
+      urlPresent,
+      publishableKeyPresent,
+      noSecretKeyExposed,
+      authReachable: false,
+      databaseReachable: false,
+      adminSessionActive: false,
+      adminRoleVerified: false,
+      detailMessage:
+        "VITE_SUPABASE_URL and/or VITE_SUPABASE_PUBLISHABLE_KEY are not set in the current environment.",
+    };
+  }
+
+  let authReachable = false;
+  let databaseReachable = false;
+  let adminSessionActive = false;
+  let adminRoleVerified = false;
+  let detailMessage = "Connected to Supabase.";
+
+  try {
+    const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+    if (!sessionErr) {
+      authReachable = true;
+      if (sessionData?.session?.user) {
+        adminSessionActive = true;
+        const roleCheck = await verifyAdminProfile(sessionData.session.user.id);
+        adminRoleVerified = roleCheck.isAdmin;
+      }
+    } else {
+      detailMessage = `Auth error: ${sessionErr.message}`;
+    }
+
+    const { error: dbErr } = await supabase
+      .from("categories")
+      .select("id", { count: "exact", head: true });
+
+    if (!dbErr) {
+      databaseReachable = true;
+    } else {
+      detailMessage = `Database query notice: ${dbErr.message}`;
+    }
+  } catch (err: any) {
+    detailMessage = err?.message || "Connection test failed.";
+  }
+
+  return {
+    envConfigured: true,
+    urlPresent,
+    publishableKeyPresent,
+    noSecretKeyExposed,
+    authReachable,
+    databaseReachable,
+    adminSessionActive,
+    adminRoleVerified,
+    detailMessage,
+  };
 }
