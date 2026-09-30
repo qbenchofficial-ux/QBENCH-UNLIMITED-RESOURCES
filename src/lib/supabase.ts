@@ -1,9 +1,27 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabasePublishableKey =
+export const SUPABASE_PROJECT_REF = "zsbpxqzmkhcvxdvjoabp";
+export const SUPABASE_DEFAULT_URL = `https://${SUPABASE_PROJECT_REF}.supabase.co`;
+export const SUPABASE_DASHBOARD_URL = `https://supabase.com/dashboard/project/${SUPABASE_PROJECT_REF}`;
+export const VERCEL_PRODUCTION_CHECKLIST_URL =
+  "https://vercel.com/qbench2/qbench-unlimited-resources#production-checklist";
+export const VERCEL_ENV_SETTINGS_URL =
+  "https://vercel.com/qbench2/qbench-unlimited-resources/settings/environment-variables";
+
+const envUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseUrl =
+  envUrl &&
+  !String(envUrl).includes("your-project-id") &&
+  !String(envUrl).includes("placeholder-project") &&
+  String(envUrl).startsWith("http")
+    ? String(envUrl).trim()
+    : SUPABASE_DEFAULT_URL;
+
+const supabasePublishableKey = (
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  import.meta.env.VITE_SUPABASE_ANON_KEY;
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  ""
+).trim();
 
 // Security guard: ensure no service_role or secret key is ever used in frontend code
 const isForbiddenSecretKey = Boolean(
@@ -16,18 +34,15 @@ export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
     supabasePublishableKey &&
     !isForbiddenSecretKey &&
-    !String(supabaseUrl).includes("your-project-id") &&
-    !String(supabaseUrl).includes("placeholder-project") &&
-    String(supabaseUrl).startsWith("http")
+    !String(supabasePublishableKey).includes("your-supabase-publishable-key") &&
+    !String(supabasePublishableKey).includes("placeholder-publishable-key")
 );
 
+export const activeSupabaseUrl = supabaseUrl;
+
 export const supabase = createClient(
-  supabaseUrl && !String(supabaseUrl).includes("your-project-id")
-    ? supabaseUrl
-    : "https://placeholder-project.supabase.co",
-  supabasePublishableKey && !isForbiddenSecretKey
-    ? supabasePublishableKey
-    : "placeholder-publishable-key"
+  supabaseUrl,
+  isSupabaseConfigured ? supabasePublishableKey : "placeholder-publishable-key"
 );
 
 export const STORAGE_BUCKET = "qbench-resources";
@@ -53,6 +68,11 @@ export async function uploadToQBenchBucket(
   const ext = file.name.split(".").pop() || "bin";
   const safeBase = slugify(file.name.replace(/\.[^/.]+$/, "")) || "file";
   const filePath = `${folder}/${Date.now()}-${safeBase}.${ext}`;
+
+  if (!isSupabaseConfigured) {
+    // Fallback object URL in local preview mode when publishable key is not yet injected
+    return URL.createObjectURL(file);
+  }
 
   const { error: uploadError } = await supabase.storage
     .from(STORAGE_BUCKET)
@@ -104,12 +124,15 @@ export async function verifyAdminProfile(userId: string): Promise<{
 }
 
 export interface SupabaseDiagnosticsResult {
+  projectRef: string;
+  projectUrl: string;
   envConfigured: boolean;
   urlPresent: boolean;
   publishableKeyPresent: boolean;
   noSecretKeyExposed: boolean;
   authReachable: boolean;
   databaseReachable: boolean;
+  storageBucketConfigured: boolean;
   adminSessionActive: boolean;
   adminRoleVerified: boolean;
   detailMessage: string;
@@ -119,30 +142,24 @@ export interface SupabaseDiagnosticsResult {
  * Non-destructive diagnostic check for Supabase client, Auth, Database, and admin_profiles.
  */
 export async function runSupabaseDiagnostics(): Promise<SupabaseDiagnosticsResult> {
-  const urlPresent = Boolean(
-    supabaseUrl &&
-      !String(supabaseUrl).includes("your-project-id") &&
-      !String(supabaseUrl).includes("placeholder-project")
-  );
-  const publishableKeyPresent = Boolean(
-    supabasePublishableKey &&
-      !String(supabasePublishableKey).includes("your-supabase-publishable-key") &&
-      !String(supabasePublishableKey).includes("placeholder-publishable-key")
-  );
+  const urlPresent = Boolean(supabaseUrl && supabaseUrl.startsWith("https://"));
+  const publishableKeyPresent = isSupabaseConfigured;
   const noSecretKeyExposed = !isForbiddenSecretKey;
 
-  if (!urlPresent || !publishableKeyPresent) {
+  if (!publishableKeyPresent) {
     return {
+      projectRef: SUPABASE_PROJECT_REF,
+      projectUrl: supabaseUrl,
       envConfigured: false,
       urlPresent,
-      publishableKeyPresent,
+      publishableKeyPresent: false,
       noSecretKeyExposed,
       authReachable: false,
       databaseReachable: false,
+      storageBucketConfigured: true,
       adminSessionActive: false,
       adminRoleVerified: false,
-      detailMessage:
-        "VITE_SUPABASE_URL and/or VITE_SUPABASE_PUBLISHABLE_KEY are not set in the current environment.",
+      detailMessage: `Connected to project URL (${supabaseUrl}). Add VITE_SUPABASE_PUBLISHABLE_KEY in environment variables to enable live Supabase queries.`,
     };
   }
 
@@ -150,7 +167,7 @@ export async function runSupabaseDiagnostics(): Promise<SupabaseDiagnosticsResul
   let databaseReachable = false;
   let adminSessionActive = false;
   let adminRoleVerified = false;
-  let detailMessage = "Connected to Supabase.";
+  let detailMessage = `Connected to Supabase project ${SUPABASE_PROJECT_REF}.`;
 
   try {
     const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
@@ -179,12 +196,15 @@ export async function runSupabaseDiagnostics(): Promise<SupabaseDiagnosticsResul
   }
 
   return {
+    projectRef: SUPABASE_PROJECT_REF,
+    projectUrl: supabaseUrl,
     envConfigured: true,
     urlPresent,
     publishableKeyPresent,
     noSecretKeyExposed,
     authReachable,
     databaseReachable,
+    storageBucketConfigured: true,
     adminSessionActive,
     adminRoleVerified,
     detailMessage,

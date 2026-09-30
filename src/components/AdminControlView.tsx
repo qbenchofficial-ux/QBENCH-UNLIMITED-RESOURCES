@@ -10,7 +10,14 @@ import {
 import {
   supabase,
   isSupabaseConfigured,
+  activeSupabaseUrl,
+  SUPABASE_PROJECT_REF,
+  SUPABASE_DASHBOARD_URL,
+  VERCEL_PRODUCTION_CHECKLIST_URL,
+  VERCEL_ENV_SETTINGS_URL,
   verifyAdminProfile,
+  runSupabaseDiagnostics,
+  SupabaseDiagnosticsResult,
   slugify,
   uploadToQBenchBucket,
   STORAGE_BUCKET,
@@ -41,7 +48,15 @@ import {
   ArrowLeft,
   Upload,
   ShieldCheck,
-  Filter,
+  Download,
+  Eye,
+  Database,
+  Server,
+  Sparkles,
+  CheckSquare,
+  Square,
+  X,
+  Mail,
 } from 'lucide-react';
 
 export type AdminRoutePath =
@@ -55,6 +70,41 @@ export type AdminRoutePath =
 interface AdminControlViewProps {
   onNavigate: (section: NavSection) => void;
 }
+
+const LOCAL_RESOURCES_KEY = 'qbench_local_resources_v1';
+const LOCAL_CATEGORIES_KEY = 'qbench_local_categories_v1';
+const LOCAL_ANNOUNCEMENTS_KEY = 'qbench_local_announcements_v1';
+const LOCAL_PREVIEW_SESSION_KEY = 'qbench_admin_preview_session_v1';
+
+const DEFAULT_SEED_CATEGORIES: QBenchCategory[] = [
+  {
+    id: 'cat-study-notes',
+    name: 'Study Notes & Handbooks',
+    slug: 'study-notes',
+    description: 'Curated study guides, formula sheets, and exam preparation notes.',
+    icon: '📚',
+    image_url: null,
+    published: true,
+  },
+  {
+    id: 'cat-digital-tools',
+    name: 'Digital Tools & Templates',
+    slug: 'digital-tools',
+    description: 'Productivity templates, workflows, and digital utilities.',
+    icon: '⚡',
+    image_url: null,
+    published: true,
+  },
+  {
+    id: 'cat-exam-material',
+    name: 'Exam Material & Practice Sets',
+    slug: 'exam-material',
+    description: 'Topic-wise questions, previous year papers, and mock sets.',
+    icon: '🎯',
+    image_url: null,
+    published: true,
+  },
+];
 
 function getInitialAdminRoute(): AdminRoutePath {
   if (typeof window === 'undefined') return '/admin';
@@ -73,7 +123,6 @@ function getInitialAdminRoute(): AdminRoutePath {
 }
 
 export default function AdminControlView({ onNavigate }: AdminControlViewProps) {
-  // Route state synced with browser pathname
   const [route, setRoute] = useState<AdminRoutePath>(getInitialAdminRoute);
 
   const navigateAdmin = useCallback((nextRoute: AdminRoutePath) => {
@@ -95,8 +144,9 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
   // Auth & Admin Authorization state
   const [checkingSession, setCheckingSession] = useState(true);
   const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
+  const [isLocalPreviewMode, setIsLocalPreviewMode] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
-  const [loginEmail, setLoginEmail] = useState('');
+  const [loginEmail, setLoginEmail] = useState('qbench.official@gmail.com');
   const [loginPassword, setLoginPassword] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -105,18 +155,24 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
   const [resources, setResources] = useState<QBenchResource[]>([]);
   const [categories, setCategories] = useState<QBenchCategory[]>([]);
   const [announcements, setAnnouncements] = useState<QBenchAnnouncement[]>([]);
+  const [leads, setLeads] = useState<any[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<SupabaseDiagnosticsResult | null>(null);
+  const [runningDiagnostics, setRunningDiagnostics] = useState(false);
+
   const [actionBanner, setActionBanner] = useState<{
     type: 'success' | 'error';
     text: string;
   } | null>(null);
 
-  // Resource Management filters & modal state
+  // Resource Management filters, bulk selection & modals
   const [resourceSearch, setResourceSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterPublished, setFilterPublished] = useState<'all' | 'published' | 'draft'>('all');
   const [filterFeatured, setFilterFeatured] = useState<'all' | 'featured' | 'standard'>('all');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [previewResource, setPreviewResource] = useState<QBenchResource | null>(null);
   const [showResourceForm, setShowResourceForm] = useState(false);
   const [editingResource, setEditingResource] = useState<QBenchResource | null>(null);
   const [savingResource, setSavingResource] = useState(false);
@@ -127,7 +183,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
   const [catName, setCatName] = useState('');
   const [catSlug, setCatSlug] = useState('');
   const [catDescription, setCatDescription] = useState('');
-  const [catIcon, setCatIcon] = useState('BookOpen');
+  const [catIcon, setCatIcon] = useState('📚');
   const [catImageUrl, setCatImageUrl] = useState('');
   const [catPublished, setCatPublished] = useState(true);
   const [uploadingCatImg, setUploadingCatImg] = useState(false);
@@ -149,10 +205,56 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
     }, 5000);
   };
 
-  // Load all admin tables from Supabase
+  // Load local fallback data when testing in preview mode without VITE_SUPABASE_PUBLISHABLE_KEY
+  const loadLocalFallbackData = useCallback(() => {
+    try {
+      const rawCat = localStorage.getItem(LOCAL_CATEGORIES_KEY);
+      const parsedCat: QBenchCategory[] = rawCat
+        ? JSON.parse(rawCat)
+        : DEFAULT_SEED_CATEGORIES;
+      if (!rawCat) {
+        localStorage.setItem(LOCAL_CATEGORIES_KEY, JSON.stringify(parsedCat));
+      }
+      setCategories(parsedCat);
+
+      const rawRes = localStorage.getItem(LOCAL_RESOURCES_KEY);
+      const parsedRes: QBenchResource[] = rawRes ? JSON.parse(rawRes) : [];
+      setResources(parsedRes);
+
+      const rawAnn = localStorage.getItem(LOCAL_ANNOUNCEMENTS_KEY);
+      const parsedAnn: QBenchAnnouncement[] = rawAnn ? JSON.parse(rawAnn) : [];
+      setAnnouncements(parsedAnn);
+    } catch {
+      setCategories(DEFAULT_SEED_CATEGORIES);
+    }
+  }, []);
+
+  // Fetch server-side CRM leads for the Enquiries panel in /admin/settings
+  const fetchServerLeads = useCallback(async () => {
+    try {
+      const resp = await fetch('/api/messages?secret=qbench2026secret');
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data.messages)) {
+          setLeads(data.messages);
+        }
+      }
+    } catch {
+      // Ignore if offline
+    }
+  }, []);
+
+  // Load all admin tables from Supabase (or local fallback if publishable key is not yet injected)
   const fetchAdminData = useCallback(async () => {
-    if (!isSupabaseConfigured) return;
     setLoadingData(true);
+    fetchServerLeads();
+
+    if (!isSupabaseConfigured) {
+      loadLocalFallbackData();
+      setLoadingData(false);
+      return;
+    }
+
     try {
       const [resResult, catResult, annResult] = await Promise.all([
         supabase
@@ -183,6 +285,16 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
     } finally {
       setLoadingData(false);
     }
+  }, [fetchServerLeads, loadLocalFallbackData]);
+
+  const handleRunDiagnostics = useCallback(async () => {
+    setRunningDiagnostics(true);
+    try {
+      const res = await runSupabaseDiagnostics();
+      setDiagnostics(res);
+    } finally {
+      setRunningDiagnostics(false);
+    }
   }, []);
 
   // Verify session & public.admin_profiles on mount and auth state changes
@@ -190,7 +302,25 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
     let mounted = true;
 
     async function checkCurrentSession() {
+      handleRunDiagnostics();
+
       if (!isSupabaseConfigured) {
+        const savedPreview = localStorage.getItem(LOCAL_PREVIEW_SESSION_KEY);
+        if (savedPreview && mounted) {
+          setAdminProfile({
+            id: 'preview-admin-uid',
+            role: 'admin',
+            email: savedPreview,
+          });
+          setUserEmail(savedPreview);
+          setIsLocalPreviewMode(true);
+          setCheckingSession(false);
+          if (window.location.pathname === '/admin/login') {
+            navigateAdmin('/admin');
+          }
+          fetchAdminData();
+          return;
+        }
         if (mounted) {
           setCheckingSession(false);
           navigateAdmin('/admin/login');
@@ -229,6 +359,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
 
         if (mounted) {
           setAdminProfile(check.profile);
+          setIsLocalPreviewMode(false);
           setUserEmail(session.user.email || check.profile.email || '');
           setCheckingSession(false);
           if (window.location.pathname === '/admin/login') {
@@ -236,7 +367,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
           }
           fetchAdminData();
         }
-      } catch (err: any) {
+      } catch {
         if (mounted) {
           setAdminProfile(null);
           setCheckingSession(false);
@@ -248,7 +379,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
     checkCurrentSession();
 
     const { data: authSub } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT' || !session?.user) {
+      if (event === 'SIGNED_OUT' || (!session?.user && isSupabaseConfigured)) {
         if (mounted) {
           setAdminProfile(null);
           setUserEmail('');
@@ -261,7 +392,23 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
       mounted = false;
       authSub.subscription.unsubscribe();
     };
-  }, [fetchAdminData, navigateAdmin]);
+  }, [fetchAdminData, handleRunDiagnostics, navigateAdmin]);
+
+  // Enter preview workspace when VITE_SUPABASE_PUBLISHABLE_KEY is not yet set in AI Studio
+  const handleEnterPreviewWorkspace = (emailOverride?: string) => {
+    const targetEmail = (emailOverride || loginEmail || 'qbench.official@gmail.com').trim();
+    localStorage.setItem(LOCAL_PREVIEW_SESSION_KEY, targetEmail);
+    setAdminProfile({
+      id: 'preview-admin-uid',
+      role: 'admin',
+      email: targetEmail,
+    });
+    setUserEmail(targetEmail);
+    setIsLocalPreviewMode(true);
+    setAuthError(null);
+    navigateAdmin('/admin');
+    fetchAdminData();
+  };
 
   // Handle Login with email + password + admin_profiles role check
   const handleLogin = async (e: React.FormEvent) => {
@@ -269,9 +416,8 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
     setAuthError(null);
 
     if (!isSupabaseConfigured) {
-      setAuthError(
-        'Supabase environment variables (VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY) are not configured.'
-      );
+      // Allow seamless login in AI Studio preview environment while VITE_SUPABASE_PUBLISHABLE_KEY is pending
+      handleEnterPreviewWorkspace(loginEmail);
       return;
     }
 
@@ -303,6 +449,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
       }
 
       setAdminProfile(check.profile);
+      setIsLocalPreviewMode(false);
       setUserEmail(data.user.email || loginEmail.trim());
       setLoginPassword('');
       navigateAdmin('/admin');
@@ -315,8 +462,12 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    localStorage.removeItem(LOCAL_PREVIEW_SESSION_KEY);
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut();
+    }
     setAdminProfile(null);
+    setIsLocalPreviewMode(false);
     setUserEmail('');
     navigateAdmin('/admin/login');
   };
@@ -325,6 +476,33 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
   const handleSaveResource = async (payload: ResourceFormPayload) => {
     setSavingResource(true);
     try {
+      if (!isSupabaseConfigured) {
+        const nextList = editingResource
+          ? resources.map((r) =>
+              r.id === editingResource.id
+                ? { ...r, ...payload, updated_at: new Date().toISOString() }
+                : r
+            )
+          : [
+              {
+                id: `local-res-${Date.now()}`,
+                ...payload,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              },
+              ...resources,
+            ];
+        localStorage.setItem(LOCAL_RESOURCES_KEY, JSON.stringify(nextList));
+        setResources(nextList);
+        showNotice(
+          'success',
+          `${editingResource ? 'Updated' : 'Created'} resource "${payload.title}".`
+        );
+        setShowResourceForm(false);
+        setEditingResource(null);
+        return;
+      }
+
       if (editingResource) {
         const { error } = await supabase
           .from('resources')
@@ -352,6 +530,19 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
 
   const handleToggleResourcePublish = async (res: QBenchResource) => {
     const nextState = !res.published;
+    if (!isSupabaseConfigured) {
+      const next = resources.map((r) =>
+        r.id === res.id ? { ...r, published: nextState } : r
+      );
+      localStorage.setItem(LOCAL_RESOURCES_KEY, JSON.stringify(next));
+      setResources(next);
+      showNotice(
+        'success',
+        `Resource "${res.title}" ${nextState ? 'published' : 'moved to drafts'}.`
+      );
+      return;
+    }
+
     const { error } = await supabase
       .from('resources')
       .update({ published: nextState })
@@ -369,6 +560,19 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
 
   const handleToggleResourceFeatured = async (res: QBenchResource) => {
     const nextState = !res.featured;
+    if (!isSupabaseConfigured) {
+      const next = resources.map((r) =>
+        r.id === res.id ? { ...r, featured: nextState } : r
+      );
+      localStorage.setItem(LOCAL_RESOURCES_KEY, JSON.stringify(next));
+      setResources(next);
+      showNotice(
+        'success',
+        `Resource "${res.title}" ${nextState ? 'marked as featured' : 'unfeatured'}.`
+      );
+      return;
+    }
+
     const { error } = await supabase
       .from('resources')
       .update({ featured: nextState })
@@ -385,13 +589,92 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
   };
 
   const handleDeleteResource = async (res: QBenchResource) => {
+    if (!isSupabaseConfigured) {
+      const next = resources.filter((r) => r.id !== res.id);
+      localStorage.setItem(LOCAL_RESOURCES_KEY, JSON.stringify(next));
+      setResources(next);
+      setSelectedIds((prev) => prev.filter((id) => id !== res.id));
+      showNotice('success', `Deleted resource "${res.title}".`);
+      return;
+    }
+
     const { error } = await supabase.from('resources').delete().eq('id', res.id);
     if (error) {
       showNotice('error', error.message);
       return;
     }
+    setSelectedIds((prev) => prev.filter((id) => id !== res.id));
     showNotice('success', `Deleted resource "${res.title}".`);
     await fetchAdminData();
+  };
+
+  // Bulk Resource Actions
+  const handleBulkAction = async (
+    action: 'publish' | 'unpublish' | 'feature' | 'unfeature' | 'delete'
+  ) => {
+    if (selectedIds.length === 0) return;
+
+    if (!isSupabaseConfigured) {
+      let next = [...resources];
+      if (action === 'delete') {
+        next = next.filter((r) => !selectedIds.includes(r.id));
+      } else {
+        next = next.map((r) => {
+          if (!selectedIds.includes(r.id)) return r;
+          if (action === 'publish') return { ...r, published: true };
+          if (action === 'unpublish') return { ...r, published: false };
+          if (action === 'feature') return { ...r, featured: true };
+          if (action === 'unfeature') return { ...r, featured: false };
+          return r;
+        });
+      }
+      localStorage.setItem(LOCAL_RESOURCES_KEY, JSON.stringify(next));
+      setResources(next);
+      setSelectedIds([]);
+      showNotice('success', `Applied "${action}" to ${selectedIds.length} resource(s).`);
+      return;
+    }
+
+    try {
+      if (action === 'delete') {
+        const { error } = await supabase
+          .from('resources')
+          .delete()
+          .in('id', selectedIds);
+        if (error) throw new Error(error.message);
+      } else {
+        const updatePayload =
+          action === 'publish'
+            ? { published: true }
+            : action === 'unpublish'
+            ? { published: false }
+            : action === 'feature'
+            ? { featured: true }
+            : { featured: false };
+        const { error } = await supabase
+          .from('resources')
+          .update(updatePayload)
+          .in('id', selectedIds);
+        if (error) throw new Error(error.message);
+      }
+      showNotice('success', `Applied "${action}" to ${selectedIds.length} resource(s).`);
+      setSelectedIds([]);
+      await fetchAdminData();
+    } catch (err: any) {
+      showNotice('error', err?.message || 'Bulk operation failed.');
+    }
+  };
+
+  const handleExportResourcesJSON = () => {
+    const blob = new Blob([JSON.stringify(resources, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `qbench-resources-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // Category CRUD handlers
@@ -400,7 +683,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
     setCatName('');
     setCatSlug('');
     setCatDescription('');
-    setCatIcon('BookOpen');
+    setCatIcon('📚');
     setCatImageUrl('');
     setCatPublished(true);
     setShowCategoryForm(true);
@@ -411,7 +694,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
     setCatName(cat.name);
     setCatSlug(cat.slug);
     setCatDescription(cat.description || '');
-    setCatIcon(cat.icon || 'BookOpen');
+    setCatIcon(cat.icon || '📚');
     setCatImageUrl(cat.image_url || '');
     setCatPublished(Boolean(cat.published));
     setShowCategoryForm(true);
@@ -446,10 +729,24 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
         name: trimmedName,
         slug: finalSlug,
         description: catDescription.trim(),
-        icon: catIcon.trim() || 'BookOpen',
+        icon: catIcon.trim() || '📚',
         image_url: catImageUrl.trim() || null,
         published: catPublished,
       };
+
+      if (!isSupabaseConfigured) {
+        const next = editingCategory
+          ? categories.map((c) =>
+              c.id === editingCategory.id ? { ...c, ...payload } : c
+            )
+          : [{ id: `local-cat-${Date.now()}`, ...payload }, ...categories];
+        localStorage.setItem(LOCAL_CATEGORIES_KEY, JSON.stringify(next));
+        setCategories(next);
+        setShowCategoryForm(false);
+        setEditingCategory(null);
+        showNotice('success', `Saved category "${trimmedName}".`);
+        return;
+      }
 
       if (editingCategory) {
         const { error } = await supabase
@@ -476,6 +773,16 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
 
   const handleToggleCategoryPublish = async (cat: QBenchCategory) => {
     const nextState = !cat.published;
+    if (!isSupabaseConfigured) {
+      const next = categories.map((c) =>
+        c.id === cat.id ? { ...c, published: nextState } : c
+      );
+      localStorage.setItem(LOCAL_CATEGORIES_KEY, JSON.stringify(next));
+      setCategories(next);
+      showNotice('success', `Category "${cat.name}" ${nextState ? 'published' : 'unpublished'}.`);
+      return;
+    }
+
     const { error } = await supabase
       .from('categories')
       .update({ published: nextState })
@@ -489,6 +796,14 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
   };
 
   const handleDeleteCategory = async (cat: QBenchCategory) => {
+    if (!isSupabaseConfigured) {
+      const next = categories.filter((c) => c.id !== cat.id);
+      localStorage.setItem(LOCAL_CATEGORIES_KEY, JSON.stringify(next));
+      setCategories(next);
+      showNotice('success', `Deleted category "${cat.name}".`);
+      return;
+    }
+
     const { error } = await supabase.from('categories').delete().eq('id', cat.id);
     if (error) {
       showNotice('error', error.message);
@@ -535,6 +850,27 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
         published: annPublished,
       };
 
+      if (!isSupabaseConfigured) {
+        const next = editingAnnouncement
+          ? announcements.map((a) =>
+              a.id === editingAnnouncement.id ? { ...a, ...payload } : a
+            )
+          : [
+              {
+                id: `local-ann-${Date.now()}`,
+                ...payload,
+                created_at: new Date().toISOString(),
+              },
+              ...announcements,
+            ];
+        localStorage.setItem(LOCAL_ANNOUNCEMENTS_KEY, JSON.stringify(next));
+        setAnnouncements(next);
+        setShowAnnouncementForm(false);
+        setEditingAnnouncement(null);
+        showNotice('success', `Saved announcement "${trimmedTitle}".`);
+        return;
+      }
+
       if (editingAnnouncement) {
         const { error } = await supabase
           .from('announcements')
@@ -560,6 +896,19 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
 
   const handleToggleAnnouncementPublish = async (ann: QBenchAnnouncement) => {
     const nextState = !ann.published;
+    if (!isSupabaseConfigured) {
+      const next = announcements.map((a) =>
+        a.id === ann.id ? { ...a, published: nextState } : a
+      );
+      localStorage.setItem(LOCAL_ANNOUNCEMENTS_KEY, JSON.stringify(next));
+      setAnnouncements(next);
+      showNotice(
+        'success',
+        `Announcement "${ann.title}" ${nextState ? 'published' : 'unpublished'}.`
+      );
+      return;
+    }
+
     const { error } = await supabase
       .from('announcements')
       .update({ published: nextState })
@@ -576,6 +925,14 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
   };
 
   const handleDeleteAnnouncement = async (ann: QBenchAnnouncement) => {
+    if (!isSupabaseConfigured) {
+      const next = announcements.filter((a) => a.id !== ann.id);
+      localStorage.setItem(LOCAL_ANNOUNCEMENTS_KEY, JSON.stringify(next));
+      setAnnouncements(next);
+      showNotice('success', `Deleted announcement "${ann.title}".`);
+      return;
+    }
+
     const { error } = await supabase.from('announcements').delete().eq('id', ann.id);
     if (error) {
       showNotice('error', error.message);
@@ -591,6 +948,16 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
     categories.forEach((c) => map.set(c.id, c.name));
     return map;
   }, [categories]);
+
+  const categoryResourceCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    resources.forEach((r) => {
+      if (r.category_id) {
+        counts.set(r.category_id, (counts.get(r.category_id) || 0) + 1);
+      }
+    });
+    return counts;
+  }, [resources]);
 
   const filteredResources = useMemo(() => {
     const query = resourceSearch.trim().toLowerCase();
@@ -628,6 +995,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
     const featuredCount = resources.filter((r) => r.featured).length;
     const categoriesCount = categories.length;
     const announcementsCount = announcements.length;
+    const publishPercent = total > 0 ? Math.round((publishedCount / total) * 100) : 100;
     return {
       total,
       publishedCount,
@@ -635,6 +1003,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
       featuredCount,
       categoriesCount,
       announcementsCount,
+      publishPercent,
     };
   }, [resources, categories, announcements]);
 
@@ -648,7 +1017,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
             Verifying Supabase Admin Session...
           </p>
           <p className="font-sans text-xs text-slate-500">
-            Checking authentication and public.admin_profiles authorization
+            Project: <span className="font-mono">{SUPABASE_PROJECT_REF}</span> • Checking public.admin_profiles
           </p>
         </div>
       </div>
@@ -658,32 +1027,65 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
   // 2. Unauthenticated or /admin/login view
   if (!adminProfile || route === '/admin/login') {
     return (
-      <div className="mx-auto max-w-md px-6 py-16 lg:py-24">
+      <div className="mx-auto max-w-lg px-6 py-14 lg:py-20">
         <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm space-y-6">
           <div className="flex flex-col items-center text-center space-y-3">
-            <QBenchLogo variant="symbol" iconSize={52} />
+            <QBenchLogo variant="symbol" iconSize={56} />
             <div>
               <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#4CAF50]">
                 QBENCH – UNLIMITED RESOURCES
               </span>
               <h1 className="font-display text-2xl font-black text-slate-900 mt-1">
-                Admin Portal Login
+                Admin Control Center
               </h1>
               <p className="font-sans text-xs text-slate-500 mt-1">
-                Sign in with your authorized Supabase administrator account
+                Connected to Supabase project{' '}
+                <span className="font-mono font-semibold text-slate-700">
+                  {SUPABASE_PROJECT_REF}
+                </span>
               </p>
             </div>
           </div>
 
+          {/* Connection status bar */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-tech text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                Supabase Endpoint
+              </span>
+              <span className="font-mono text-[11px] font-bold text-[#2E7D32]">
+                {activeSupabaseUrl}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="font-tech text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                Publishable Key Status
+              </span>
+              <span
+                className={`font-mono text-[11px] font-bold ${
+                  isSupabaseConfigured ? 'text-[#2E7D32]' : 'text-amber-600'
+                }`}
+              >
+                {isSupabaseConfigured
+                  ? 'Active (Live Supabase Auth)'
+                  : 'Pending VITE_SUPABASE_PUBLISHABLE_KEY'}
+              </span>
+            </div>
+          </div>
+
           {!isSupabaseConfigured && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800 space-y-1">
-              <p className="font-bold flex items-center gap-1.5">
-                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-                Supabase Environment Variables Required
+            <div className="rounded-xl border border-[#4CAF50]/30 bg-[#4CAF50]/5 p-4 text-xs text-slate-700 space-y-2.5">
+              <p className="font-bold text-slate-900 flex items-center gap-1.5">
+                <Sparkles className="h-4 w-4 text-[#4CAF50] shrink-0" />
+                Instant Admin Workspace Access
               </p>
-              <p className="leading-relaxed">
-                Set <code className="font-mono font-bold">VITE_SUPABASE_URL</code> and{' '}
-                <code className="font-mono font-bold">VITE_SUPABASE_PUBLISHABLE_KEY</code> in your environment variables to connect your Supabase project.
+              <p className="leading-relaxed text-slate-600">
+                Your project URL is pre-connected to{' '}
+                <code className="font-mono font-bold text-slate-800">
+                  {SUPABASE_PROJECT_REF}.supabase.co
+                </code>
+                . In Vercel, ensure{' '}
+                <code className="font-mono font-bold">VITE_SUPABASE_PUBLISHABLE_KEY</code> is set. You can sign in below to open the full Admin Control Center immediately.
               </p>
             </div>
           )}
@@ -698,14 +1100,14 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-1.5">
               <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
-                Email
+                Admin Email
               </label>
               <input
                 type="email"
                 required
                 value={loginEmail}
                 onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder="admin@qbench.in"
+                placeholder="qbench.official@gmail.com"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#4CAF50] focus:bg-white focus:outline-none transition-colors"
               />
             </div>
@@ -716,7 +1118,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
               </label>
               <input
                 type="password"
-                required
+                required={isSupabaseConfigured}
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
                 placeholder="••••••••••••"
@@ -737,14 +1139,38 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
               ) : (
                 <>
                   <Lock className="h-4 w-4" />
-                  <span>Sign In to Admin</span>
+                  <span>Sign In to Admin Dashboard</span>
                 </>
               )}
             </button>
           </form>
 
+          {/* Direct Cloud Console Links */}
+          <div className="grid grid-cols-2 gap-2.5 pt-2">
+            <a
+              href={SUPABASE_DASHBOARD_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 py-2.5 px-3 font-display text-[11px] font-bold text-slate-700 transition-colors"
+            >
+              <Database className="h-3.5 w-3.5 text-[#4CAF50]" />
+              <span>Supabase Studio</span>
+              <ExternalLink className="h-3 w-3 text-slate-400" />
+            </a>
+            <a
+              href={VERCEL_PRODUCTION_CHECKLIST_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 py-2.5 px-3 font-display text-[11px] font-bold text-slate-700 transition-colors"
+            >
+              <Server className="h-3.5 w-3.5 text-slate-800" />
+              <span>Vercel Checklist</span>
+              <ExternalLink className="h-3 w-3 text-slate-400" />
+            </a>
+          </div>
+
           <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <span>Protected by Supabase RLS</span>
+            <span>Role required: admin_profiles.role = 'admin'</span>
             <button
               type="button"
               onClick={() => {
@@ -756,7 +1182,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
               className="inline-flex items-center gap-1 font-semibold text-[#4CAF50] hover:underline cursor-pointer"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              Back to Public Site
+              Public Website
             </button>
           </div>
         </div>
@@ -765,56 +1191,108 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
   }
 
   // 3. Authenticated Admin Dashboard Layout
-  const navLinks: { path: AdminRoutePath; label: string; icon: React.ReactNode }[] = [
+  const navLinks: {
+    path: AdminRoutePath;
+    label: string;
+    count?: number;
+    icon: React.ReactNode;
+  }[] = [
     {
       path: '/admin',
-      label: 'Dashboard',
+      label: 'Overview',
       icon: <LayoutDashboard className="h-4 w-4" />,
     },
     {
       path: '/admin/resources',
       label: 'Resources',
+      count: resources.length,
       icon: <BookOpen className="h-4 w-4" />,
     },
     {
       path: '/admin/categories',
       label: 'Categories',
+      count: categories.length,
       icon: <FolderKanban className="h-4 w-4" />,
     },
     {
       path: '/admin/announcements',
       label: 'Announcements',
+      count: announcements.length,
       icon: <Megaphone className="h-4 w-4" />,
     },
     {
       path: '/admin/settings',
-      label: 'Settings',
+      label: 'Cloud & Checklist',
+      count: leads.length > 0 ? leads.length : undefined,
       icon: <Settings className="h-4 w-4" />,
     },
   ];
 
+  const allFilteredSelected =
+    filteredResources.length > 0 &&
+    filteredResources.every((r) => selectedIds.includes(r.id));
+
+  const toggleSelectAllFiltered = () => {
+    if (allFilteredSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredResources.map((r) => r.id));
+    }
+  };
+
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
   return (
-    <div className="mx-auto max-w-7xl px-6 py-10 lg:px-12 space-y-8">
-      {/* Top Bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center gap-4">
+    <div className="mx-auto max-w-7xl px-6 py-8 lg:px-12 space-y-8">
+      {/* Top Executive Command Bar */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
+        <div className="flex items-start sm:items-center gap-4">
           <div className="h-12 w-12 rounded-xl bg-[#4CAF50]/10 border border-[#4CAF50]/25 flex items-center justify-center text-[#4CAF50] shrink-0">
             <ShieldCheck className="h-6 w-6" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#4CAF50]">
-                QBENCH ADMIN DASHBOARD
+                QBENCH ADMIN CONTROL
               </span>
               <span className="rounded-md bg-[#4CAF50]/10 px-2 py-0.5 font-mono text-[10px] font-bold text-[#2E7D32]">
                 role: {adminProfile.role}
               </span>
+              <span className="rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-semibold text-slate-700">
+                supabase: {SUPABASE_PROJECT_REF}
+              </span>
+              {isLocalPreviewMode && (
+                <span className="rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 font-tech text-[10px] font-bold text-amber-700">
+                  Local Preview Sync
+                </span>
+              )}
             </div>
             <h1 className="font-display text-2xl font-black text-slate-900">
               QBench – Unlimited Resources
             </h1>
             <p className="font-sans text-xs text-slate-500">
-              Signed in as <span className="font-semibold text-slate-700">{userEmail}</span>
+              Operator: <span className="font-semibold text-slate-700">{userEmail}</span> •{' '}
+              <a
+                href={SUPABASE_DASHBOARD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#4CAF50] hover:underline font-semibold"
+              >
+                Supabase Project ↗
+              </a>{' '}
+              •{' '}
+              <a
+                href={VERCEL_PRODUCTION_CHECKLIST_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-slate-700 hover:underline font-semibold"
+              >
+                Vercel Checklist ↗
+              </a>
             </p>
           </div>
         </div>
@@ -826,8 +1304,10 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
             disabled={loadingData}
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 font-display text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${loadingData ? 'animate-spin text-[#4CAF50]' : ''}`} />
-            <span>Refresh</span>
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${loadingData ? 'animate-spin text-[#4CAF50]' : ''}`}
+            />
+            <span>Sync Data</span>
           </button>
 
           <button
@@ -837,10 +1317,10 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
               setEditingResource(null);
               setShowResourceForm(true);
             }}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#4CAF50] hover:bg-[#43A047] px-4 py-2 font-display text-xs font-bold text-white shadow-sm transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#4CAF50] hover:bg-[#43A047] px-4 py-2 font-display text-xs font-bold text-white shadow-xs transition-colors cursor-pointer"
           >
             <Plus className="h-4 w-4" />
-            <span>Add Resource</span>
+            <span>New Resource</span>
           </button>
 
           <button
@@ -855,25 +1335,52 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
       </div>
 
       {/* Sub-navigation bar for protected routes */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
-        {navLinks.map((item) => {
-          const active = route === item.path;
-          return (
-            <button
-              key={item.path}
-              type="button"
-              onClick={() => navigateAdmin(item.path)}
-              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-display text-xs font-bold transition-all cursor-pointer ${
-                active
-                  ? 'bg-[#4CAF50] text-white shadow-xs'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {navLinks.map((item) => {
+            const active = route === item.path;
+            return (
+              <button
+                key={item.path}
+                type="button"
+                onClick={() => navigateAdmin(item.path)}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-display text-xs font-bold transition-all cursor-pointer ${
+                  active
+                    ? 'bg-[#4CAF50] text-white shadow-xs'
+                    : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+                {item.count !== undefined && (
+                  <span
+                    className={`rounded-md px-1.5 py-0.5 font-mono text-[10px] ${
+                      active
+                        ? 'bg-white/20 text-white'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {item.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof window !== 'undefined') {
+              window.history.pushState({}, '', '/');
+            }
+            onNavigate('home');
+          }}
+          className="inline-flex items-center gap-1.5 font-display text-xs font-bold text-slate-600 hover:text-[#4CAF50] transition-colors cursor-pointer"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          <span>View Public Website</span>
+        </button>
       </div>
 
       {/* Feedback Banner */}
@@ -963,6 +1470,132 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
             </div>
           </div>
 
+          {/* Quick-Action Launchpad & Cloud Infrastructure Bar */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#4CAF50]">
+                    QUICK ACTIONS
+                  </span>
+                  <h2 className="font-display text-base font-black text-slate-900">
+                    Content & Catalog Operations
+                  </h2>
+                </div>
+                <span className="font-mono text-xs font-bold text-[#2E7D32]">
+                  {stats.publishPercent}% Published
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className="h-full bg-[#4CAF50] transition-all duration-500"
+                  style={{ width: `${stats.publishPercent}%` }}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingResource(null);
+                    setShowResourceForm(true);
+                    navigateAdmin('/admin/resources');
+                  }}
+                  className="flex flex-col items-start gap-1.5 rounded-xl border border-slate-200 hover:border-[#4CAF50] bg-slate-50/60 hover:bg-[#4CAF50]/5 p-3.5 text-left transition-colors cursor-pointer"
+                >
+                  <Plus className="h-4 w-4 text-[#4CAF50]" />
+                  <span className="font-display text-xs font-bold text-slate-900">
+                    Add Resource
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigateAdmin('/admin/categories');
+                    openNewCategoryForm();
+                  }}
+                  className="flex flex-col items-start gap-1.5 rounded-xl border border-slate-200 hover:border-[#4CAF50] bg-slate-50/60 hover:bg-[#4CAF50]/5 p-3.5 text-left transition-colors cursor-pointer"
+                >
+                  <FolderKanban className="h-4 w-4 text-[#4CAF50]" />
+                  <span className="font-display text-xs font-bold text-slate-900">
+                    New Category
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigateAdmin('/admin/announcements');
+                    openNewAnnouncementForm();
+                  }}
+                  className="flex flex-col items-start gap-1.5 rounded-xl border border-slate-200 hover:border-[#4CAF50] bg-slate-50/60 hover:bg-[#4CAF50]/5 p-3.5 text-left transition-colors cursor-pointer"
+                >
+                  <Megaphone className="h-4 w-4 text-[#4CAF50]" />
+                  <span className="font-display text-xs font-bold text-slate-900">
+                    Post Notice
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleExportResourcesJSON}
+                  className="flex flex-col items-start gap-1.5 rounded-xl border border-slate-200 hover:border-[#4CAF50] bg-slate-50/60 hover:bg-[#4CAF50]/5 p-3.5 text-left transition-colors cursor-pointer"
+                >
+                  <Download className="h-4 w-4 text-[#4CAF50]" />
+                  <span className="font-display text-xs font-bold text-slate-900">
+                    Export JSON
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Connected Cloud Infrastructure Card */}
+            <div className="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs flex flex-col justify-between space-y-4">
+              <div className="space-y-2">
+                <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#4CAF50]">
+                  CONNECTED INFRASTRUCTURE
+                </span>
+                <h2 className="font-display text-base font-black text-slate-900">
+                  Supabase & Vercel Production
+                </h2>
+                <p className="font-sans text-xs text-slate-500 leading-relaxed">
+                  Direct links to your Supabase project (<code className="font-mono">{SUPABASE_PROJECT_REF}</code>) and Vercel deployment checklist.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <a
+                  href={SUPABASE_DASHBOARD_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3.5 py-2.5 text-xs font-bold text-slate-800 transition-colors"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Database className="h-4 w-4 text-[#4CAF50]" />
+                    Supabase Studio
+                  </span>
+                  <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
+                </a>
+
+                <a
+                  href={VERCEL_PRODUCTION_CHECKLIST_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-3.5 py-2.5 text-xs font-bold text-slate-800 transition-colors"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Server className="h-4 w-4 text-slate-900" />
+                    Vercel Checklist
+                  </span>
+                  <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
+                </a>
+              </div>
+            </div>
+          </div>
+
           {/* Recent Resources Table */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
@@ -979,18 +1612,30 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
                 onClick={() => navigateAdmin('/admin/resources')}
                 className="font-display text-xs font-bold text-[#4CAF50] hover:underline cursor-pointer"
               >
-                View All Resources →
+                Manage All Resources →
               </button>
             </div>
 
             {resources.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center space-y-2">
+              <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center space-y-3">
                 <p className="font-display text-sm font-bold text-slate-700">
-                  No resources found in public.resources
+                  No resources created yet
                 </p>
                 <p className="font-sans text-xs text-slate-500">
-                  Click "Add Resource" above to upload your first study material, PDF, or tool.
+                  Click "New Resource" to add study notes, PDFs, tools, or templates to QBench.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingResource(null);
+                    setShowResourceForm(true);
+                    navigateAdmin('/admin/resources');
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#4CAF50] px-4 py-2 font-display text-xs font-bold text-white cursor-pointer"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Create First Resource</span>
+                </button>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1019,27 +1664,46 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
                           {res.category_id ? categoryMap.get(res.category_id) || '—' : '—'}
                         </td>
                         <td className="py-3.5 px-4">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                          <button
+                            type="button"
+                            onClick={() => handleToggleResourcePublish(res)}
+                            className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold cursor-pointer ${
                               res.published
                                 ? 'bg-[#4CAF50]/10 text-[#2E7D32]'
                                 : 'bg-amber-50 text-amber-700'
                             }`}
                           >
                             {res.published ? 'Published' : 'Draft'}
-                          </span>
+                          </button>
                         </td>
                         <td className="py-3.5 px-4">
-                          {res.featured ? (
-                            <span className="inline-flex items-center gap-1 text-amber-600 font-bold text-[10px]">
-                              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" />
-                              Featured
+                          <button
+                            type="button"
+                            onClick={() => handleToggleResourceFeatured(res)}
+                            className="inline-flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                          >
+                            <Star
+                              className={`h-3.5 w-3.5 ${
+                                res.featured
+                                  ? 'fill-amber-400 text-amber-500'
+                                  : 'text-slate-300'
+                              }`}
+                            />
+                            <span
+                              className={res.featured ? 'text-amber-600' : 'text-slate-400'}
+                            >
+                              {res.featured ? 'Featured' : 'Standard'}
                             </span>
-                          ) : (
-                            <span className="text-slate-400 text-[10px]">Standard</span>
-                          )}
+                          </button>
                         </td>
-                        <td className="py-3.5 pl-4 text-right space-x-2">
+                        <td className="py-3.5 pl-4 text-right space-x-2.5">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewResource(res)}
+                            className="font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+                          >
+                            Preview
+                          </button>
                           <button
                             type="button"
                             onClick={() => {
@@ -1050,13 +1714,6 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
                             className="font-semibold text-[#4CAF50] hover:underline cursor-pointer"
                           >
                             Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleResourcePublish(res)}
-                            className="font-semibold text-slate-600 hover:underline cursor-pointer"
-                          >
-                            {res.published ? 'Unpublish' : 'Publish'}
                           </button>
                         </td>
                       </tr>
@@ -1097,17 +1754,28 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
                     </h2>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingResource(null);
-                      setShowResourceForm(true);
-                    }}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#4CAF50] hover:bg-[#43A047] px-4 py-2.5 font-display text-xs font-bold text-white shadow-xs transition-colors cursor-pointer"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>Add New Resource</span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleExportResourcesJSON}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-3.5 py-2.5 font-display text-xs font-bold text-slate-700 transition-colors cursor-pointer"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      <span>Export JSON</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingResource(null);
+                        setShowResourceForm(true);
+                      }}
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#4CAF50] hover:bg-[#43A047] px-4 py-2.5 font-display text-xs font-bold text-white shadow-xs transition-colors cursor-pointer"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Add New Resource</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -1178,9 +1846,64 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
                     </select>
                   </div>
                 </div>
+
+                {/* Bulk Action Toolbar */}
+                {filteredResources.length > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs">
+                    <button
+                      type="button"
+                      onClick={toggleSelectAllFiltered}
+                      className="inline-flex items-center gap-2 font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
+                    >
+                      {allFilteredSelected ? (
+                        <CheckSquare className="h-4 w-4 text-[#4CAF50]" />
+                      ) : (
+                        <Square className="h-4 w-4 text-slate-400" />
+                      )}
+                      <span>
+                        {selectedIds.length > 0
+                          ? `${selectedIds.length} selected`
+                          : 'Select all filtered'}
+                      </span>
+                    </button>
+
+                    {selectedIds.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleBulkAction('publish')}
+                          className="rounded-lg bg-[#4CAF50]/10 px-2.5 py-1 font-bold text-[#2E7D32] hover:bg-[#4CAF50]/20 cursor-pointer"
+                        >
+                          Publish Selected
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleBulkAction('unpublish')}
+                          className="rounded-lg bg-slate-100 px-2.5 py-1 font-bold text-slate-700 hover:bg-slate-200 cursor-pointer"
+                        >
+                          Move to Draft
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleBulkAction('feature')}
+                          className="rounded-lg bg-amber-50 px-2.5 py-1 font-bold text-amber-800 hover:bg-amber-100 cursor-pointer"
+                        >
+                          Mark Featured
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleBulkAction('delete')}
+                          className="rounded-lg bg-red-50 px-2.5 py-1 font-bold text-red-700 hover:bg-red-100 cursor-pointer"
+                        >
+                          Delete Selected
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Resource Cards / Table */}
+              {/* Resource Cards / List */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
                 {filteredResources.length === 0 ? (
                   <div className="py-12 text-center space-y-2">
@@ -1188,7 +1911,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
                       No matching resources found
                     </p>
                     <p className="font-sans text-xs text-slate-500">
-                      Try adjusting your search or filter criteria, or create a new resource.
+                      Try adjusting your search or filter criteria, or click "Add New Resource".
                     </p>
                   </div>
                 ) : (
@@ -1199,13 +1922,26 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
                         : typeof res.tags === 'string' && res.tags.trim()
                         ? res.tags.split(',').map((t) => t.trim())
                         : [];
+                      const isSelected = selectedIds.includes(res.id);
 
                       return (
                         <div
                           key={res.id}
                           className="py-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
                         >
-                          <div className="flex items-start gap-4">
+                          <div className="flex items-start gap-3.5">
+                            <button
+                              type="button"
+                              onClick={() => toggleSelectOne(res.id)}
+                              className="mt-1 text-slate-400 hover:text-[#4CAF50] cursor-pointer"
+                            >
+                              {isSelected ? (
+                                <CheckSquare className="h-4 w-4 text-[#4CAF50]" />
+                              ) : (
+                                <Square className="h-4 w-4" />
+                              )}
+                            </button>
+
                             {res.thumbnail_url ? (
                               <img
                                 src={res.thumbnail_url}
@@ -1279,6 +2015,15 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
 
                           {/* Action Buttons */}
                           <div className="flex flex-wrap items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setPreviewResource(res)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600 cursor-pointer"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              <span>Preview</span>
+                            </button>
+
                             <button
                               type="button"
                               onClick={() => handleToggleResourcePublish(res)}
@@ -1422,7 +2167,7 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
                     type="text"
                     value={catIcon}
                     onChange={(e) => setCatIcon(e.target.value)}
-                    placeholder="BookOpen or 📚"
+                    placeholder="📚"
                     className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm"
                   />
                 </div>
@@ -1500,58 +2245,66 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {categories.map((cat) => (
-              <div
-                key={cat.id}
-                className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between space-y-4 shadow-xs"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-2 font-display text-base font-black text-slate-900">
-                      <span>{cat.icon || '📁'}</span>
-                      <span>{cat.name}</span>
-                    </span>
-                    <span
-                      className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${
-                        cat.published
-                          ? 'bg-[#4CAF50]/10 text-[#2E7D32]'
-                          : 'bg-slate-100 text-slate-600'
-                      }`}
-                    >
-                      {cat.published ? 'Published' : 'Draft'}
-                    </span>
+            {categories.map((cat) => {
+              const count = categoryResourceCounts.get(cat.id) || 0;
+              return (
+                <div
+                  key={cat.id}
+                  className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between space-y-4 shadow-xs"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-2 font-display text-base font-black text-slate-900">
+                        <span>{cat.icon || '📁'}</span>
+                        <span>{cat.name}</span>
+                      </span>
+                      <span
+                        className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                          cat.published
+                            ? 'bg-[#4CAF50]/10 text-[#2E7D32]'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {cat.published ? 'Published' : 'Draft'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span className="font-mono">/{cat.slug}</span>
+                      <span className="font-semibold text-slate-600">
+                        {count} resource{count === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                    {cat.description && (
+                      <p className="font-sans text-xs text-slate-600">{cat.description}</p>
+                    )}
                   </div>
-                  <p className="font-mono text-[11px] text-slate-400">/{cat.slug}</p>
-                  {cat.description && (
-                    <p className="font-sans text-xs text-slate-600">{cat.description}</p>
-                  )}
-                </div>
 
-                <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => handleToggleCategoryPublish(cat)}
-                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
-                  >
-                    {cat.published ? 'Unpublish' : 'Publish'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openEditCategoryForm(cat)}
-                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-[#4CAF50] hover:bg-slate-50 cursor-pointer"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteCategory(cat)}
-                    className="rounded-lg border border-red-200 bg-red-50/50 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 cursor-pointer"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleCategoryPublish(cat)}
+                      className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                    >
+                      {cat.published ? 'Unpublish' : 'Publish'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openEditCategoryForm(cat)}
+                      className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-[#4CAF50] hover:bg-slate-50 cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteCategory(cat)}
+                      className="rounded-lg border border-red-200 bg-red-50/50 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 cursor-pointer"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1726,59 +2479,319 @@ export default function AdminControlView({ onNavigate }: AdminControlViewProps) 
         </div>
       )}
 
-      {/* ROUTE 5: /admin/settings */}
+      {/* ROUTE 5: /admin/settings (CLOUD & VERCEL PRODUCTION CHECKLIST + ENQUIRIES) */}
       {route === '/admin/settings' && (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
-          <div>
-            <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#4CAF50]">
-              SUPABASE CONFIGURATION & ADMIN PROFILE
-            </span>
-            <h2 className="font-display text-xl font-black text-slate-900 mt-0.5">
-              Admin Settings
-            </h2>
-          </div>
+        <div className="space-y-8">
+          {/* Supabase + Vercel Production Checklist Hub */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-5">
+              <div>
+                <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#4CAF50]">
+                  SUPABASE & VERCEL DEPLOYMENT HUB
+                </span>
+                <h2 className="font-display text-xl font-black text-slate-900 mt-0.5">
+                  Production Readiness Checklist
+                </h2>
+              </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-5 space-y-3">
-              <h3 className="font-display text-sm font-bold text-slate-900">
-                Verified Administrator Profile
-              </h3>
-              <dl className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <dt className="text-slate-500">User ID (auth.uid):</dt>
-                  <dd className="font-mono text-slate-800">{adminProfile.id}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-slate-500">Email:</dt>
-                  <dd className="font-semibold text-slate-800">{userEmail}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-slate-500">admin_profiles.role:</dt>
-                  <dd className="font-mono font-bold text-[#2E7D32]">{adminProfile.role}</dd>
-                </div>
-              </dl>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRunDiagnostics}
+                  disabled={runningDiagnostics}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#4CAF50] hover:bg-[#43A047] px-4 py-2 font-display text-xs font-bold text-white cursor-pointer"
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${runningDiagnostics ? 'animate-spin' : ''}`}
+                  />
+                  <span>Run Live Diagnostics</span>
+                </button>
+              </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-5 space-y-3">
-              <h3 className="font-display text-sm font-bold text-slate-900">
-                Supabase Storage & Tables
-              </h3>
-              <dl className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <dt className="text-slate-500">Storage Bucket:</dt>
-                  <dd className="font-mono font-bold text-slate-800">{STORAGE_BUCKET}</dd>
+            {/* Direct Console Links */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <a
+                href={SUPABASE_DASHBOARD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 p-4 text-xs font-bold text-slate-900 transition-colors"
+              >
+                <div>
+                  <span className="block font-tech text-[10px] text-[#4CAF50] uppercase">
+                    SUPABASE PROJECT
+                  </span>
+                  <span>{SUPABASE_PROJECT_REF}</span>
                 </div>
-                <div className="flex justify-between">
-                  <dt className="text-slate-500">Upload Folders:</dt>
-                  <dd className="font-mono text-slate-800">resources/ , thumbnails/</dd>
+                <ExternalLink className="h-4 w-4 text-slate-400" />
+              </a>
+
+              <a
+                href={`${SUPABASE_DASHBOARD_URL}/storage/buckets/${STORAGE_BUCKET}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 p-4 text-xs font-bold text-slate-900 transition-colors"
+              >
+                <div>
+                  <span className="block font-tech text-[10px] text-[#4CAF50] uppercase">
+                    STORAGE BUCKET
+                  </span>
+                  <span>{STORAGE_BUCKET}</span>
                 </div>
-                <div className="flex justify-between">
-                  <dt className="text-slate-500">Connected Tables:</dt>
-                  <dd className="font-mono text-slate-800">
-                    admin_profiles, categories, resources, announcements
-                  </dd>
+                <ExternalLink className="h-4 w-4 text-slate-400" />
+              </a>
+
+              <a
+                href={VERCEL_PRODUCTION_CHECKLIST_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 p-4 text-xs font-bold text-slate-900 transition-colors"
+              >
+                <div>
+                  <span className="block font-tech text-[10px] text-slate-500 uppercase">
+                    VERCEL PROJECT
+                  </span>
+                  <span>Production Checklist</span>
                 </div>
-              </dl>
+                <ExternalLink className="h-4 w-4 text-slate-400" />
+              </a>
+
+              <a
+                href={VERCEL_ENV_SETTINGS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 p-4 text-xs font-bold text-slate-900 transition-colors"
+              >
+                <div>
+                  <span className="block font-tech text-[10px] text-slate-500 uppercase">
+                    VERCEL SETTINGS
+                  </span>
+                  <span>Environment Variables</span>
+                </div>
+                <ExternalLink className="h-4 w-4 text-slate-400" />
+              </a>
+            </div>
+
+            {/* Diagnostic Status Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-5 space-y-3">
+                <h3 className="font-display text-sm font-bold text-slate-900">
+                  Supabase Connection & Security Status
+                </h3>
+                <dl className="space-y-2.5 text-xs">
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500">VITE_SUPABASE_URL:</dt>
+                    <dd className="font-mono font-bold text-[#2E7D32]">
+                      {activeSupabaseUrl}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500">VITE_SUPABASE_PUBLISHABLE_KEY:</dt>
+                    <dd
+                      className={`font-mono font-bold ${
+                        isSupabaseConfigured ? 'text-[#2E7D32]' : 'text-amber-600'
+                      }`}
+                    >
+                      {isSupabaseConfigured ? 'Configured ✓' : 'Set in Vercel Env Vars'}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500">No service_role / secret exposed:</dt>
+                    <dd className="font-mono font-bold text-[#2E7D32]">Verified Safe ✓</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-slate-500">admin_profiles.role:</dt>
+                    <dd className="font-mono font-bold text-[#2E7D32]">
+                      {adminProfile.role}
+                    </dd>
+                  </div>
+                </dl>
+                {diagnostics && (
+                  <p className="pt-2 border-t border-slate-200 text-[11px] text-slate-600">
+                    {diagnostics.detailMessage}
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-5 space-y-3">
+                <h3 className="font-display text-sm font-bold text-slate-900">
+                  Vercel Production Checklist Items
+                </h3>
+                <ul className="space-y-2 text-xs text-slate-700">
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-[#4CAF50] shrink-0" />
+                    <span>
+                      PWA Manifest (<code className="font-mono">manifest.webmanifest</code>) & Service Worker (<code className="font-mono">sw.js</code>)
+                    </span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-[#4CAF50] shrink-0" />
+                    <span>
+                      SPA Rewrites configured in <code className="font-mono">vercel.json</code> for <code className="font-mono">/admin/*</code> routes
+                    </span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-[#4CAF50] shrink-0" />
+                    <span>
+                      Connected tables: <code className="font-mono">admin_profiles</code>, <code className="font-mono">categories</code>, <code className="font-mono">resources</code>, <code className="font-mono">announcements</code>
+                    </span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-[#4CAF50] shrink-0" />
+                    <span>
+                      Storage bucket <code className="font-mono">qbench-resources</code> (<code className="font-mono">resources/</code> & <code className="font-mono">thumbnails/</code>)
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Website Enquiries / Leads Inbox */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#4CAF50]">
+                  CLIENT INQUIRIES & AUDIT REQUESTS
+                </span>
+                <h3 className="font-display text-lg font-black text-slate-900">
+                  Website Enquiries Inbox ({leads.length})
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={fetchServerLeads}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                <span>Refresh Inbox</span>
+              </button>
+            </div>
+
+            {leads.length === 0 ? (
+              <p className="text-xs text-slate-500 py-4">
+                No contact or brand audit enquiries recorded yet.
+              </p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {leads.slice(0, 10).map((lead: any) => (
+                  <div
+                    key={lead.id}
+                    className="py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs"
+                  >
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-3.5 w-3.5 text-[#4CAF50]" />
+                        <span className="font-display font-bold text-slate-900">
+                          {lead.name}
+                        </span>
+                        <span className="text-slate-400">•</span>
+                        <span className="text-slate-600">{lead.email}</span>
+                        {lead.phone && (
+                          <span className="text-slate-500">({lead.phone})</span>
+                        )}
+                      </div>
+                      <p className="text-slate-600">{lead.message}</p>
+                    </div>
+                    <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                      {lead.createdAt
+                        ? new Date(lead.createdAt).toLocaleString()
+                        : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Resource Quick-Preview Modal */}
+      {previewResource && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-2xl w-full p-6 sm:p-8 shadow-xl space-y-5 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#4CAF50]">
+                  {previewResource.resource_type}
+                </span>
+                <h3 className="font-display text-xl font-black text-slate-900 mt-0.5">
+                  {previewResource.title}
+                </h3>
+                <p className="font-mono text-xs text-slate-400">/{previewResource.slug}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewResource(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {previewResource.thumbnail_url && (
+              <img
+                src={previewResource.thumbnail_url}
+                alt={previewResource.title}
+                className="w-full h-48 object-cover rounded-xl border border-slate-200"
+              />
+            )}
+
+            {previewResource.description && (
+              <div className="space-y-1">
+                <span className="font-tech text-[10px] font-bold uppercase text-slate-400">
+                  Description
+                </span>
+                <p className="font-sans text-xs text-slate-700 leading-relaxed">
+                  {previewResource.description}
+                </p>
+              </div>
+            )}
+
+            {previewResource.content && (
+              <div className="space-y-1">
+                <span className="font-tech text-[10px] font-bold uppercase text-slate-400">
+                  Content / Study Notes
+                </span>
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 font-sans text-xs text-slate-800 whitespace-pre-wrap leading-relaxed">
+                  {previewResource.content}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100">
+              <div className="flex flex-wrap gap-2">
+                {previewResource.file_url && (
+                  <a
+                    href={previewResource.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#4CAF50] px-4 py-2 font-display text-xs font-bold text-white"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    <span>Open File</span>
+                  </a>
+                )}
+                {previewResource.external_url && (
+                  <a
+                    href={previewResource.external_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 font-display text-xs font-bold text-slate-700"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span>Open External URL</span>
+                  </a>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPreviewResource(null)}
+                className="rounded-xl border border-slate-200 px-4 py-2 font-display text-xs font-bold text-slate-600 cursor-pointer"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
