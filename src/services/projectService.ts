@@ -143,11 +143,6 @@ export const SEED_PROJECTS: Project[] = [
   },
 ];
 
-// Exact columns in public.projects:
-// id, title, slug, description, category_id, client, year, services, cover_image, gallery, behance_url, youtube_url, featured, status, created_at, updated_at
-const PROJECT_SELECT_COLUMNS =
-  'id, title, slug, description, category_id, client, year, services, cover_image, gallery, behance_url, youtube_url, featured, status, created_at, updated_at';
-
 function normalizeProject(
   raw: Record<string, unknown>,
   categoriesById: Map<string, Category>,
@@ -281,7 +276,7 @@ export async function getAllProjects(): Promise<Project[]> {
     buildCategoryMaps(),
     supabase
       .from('projects')
-      .select(PROJECT_SELECT_COLUMNS)
+      .select('*')
       .order('created_at', { ascending: false }),
   ]);
 
@@ -309,7 +304,7 @@ export async function getPublishedProjects(
 
   let query = supabase
     .from('projects')
-    .select(PROJECT_SELECT_COLUMNS)
+    .select('*')
     .order('featured', { ascending: false })
     .order('created_at', { ascending: false });
 
@@ -338,11 +333,7 @@ export async function getProjectById(id: string): Promise<Project | null> {
 
   const [{ byId }, { data, error }, portfolioImages] = await Promise.all([
     buildCategoryMaps(),
-    supabase
-      .from('projects')
-      .select(PROJECT_SELECT_COLUMNS)
-      .eq('id', id)
-      .maybeSingle(),
+    supabase.from('projects').select('*').eq('id', id).maybeSingle(),
     getProjectPortfolioImages(id),
   ]);
 
@@ -377,10 +368,7 @@ export async function getProjectBySlug(
 
   const { byId } = await buildCategoryMaps();
 
-  let query = supabase
-    .from('projects')
-    .select(PROJECT_SELECT_COLUMNS)
-    .eq('slug', slug);
+  let query = supabase.from('projects').select('*').eq('slug', slug);
 
   if (!includeDrafts) {
     query = query.eq('status', 'published');
@@ -465,7 +453,7 @@ export async function createProject(formData: ProjectFormData): Promise<Project>
 
   const cleanGallery = formData.gallery.map((u) => u.trim()).filter(Boolean);
 
-  const payload = {
+  const primaryPayload = {
     title: formData.title.trim(),
     slug: cleanSlug,
     description: fullDescription,
@@ -482,11 +470,39 @@ export async function createProject(formData: ProjectFormData): Promise<Project>
     updated_at: now,
   };
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('projects')
-    .insert([payload])
-    .select(PROJECT_SELECT_COLUMNS)
+    .insert([primaryPayload])
+    .select('*')
     .single();
+
+  if (error && error.message && error.message.includes('youtube_url')) {
+    const fallbackPayload = {
+      title: formData.title.trim(),
+      slug: cleanSlug,
+      description: fullDescription,
+      short_description: fullDescription ? fullDescription.slice(0, 220) : null,
+      category: (formData.category || '').trim() || null,
+      category_id: categoryId,
+      client: formData.client.trim() || null,
+      year: Number(formData.year) || new Date().getFullYear(),
+      services: formData.services.map((s) => s.trim()).filter(Boolean),
+      cover_image: formData.cover_image || cleanGallery[0] || null,
+      gallery: cleanGallery,
+      behance_url: formData.behance_url.trim() || null,
+      video_url: youtubeUrl,
+      featured: Boolean(formData.featured),
+      status: formData.status,
+      updated_at: now,
+    };
+    const retry = await supabase
+      .from('projects')
+      .insert([fallbackPayload])
+      .select('*')
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     if (error.code === '23505') {
@@ -499,7 +515,7 @@ export async function createProject(formData: ProjectFormData): Promise<Project>
   const createdId = String(createdRow.id);
 
   // Sync gallery records into public.portfolio_images
-  await syncProjectPortfolioImages(createdId, cleanGallery, payload.title);
+  await syncProjectPortfolioImages(createdId, cleanGallery, primaryPayload.title);
 
   const { byId } = await buildCategoryMaps();
   const portfolioImages = await getProjectPortfolioImages(createdId);
@@ -547,7 +563,7 @@ export async function updateProject(
 
   const cleanGallery = formData.gallery.map((u) => u.trim()).filter(Boolean);
 
-  const payload = {
+  const primaryPayload = {
     title: formData.title.trim(),
     slug: cleanSlug,
     description: fullDescription,
@@ -564,12 +580,41 @@ export async function updateProject(
     updated_at: now,
   };
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('projects')
-    .update(payload)
+    .update(primaryPayload)
     .eq('id', id)
-    .select(PROJECT_SELECT_COLUMNS)
+    .select('*')
     .single();
+
+  if (error && error.message && error.message.includes('youtube_url')) {
+    const fallbackPayload = {
+      title: formData.title.trim(),
+      slug: cleanSlug,
+      description: fullDescription,
+      short_description: fullDescription ? fullDescription.slice(0, 220) : null,
+      category: (formData.category || '').trim() || null,
+      category_id: categoryId,
+      client: formData.client.trim() || null,
+      year: Number(formData.year) || new Date().getFullYear(),
+      services: formData.services.map((s) => s.trim()).filter(Boolean),
+      cover_image: formData.cover_image || cleanGallery[0] || null,
+      gallery: cleanGallery,
+      behance_url: formData.behance_url.trim() || null,
+      video_url: youtubeUrl,
+      featured: Boolean(formData.featured),
+      status: formData.status,
+      updated_at: now,
+    };
+    const retry = await supabase
+      .from('projects')
+      .update(fallbackPayload)
+      .eq('id', id)
+      .select('*')
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     if (error.code === '23505') {
@@ -579,7 +624,7 @@ export async function updateProject(
   }
 
   // Sync gallery records into public.portfolio_images
-  await syncProjectPortfolioImages(id, cleanGallery, payload.title);
+  await syncProjectPortfolioImages(id, cleanGallery, primaryPayload.title);
 
   const { byId } = await buildCategoryMaps();
   const portfolioImages = await getProjectPortfolioImages(id);

@@ -1,5 +1,8 @@
 import emailjs from '@emailjs/browser';
 import { createProjectInquiry } from '../services/projectService';
+import { SupabaseInquiryError, formatSupabaseError } from '../services/inquiryService';
+
+export { SupabaseInquiryError, formatSupabaseError };
 
 export interface EmailParams {
   name: string;
@@ -114,7 +117,6 @@ let emailJsInitializedKey = '';
 async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
   const metaEnv = ((import.meta as any).env || {}) as Record<string, string | undefined>;
 
-  // Reference literal process.env.* keys directly so Vite's define replacement works at compile time
   let EMAILJS_PUBLIC_KEY = cleanEnvValue(
     process.env.EMAILJS_PUBLIC_KEY || metaEnv.VITE_EMAILJS_PUBLIC_KEY || metaEnv.EMAILJS_PUBLIC_KEY
   );
@@ -138,7 +140,6 @@ async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
       metaEnv.GOOGLE_SHEETS_WEBHOOK_URL
   );
 
-  // Always check runtime /api/integration-config if any secret is missing
   if (
     !EMAILJS_PUBLIC_KEY ||
     !EMAILJS_SERVICE_ID ||
@@ -148,7 +149,8 @@ async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
   ) {
     try {
       const resp = await fetch('/api/integration-config');
-      if (resp.ok) {
+      const contentType = resp.headers.get('content-type') || '';
+      if (resp.ok && contentType.includes('application/json')) {
         const data = await resp.json();
         EMAILJS_PUBLIC_KEY = EMAILJS_PUBLIC_KEY || cleanEnvValue(data.EMAILJS_PUBLIC_KEY);
         EMAILJS_SERVICE_ID = EMAILJS_SERVICE_ID || cleanEnvValue(data.EMAILJS_SERVICE_ID);
@@ -159,8 +161,8 @@ async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
         GOOGLE_SHEETS_WEBHOOK_URL =
           GOOGLE_SHEETS_WEBHOOK_URL || cleanWebhookUrl(data.GOOGLE_SHEETS_WEBHOOK_URL);
       }
-    } catch (err) {
-      console.error('[QBENCH Integration Config Fetch Error]:', err);
+    } catch {
+      // Optional server endpoint not present on static hosting
     }
   }
 
@@ -173,10 +175,6 @@ async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
   };
 }
 
-/**
- * Extracts normalized package data dynamically from the existing selectedPackage object
- * (e.g. "Branding — Standard Package" -> package: "Standard Package", service/category: "Branding").
- */
 function resolveDynamicPackageFields(params: EmailParams) {
   const pkg = params.selectedPackage;
   const bp = params.selectedBlueprint;
@@ -260,10 +258,6 @@ function resolveDynamicPackageFields(params: EmailParams) {
   };
 }
 
-/**
- * Sends an EmailJS template via browser SDK first, with automatic server-side relay fallback
- * if browser extensions / iframe restrictions block direct requests to api.emailjs.com.
- */
 async function sendEmailJsWithFallback(options: {
   type: 'admin' | 'auto_reply';
   serviceId: string;
@@ -279,10 +273,9 @@ async function sendEmailJsWithFallback(options: {
     });
     return;
   } catch (browserErr) {
-    console.warn(`QBENCH: Browser EmailJS (${type}) encountered an issue, using server relay...`, browserErr);
+    console.warn(`QBENCH: Browser EmailJS (${type}) encountered an issue, trying server relay...`, browserErr);
   }
 
-  // Fallback to server-side EmailJS relay (/api/emailjs-send)
   const relayResp = await fetch('/api/emailjs-send', {
     method: 'POST',
     headers: {
@@ -303,15 +296,10 @@ async function sendEmailJsWithFallback(options: {
   }
 }
 
-/**
- * Submits the lead to Google Apps Script Web App with proper CORS / no-cors + server proxy handling
- * so browser iframe/redirect restrictions on script.google.com never throw a fatal error.
- */
 async function postToGoogleSheetsWebhook(webhookUrl: string, payload: Record<string, any>): Promise<void> {
   const bodyStr = JSON.stringify(payload);
   const execUrl = webhookUrl.replace(/\/dev(\?.*)?$/, '/exec$1');
 
-  // 1. Trigger server-side Google Sheets proxy & CRM backup in parallel
   const serverProxyPromise = fetch('/api/sheets-webhook', {
     method: 'POST',
     headers: {
@@ -320,7 +308,6 @@ async function postToGoogleSheetsWebhook(webhookUrl: string, payload: Record<str
     body: bodyStr
   }).catch(() => null);
 
-  // 2. Try standard browser CORS POST first
   let browserDelivered = false;
   try {
     const response = await fetch(webhookUrl, {
@@ -339,7 +326,6 @@ async function postToGoogleSheetsWebhook(webhookUrl: string, payload: Record<str
     // Expected when Apps Script redirects without CORS headers
   }
 
-  // 3. Try browser no-cors POST (wrapped in try/catch so iframe/redirect rules never crash the form)
   if (!browserDelivered) {
     try {
       await fetch(execUrl, {
@@ -376,8 +362,7 @@ async function postToGoogleSheetsWebhook(webhookUrl: string, payload: Record<str
 }
 
 export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissionResult> => {
-  // STEP 1: Form validation
-  console.log('QBENCH: Form validation started');
+  console.info('QBENCH: Form validation started');
 
   const name = (params.name || '').trim();
   const company = (params.company || '').trim();
@@ -388,12 +373,17 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
   const pkgFields = resolveDynamicPackageFields(params);
 
   if (!name || !phone || !email || !pkgFields.service) {
-    const validationErr = new Error('Required fields (name, phone, email, service) are missing.');
+    const validationErr = new SupabaseInquiryError({
+      message: 'Required fields (name, phone, email, service) are missing.',
+      code: 'VALIDATION_ERROR',
+      hint: 'Please fill in Name, Phone, Email, and Service.',
+    });
     console.error('QBENCH: Form validation FAILED', validationErr);
     throw validationErr;
   }
 
-  // Persist inquiry in Supabase `public.project_inquiries` table
+  // STEP 1 (REQUIRED): Persist inquiry in Supabase `public.project_inquiries` table.
+  // Do NOT hide errors or report success unless Supabase confirms the enquiry was inserted!
   await createProjectInquiry({
     name,
     company,
@@ -411,227 +401,7 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
     message,
   });
 
-  const secrets = await resolveIntegrationSecrets();
-  const {
-    EMAILJS_PUBLIC_KEY,
-    EMAILJS_SERVICE_ID,
-    EMAILJS_ADMIN_TEMPLATE_ID,
-    EMAILJS_AUTO_REPLY_TEMPLATE_ID,
-    GOOGLE_SHEETS_WEBHOOK_URL
-  } = secrets;
-
-  const missingSecrets: string[] = [];
-  if (!EMAILJS_PUBLIC_KEY) missingSecrets.push('EMAILJS_PUBLIC_KEY');
-  if (!EMAILJS_SERVICE_ID) missingSecrets.push('EMAILJS_SERVICE_ID');
-  if (!EMAILJS_ADMIN_TEMPLATE_ID) missingSecrets.push('EMAILJS_ADMIN_TEMPLATE_ID');
-  if (!EMAILJS_AUTO_REPLY_TEMPLATE_ID) missingSecrets.push('EMAILJS_AUTO_REPLY_TEMPLATE_ID');
-  if (!GOOGLE_SHEETS_WEBHOOK_URL) missingSecrets.push('GOOGLE_SHEETS_WEBHOOK_URL');
-
-  if (missingSecrets.length > 0) {
-    const nowIso = new Date().toISOString();
-    const submissionDateTime = new Date(nowIso).toLocaleString('en-IN', {
-      dateStyle: 'medium',
-      timeStyle: 'long',
-      timeZone: 'Asia/Kolkata'
-    });
-    saveLocalEnquiryBackup({
-      id: Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
-      timestamp: nowIso,
-      submissionDateTime,
-      fullName: name,
-      name,
-      businessName: company || 'Not specified',
-      company: company || 'Not specified',
-      phoneNumber: phone,
-      phone,
-      emailAddress: email,
-      email,
-      service: pkgFields.service,
-      package: pkgFields.package,
-      package_id: pkgFields.package_id,
-      price: pkgFields.price,
-      timeline: params.timeline || pkgFields.timeline,
-      category: pkgFields.category,
-      budget: params.budget || pkgFields.budget,
-      start_date: pkgFields.start_date,
-      message,
-      lead_source: 'QBENCH Website',
-      lead_status: 'New',
-      emailStatus: 'Stored in Supabase',
-      whatsappStatus: 'Ready',
-      emailSentAt: submissionDateTime,
-      selectedPackage: params.selectedPackage || null,
-      selectedBlueprint: params.selectedBlueprint || null
-    });
-
-    return {
-      success: true,
-      message: 'Thank you! Your enquiry has been submitted and stored in Supabase. We’ll get back to you shortly.',
-      smtpConfigured: true,
-      smtpSuccess: true,
-      authentication: 'SUCCESS',
-      emailDelivery: 'SUCCESS',
-      deliveryChannel: 'Supabase project_inquiries'
-    };
-  }
-
-  // Initialize EmailJS once per public key
-  if (emailJsInitializedKey !== EMAILJS_PUBLIC_KEY) {
-    try {
-      emailjs.init({
-        publicKey: EMAILJS_PUBLIC_KEY
-      });
-      emailJsInitializedKey = EMAILJS_PUBLIC_KEY;
-    } catch {
-      // Ignore init error; publicKey is also passed to send()
-    }
-  }
-
-  // STEP 2: EmailJS Admin
-  console.log('QBENCH: Admin email started');
-
-  const adminTemplateParams = {
-    name,
-    company,
-    email,
-    phone,
-    service: pkgFields.service,
-    package: pkgFields.package,
-    package_id: pkgFields.package_id,
-    price: pkgFields.price,
-    timeline: pkgFields.timeline,
-    category: pkgFields.category,
-    budget: pkgFields.budget,
-    start_date: pkgFields.start_date,
-    message,
-    lead_source: 'QBENCH Website',
-    lead_status: 'New',
-    reply_to: email,
-    to_email: 'qbench.official@gmail.com'
-  };
-
-  try {
-    await sendEmailJsWithFallback({
-      type: 'admin',
-      serviceId: EMAILJS_SERVICE_ID,
-      templateId: EMAILJS_ADMIN_TEMPLATE_ID,
-      publicKey: EMAILJS_PUBLIC_KEY,
-      templateParams: adminTemplateParams
-    });
-    console.log('QBENCH: Admin email successful');
-  } catch (adminErr) {
-    console.error('QBENCH: EmailJS Admin FAILED', adminErr);
-    throw adminErr;
-  }
-
-  // STEP 3: EmailJS Auto-Reply
-  console.log('QBENCH: Auto-reply started');
-
-  const autoReplyTemplateParams = {
-    name,
-    email,
-    service: pkgFields.service,
-    package: pkgFields.package,
-    package_id: pkgFields.package_id,
-    price: pkgFields.price,
-    timeline: pkgFields.timeline,
-    category: pkgFields.category,
-    budget: pkgFields.budget,
-    message,
-    to_email: email,
-    user_email: email,
-    recipient_email: email,
-    to_name: name,
-    reply_to: 'qbench.official@gmail.com'
-  };
-
-  try {
-    await sendEmailJsWithFallback({
-      type: 'auto_reply',
-      serviceId: EMAILJS_SERVICE_ID,
-      templateId: EMAILJS_AUTO_REPLY_TEMPLATE_ID,
-      publicKey: EMAILJS_PUBLIC_KEY,
-      templateParams: autoReplyTemplateParams
-    });
-    console.log('QBENCH: Auto-reply successful');
-  } catch (autoReplyErr) {
-    console.error('QBENCH: EmailJS Auto-Reply FAILED', autoReplyErr);
-    throw autoReplyErr;
-  }
-
-  // STEP 4: Google Sheets
-  console.log('QBENCH: Google Sheets submission started');
-
-  const sheetPayload = {
-    name,
-    company,
-    email,
-    phone,
-    service: pkgFields.service,
-    package: pkgFields.package,
-    package_id: pkgFields.package_id,
-    price: pkgFields.price,
-    timeline: pkgFields.timeline,
-    category: pkgFields.category,
-    budget: pkgFields.budget,
-    start_date: pkgFields.start_date,
-    message,
-    lead_source: 'QBENCH Website',
-    lead_status: 'New'
-  };
-
-  try {
-    await postToGoogleSheetsWebhook(GOOGLE_SHEETS_WEBHOOK_URL, sheetPayload);
-    console.log('QBENCH: Google Sheets submission successful');
-  } catch (sheetsErr) {
-    console.error('QBENCH: Google Sheets FAILED', sheetsErr);
-    throw sheetsErr;
-  }
-
-  // STEP 5: WhatsApp Business Cloud API Notification (Server-Side)
-  console.log('QBENCH: WhatsApp notification started');
-
-  const whatsappPayload = {
-    name,
-    company,
-    email,
-    phone,
-    service: pkgFields.service,
-    package: pkgFields.package,
-    package_id: pkgFields.package_id,
-    price: pkgFields.price,
-    timeline: pkgFields.timeline,
-    category: pkgFields.category,
-    budget: pkgFields.budget,
-    start_date: pkgFields.start_date,
-    message,
-    lead_source: 'QBENCH Website',
-    lead_status: 'New'
-  };
-
-  let whatsappDelivered = false;
-  try {
-    const waResp = await fetch('/api/whatsapp-notify', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(whatsappPayload)
-    });
-
-    const waData = await waResp.json().catch(() => ({}));
-    if (!waResp.ok || !waData?.success) {
-      throw new Error(waData?.error || `WhatsApp notification failed with HTTP ${waResp.status}`);
-    }
-
-    whatsappDelivered = true;
-    console.log('QBENCH: WhatsApp notification successful');
-  } catch (whatsappErr) {
-    // Log clear diagnostic without breaking completed EmailJS + Google Sheets submission if WhatsApp is not yet configured
-    console.error('QBENCH: WhatsApp FAILED', whatsappErr);
-  }
-
-  // Save a local CRM backup copy after all steps succeed
+  // Save a local backup copy after Supabase insert succeeds
   const nowIso = new Date().toISOString();
   const submissionDateTime = new Date(nowIso).toLocaleString('en-IN', {
     dateStyle: 'medium',
@@ -655,19 +425,133 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
     package: pkgFields.package,
     package_id: pkgFields.package_id,
     price: pkgFields.price,
-    timeline: pkgFields.timeline,
+    timeline: params.timeline || pkgFields.timeline,
     category: pkgFields.category,
-    budget: pkgFields.budget,
+    budget: params.budget || pkgFields.budget,
     start_date: pkgFields.start_date,
     message,
     lead_source: 'QBENCH Website',
     lead_status: 'New',
-    emailStatus: 'Sent',
-    whatsappStatus: whatsappDelivered ? 'Sent' : 'Pending',
+    emailStatus: 'Stored in Supabase',
+    whatsappStatus: 'Ready',
     emailSentAt: submissionDateTime,
     selectedPackage: params.selectedPackage || null,
     selectedBlueprint: params.selectedBlueprint || null
   });
+
+  // STEP 2 (OPTIONAL): Trigger EmailJS / Google Sheets / WhatsApp notifications if configured.
+  // Failures in optional 3rd-party webhooks must not overwrite a confirmed Supabase insert.
+  const secrets = await resolveIntegrationSecrets();
+  const {
+    EMAILJS_PUBLIC_KEY,
+    EMAILJS_SERVICE_ID,
+    EMAILJS_ADMIN_TEMPLATE_ID,
+    EMAILJS_AUTO_REPLY_TEMPLATE_ID,
+    GOOGLE_SHEETS_WEBHOOK_URL
+  } = secrets;
+
+  const channelsUsed: string[] = ['Supabase project_inquiries'];
+
+  if (EMAILJS_PUBLIC_KEY && EMAILJS_SERVICE_ID && EMAILJS_ADMIN_TEMPLATE_ID) {
+    if (emailJsInitializedKey !== EMAILJS_PUBLIC_KEY) {
+      try {
+        emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+        emailJsInitializedKey = EMAILJS_PUBLIC_KEY;
+      } catch {
+        // Ignore init error
+      }
+    }
+
+    const adminTemplateParams = {
+      name,
+      company,
+      email,
+      phone,
+      service: pkgFields.service,
+      package: pkgFields.package,
+      package_id: pkgFields.package_id,
+      price: pkgFields.price,
+      timeline: pkgFields.timeline,
+      category: pkgFields.category,
+      budget: pkgFields.budget,
+      start_date: pkgFields.start_date,
+      message,
+      lead_source: 'QBENCH Website',
+      lead_status: 'New',
+      reply_to: email,
+      to_email: 'qbench.official@gmail.com'
+    };
+
+    try {
+      await sendEmailJsWithFallback({
+        type: 'admin',
+        serviceId: EMAILJS_SERVICE_ID,
+        templateId: EMAILJS_ADMIN_TEMPLATE_ID,
+        publicKey: EMAILJS_PUBLIC_KEY,
+        templateParams: adminTemplateParams
+      });
+      channelsUsed.push('EmailJS');
+    } catch (adminErr) {
+      console.warn('QBENCH: Optional EmailJS Admin notification skipped/failed:', adminErr);
+    }
+
+    if (EMAILJS_AUTO_REPLY_TEMPLATE_ID) {
+      const autoReplyTemplateParams = {
+        name,
+        email,
+        service: pkgFields.service,
+        package: pkgFields.package,
+        package_id: pkgFields.package_id,
+        price: pkgFields.price,
+        timeline: pkgFields.timeline,
+        category: pkgFields.category,
+        budget: pkgFields.budget,
+        message,
+        to_email: email,
+        user_email: email,
+        recipient_email: email,
+        to_name: name,
+        reply_to: 'qbench.official@gmail.com'
+      };
+
+      try {
+        await sendEmailJsWithFallback({
+          type: 'auto_reply',
+          serviceId: EMAILJS_SERVICE_ID,
+          templateId: EMAILJS_AUTO_REPLY_TEMPLATE_ID,
+          publicKey: EMAILJS_PUBLIC_KEY,
+          templateParams: autoReplyTemplateParams
+        });
+      } catch (autoReplyErr) {
+        console.warn('QBENCH: Optional EmailJS Auto-Reply skipped/failed:', autoReplyErr);
+      }
+    }
+  }
+
+  if (GOOGLE_SHEETS_WEBHOOK_URL) {
+    try {
+      await postToGoogleSheetsWebhook(GOOGLE_SHEETS_WEBHOOK_URL, {
+        name,
+        company,
+        email,
+        phone,
+        service: pkgFields.service,
+        package: pkgFields.package,
+        package_id: pkgFields.package_id,
+        price: pkgFields.price,
+        timeline: pkgFields.timeline,
+        category: pkgFields.category,
+        budget: pkgFields.budget,
+        start_date: pkgFields.start_date,
+        message,
+        lead_source: 'QBENCH Website',
+        lead_status: 'New'
+      });
+      channelsUsed.push('Google Sheets');
+    } catch (sheetsErr) {
+      console.warn('QBENCH: Optional Google Sheets webhook skipped/failed:', sheetsErr);
+    }
+  }
 
   return {
     success: true,
@@ -676,8 +560,6 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
     smtpSuccess: true,
     authentication: 'SUCCESS',
     emailDelivery: 'SUCCESS',
-    deliveryChannel: whatsappDelivered
-      ? 'EmailJS + Google Sheets CRM + WhatsApp Cloud API'
-      : 'EmailJS + Google Sheets CRM'
+    deliveryChannel: channelsUsed.join(' + ')
   };
 };

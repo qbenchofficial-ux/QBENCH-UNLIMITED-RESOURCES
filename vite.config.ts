@@ -132,7 +132,7 @@ export default defineConfig(({ mode }) => {
           env.VITE_SUPABASE_URL ||
           env.NEXT_PUBLIC_SUPABASE_URL ||
           env.SUPABASE_URL ||
-          ''
+          'https://zsbpxqzmkhcvxdvjoabp.supabase.co'
       ),
 
       'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify(

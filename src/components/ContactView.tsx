@@ -31,7 +31,7 @@ import {
   X
 } from 'lucide-react';
 import { NavSection, ServiceTab } from '../types';
-import { sendEmailJS } from '../lib/emailService';
+import { sendEmailJS, formatSupabaseError } from '../lib/emailService';
 import { useProjects } from '../hooks/useProjects';
 import LeadsDashboard from './LeadsDashboard';
 
@@ -176,6 +176,11 @@ export default function ContactView({ onNavigate }: ContactViewProps) {
   }, [selectedPackage, selectedBlueprint, freeConsultation]);
   const [formState, setFormState] = useState<'idle' | 'submitting' | 'success'>('idle');
   const [formError, setFormError] = useState<string | null>(null);
+  const [formErrorMeta, setFormErrorMeta] = useState<{
+    code?: string;
+    details?: string;
+    hint?: string;
+  } | null>(null);
   const [errors, setErrors] = useState<{
     name?: string;
     phone?: string;
@@ -503,6 +508,18 @@ ${message}`;
         `- Origin Page: ${freeConsultation.pageUrl || 'N/A'}\n` +
         `- Reference Number: ${freeConsultation.referenceId}\n\n` +
         `Message:\n"${formData.message}"`;
+    } else if (selectedPackage && !finalMessage.trim()) {
+      const optionsInfo =
+        selectedPackage.addonsOrOptions && selectedPackage.addonsOrOptions.length > 0
+          ? `\n\nOptions & Configurations Specified:\n${selectedPackage.addonsOrOptions.map((opt: string) => `- ${opt}`).join('\n')}`
+          : '';
+      finalMessage =
+        `Hi Q BENCH team! I would like to book the following service package:\n\n` +
+        `- Selected Package: ${selectedPackage.packageName}\n` +
+        `- Package ID: ${selectedPackage.packageId}\n` +
+        `- Price Quote: ${selectedPackage.packagePrice}\n` +
+        `- Estimated Delivery: ${selectedPackage.duration}${optionsInfo}\n\n` +
+        `Kindly coordinate my onboarding details and launch files. Thank you!`;
     }
 
     if (!selectedPackage && !selectedBlueprint && !finalMessage.trim()) {
@@ -522,6 +539,7 @@ ${message}`;
     isSubmittingRef.current = true;
     setFormState('submitting');
     setFormError(null);
+    setFormErrorMeta(null);
 
     const resolvedService = selectedPackage
       ? (selectedPackage.packageCategory || formData.service)
@@ -599,9 +617,19 @@ ${message}`;
       });
       setErrors({});
     } catch (error) {
-      setFormError(
-        'Something went wrong while submitting your enquiry. Please try again or contact QBENCH directly.'
-      );
+      const parsedErr = formatSupabaseError(error);
+      console.error('[QBENCH Enquiry Submission Error]:', {
+        message: parsedErr.message,
+        code: parsedErr.code,
+        details: parsedErr.details,
+        hint: parsedErr.hint,
+      });
+      setFormError(parsedErr.message);
+      setFormErrorMeta({
+        code: parsedErr.code,
+        details: parsedErr.details,
+        hint: parsedErr.hint,
+      });
       setFormState('idle');
     } finally {
       isSubmittingRef.current = false;
@@ -1228,11 +1256,29 @@ ${message}`;
                       </div>
 
                       {formError && (
-                        <div className="p-3.5 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl flex items-start gap-2.5">
+                        <div
+                          role="alert"
+                          className="p-3.5 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl flex items-start gap-2.5"
+                        >
                           <span className="text-sm shrink-0">⚠️</span>
-                          <div className="space-y-0.5">
-                            <p className="font-bold">Submission Error</p>
-                            <p className="text-red-700/90 leading-relaxed">{formError}</p>
+                          <div className="space-y-1 min-w-0">
+                            <p className="font-bold">
+                              Enquiry Submission Error
+                              {formErrorMeta?.code ? ` (Code: ${formErrorMeta.code})` : ''}
+                            </p>
+                            <p className="text-red-700/90 leading-relaxed break-words">
+                              {formError}
+                            </p>
+                            {formErrorMeta?.details && (
+                              <p className="text-[11px] font-mono text-red-700/80 break-words">
+                                <strong>Details:</strong> {formErrorMeta.details}
+                              </p>
+                            )}
+                            {formErrorMeta?.hint && (
+                              <p className="text-[11px] text-red-700/85 leading-relaxed break-words">
+                                <strong>Hint:</strong> {formErrorMeta.hint}
+                              </p>
+                            )}
                           </div>
                         </div>
                       )}

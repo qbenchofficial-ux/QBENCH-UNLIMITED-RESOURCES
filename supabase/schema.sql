@@ -134,6 +134,19 @@ alter table public.portfolio_images enable row level security;
 alter table public.site_settings enable row level security;
 alter table public.project_inquiries enable row level security;
 
+grant usage on schema public to anon, authenticated;
+grant select on table public.categories to anon, authenticated;
+grant select on table public.projects to anon, authenticated;
+grant select on table public.portfolio_images to anon, authenticated;
+grant select on table public.site_settings to anon, authenticated;
+grant insert on table public.project_inquiries to anon, authenticated;
+grant all on table public.admin_profiles to authenticated;
+grant all on table public.categories to authenticated;
+grant all on table public.projects to authenticated;
+grant all on table public.portfolio_images to authenticated;
+grant all on table public.site_settings to authenticated;
+grant all on table public.project_inquiries to authenticated;
+
 drop policy if exists "Users can view own admin profile" on public.admin_profiles;
 create policy "Users can view own admin profile"
 on public.admin_profiles

@@ -83,7 +83,24 @@ app.get('/api/integration-config', (_req, res) => {
     const matches = raw.match(/https:\/\/script\.google\.com\/macros\/s\/[^\s"']+?(?:\/exec|\/dev)/);
     return matches ? matches[0] : raw;
   };
+  const rawAnon = clean(
+    process.env.VITE_SUPABASE_ANON_KEY ||
+      process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY
+  );
+  const safeAnonKey =
+    rawAnon && !rawAnon.startsWith('sb_secret_') && !rawAnon.includes('service_role')
+      ? rawAnon
+      : '';
   return res.status(200).json({
+    VITE_SUPABASE_URL:
+      clean(
+        process.env.VITE_SUPABASE_URL ||
+          process.env.NEXT_PUBLIC_SUPABASE_URL ||
+          process.env.SUPABASE_URL
+      ) || 'https://zsbpxqzmkhcvxdvjoabp.supabase.co',
+    VITE_SUPABASE_ANON_KEY: safeAnonKey,
     EMAILJS_PUBLIC_KEY: clean(process.env.EMAILJS_PUBLIC_KEY || process.env.VITE_EMAILJS_PUBLIC_KEY),
     EMAILJS_SERVICE_ID: clean(process.env.EMAILJS_SERVICE_ID || process.env.VITE_EMAILJS_SERVICE_ID),
     EMAILJS_ADMIN_TEMPLATE_ID: clean(

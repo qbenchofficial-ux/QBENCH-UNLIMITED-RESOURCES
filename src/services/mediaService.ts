@@ -85,7 +85,7 @@ export async function uploadPortfolioImage(
 
   let recordId: string | undefined;
   if (projectId && folder === 'gallery') {
-    const { data: imgRow } = await supabase
+    const { data: imgRow, error: imgInsertErr } = await supabase
       .from('portfolio_images')
       .insert([
         {
@@ -98,8 +98,28 @@ export async function uploadPortfolioImage(
       .select('id')
       .maybeSingle();
 
-    if (imgRow?.id) {
+    if (!imgInsertErr && imgRow?.id) {
       recordId = String(imgRow.id);
+    } else if (imgInsertErr) {
+      // Fallback for alternate portfolio_images schema (file_name, storage_path, public_url)
+      const { data: altRow } = await supabase
+        .from('portfolio_images')
+        .insert([
+          {
+            project_id: projectId,
+            file_name: fileName,
+            storage_path: filePath,
+            public_url: publicUrl,
+            folder,
+            mime_type: mimeType,
+            size_bytes: file.size,
+          },
+        ])
+        .select('id')
+        .maybeSingle();
+      if (altRow?.id) {
+        recordId = String(altRow.id);
+      }
     }
   }
 
@@ -130,23 +150,30 @@ export async function getProjectPortfolioImages(
 
   const { data, error } = await supabase
     .from('portfolio_images')
-    .select('id, project_id, image_url, alt_text, sort_order, created_at')
+    .select('*')
     .eq('project_id', projectId)
-    .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true });
 
   if (error || !data) {
     return [];
   }
 
-  return data.map((row) => ({
-    id: String(row.id),
-    project_id: row.project_id ? String(row.project_id) : null,
-    image_url: String(row.image_url),
-    alt_text: row.alt_text ? String(row.alt_text) : null,
-    sort_order: typeof row.sort_order === 'number' ? row.sort_order : 0,
-    created_at: String(row.created_at || new Date().toISOString()),
-  }));
+  const mapped = (data as Record<string, unknown>[])
+    .map((row, idx) => ({
+      id: String(row.id || idx),
+      project_id: row.project_id ? String(row.project_id) : null,
+      image_url: String(row.image_url || row.public_url || ''),
+      alt_text: row.alt_text
+        ? String(row.alt_text)
+        : row.file_name
+        ? String(row.file_name)
+        : null,
+      sort_order: typeof row.sort_order === 'number' ? row.sort_order : idx,
+      created_at: String(row.created_at || new Date().toISOString()),
+    }))
+    .filter((item) => Boolean(item.image_url));
+
+  return mapped.sort((a, b) => a.sort_order - b.sort_order);
 }
 
 /**
@@ -172,7 +199,23 @@ export async function syncProjectPortfolioImages(
     sort_order: idx,
   }));
 
-  await supabase.from('portfolio_images').insert(rows);
+  const { error } = await supabase.from('portfolio_images').insert(rows);
+  if (error) {
+    // Fallback if table uses public_url / storage_path / file_name columns
+    const fallbackRows = cleanUrls.map((imageUrl, idx) => {
+      const storagePath =
+        extractStoragePathFromUrl(imageUrl) ||
+        `gallery/${projectId}-${idx}-${Date.now()}.jpg`;
+      return {
+        project_id: projectId,
+        file_name: storagePath.split('/').pop() || `gallery-${idx + 1}.jpg`,
+        storage_path: storagePath,
+        public_url: imageUrl,
+        folder: 'gallery',
+      };
+    });
+    await supabase.from('portfolio_images').insert(fallbackRows);
+  }
 }
 
 /**
@@ -228,17 +271,18 @@ export async function listPortfolioMedia(): Promise<MediaFile[]> {
   // 2. Also include any records in `public.portfolio_images`
   const { data: tableRows, error: tableError } = await supabase
     .from('portfolio_images')
-    .select('id, project_id, image_url, alt_text, sort_order, created_at')
+    .select('*')
     .order('created_at', { ascending: false })
     .limit(200);
 
   if (!tableError && tableRows) {
-    for (const row of tableRows) {
-      const imageUrl = String(row.image_url || '');
+    for (const row of tableRows as Record<string, unknown>[]) {
+      const imageUrl = String(row.image_url || row.public_url || '');
       if (!imageUrl || seenUrls.has(imageUrl)) continue;
       seenUrls.add(imageUrl);
 
       const storagePath =
+        (row.storage_path ? String(row.storage_path) : null) ||
         extractStoragePathFromUrl(imageUrl) ||
         imageUrl.split('/').pop() ||
         `image-${row.id}`;
@@ -247,13 +291,15 @@ export async function listPortfolioMedia(): Promise<MediaFile[]> {
         id: String(row.id),
         name: row.alt_text
           ? String(row.alt_text)
+          : row.file_name
+          ? String(row.file_name)
           : storagePath.split('/').pop() || 'portfolio-image',
         path: storagePath,
         url: imageUrl,
         alt_text: row.alt_text ? String(row.alt_text) : null,
         sort_order: typeof row.sort_order === 'number' ? row.sort_order : 0,
         created_at: String(row.created_at || new Date().toISOString()),
-        size: null,
+        size: typeof row.size_bytes === 'number' ? row.size_bytes : null,
         project_id: row.project_id ? String(row.project_id) : null,
       });
     }
@@ -288,10 +334,16 @@ export async function deletePortfolioMediaByPaths(
   }
 
   if (validUrls.length > 0) {
-    await supabase
+    const { error: delImgUrlErr } = await supabase
       .from('portfolio_images')
       .delete()
       .in('image_url', validUrls);
+    if (delImgUrlErr) {
+      await supabase
+        .from('portfolio_images')
+        .delete()
+        .in('public_url', validUrls);
+    }
   }
 }
 
