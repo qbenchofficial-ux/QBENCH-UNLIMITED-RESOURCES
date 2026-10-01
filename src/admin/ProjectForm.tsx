@@ -33,37 +33,42 @@ export default function ProjectForm({
   const [title, setTitle] = useState(initialProject?.title || '');
   const [slug, setSlug] = useState(initialProject?.slug || '');
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(Boolean(initialProject));
-  const [category, setCategory] = useState(
-    initialProject?.category || categories[0]?.name || 'Branding'
+
+  const initialCategoryObj =
+    categories.find(
+      (c) =>
+        c.id === initialProject?.category_id ||
+        c.name.toLowerCase() === (initialProject?.category || '').toLowerCase()
+    ) || categories[0];
+
+  const [categoryId, setCategoryId] = useState<string>(
+    initialProject?.category_id || initialCategoryObj?.id || ''
+  );
+  const [categoryName, setCategoryName] = useState<string>(
+    initialProject?.category || initialCategoryObj?.name || 'Branding'
   );
   const [client, setClient] = useState(initialProject?.client || '');
   const [year, setYear] = useState<number>(
     initialProject?.year || new Date().getFullYear()
   );
-  const [shortDescription, setShortDescription] = useState(
-    initialProject?.short_description || ''
+  const [description, setDescription] = useState(
+    initialProject?.description || initialProject?.short_description || ''
   );
-  const [description, setDescription] = useState(initialProject?.description || '');
   const [services, setServices] = useState<string[]>(initialProject?.services || []);
   const [serviceInput, setServiceInput] = useState('');
   const [coverImage, setCoverImage] = useState<string | null>(
     initialProject?.cover_image || null
   );
   const [gallery, setGallery] = useState<string[]>(initialProject?.gallery || []);
-  const [videoUrl, setVideoUrl] = useState(initialProject?.video_url || '');
   const [behanceUrl, setBehanceUrl] = useState(initialProject?.behance_url || '');
-  const [instagramUrl, setInstagramUrl] = useState(
-    initialProject?.instagram_url || ''
+  const [youtubeUrl, setYoutubeUrl] = useState(
+    initialProject?.youtube_url || initialProject?.video_url || ''
   );
-  const [websiteUrl, setWebsiteUrl] = useState(initialProject?.website_url || '');
   const [featured, setFeatured] = useState<boolean>(
     Boolean(initialProject?.featured)
   );
   const [status, setStatus] = useState<ProjectStatus>(
     initialProject?.status || 'draft'
-  );
-  const [sortOrder, setSortOrder] = useState<number>(
-    initialProject?.sort_order ?? 0
   );
 
   // Upload states
@@ -81,28 +86,51 @@ export default function ProjectForm({
       setTitle(initialProject.title);
       setSlug(initialProject.slug);
       setSlugManuallyEdited(true);
-      setCategory(initialProject.category || categories[0]?.name || 'Branding');
+      const matched =
+        categories.find(
+          (c) =>
+            c.id === initialProject.category_id ||
+            c.name.toLowerCase() === (initialProject.category || '').toLowerCase()
+        ) || categories[0];
+      setCategoryId(initialProject.category_id || matched?.id || '');
+      setCategoryName(initialProject.category || matched?.name || 'Branding');
       setClient(initialProject.client || '');
       setYear(initialProject.year || new Date().getFullYear());
-      setShortDescription(initialProject.short_description || '');
-      setDescription(initialProject.description || '');
+      setDescription(
+        initialProject.description || initialProject.short_description || ''
+      );
       setServices(initialProject.services || []);
       setCoverImage(initialProject.cover_image || null);
       setGallery(initialProject.gallery || []);
-      setVideoUrl(initialProject.video_url || '');
       setBehanceUrl(initialProject.behance_url || '');
-      setInstagramUrl(initialProject.instagram_url || '');
-      setWebsiteUrl(initialProject.website_url || '');
+      setYoutubeUrl(
+        initialProject.youtube_url || initialProject.video_url || ''
+      );
       setFeatured(Boolean(initialProject.featured));
       setStatus(initialProject.status || 'draft');
-      setSortOrder(initialProject.sort_order ?? 0);
+    } else if (!categoryId && categories.length > 0) {
+      setCategoryId(categories[0].id);
+      setCategoryName(categories[0].name);
     }
-  }, [initialProject, categories]);
+  }, [initialProject, categories, categoryId]);
 
   const handleTitleChange = (val: string) => {
     setTitle(val);
     if (!slugManuallyEdited) {
       setSlug(slugify(val));
+    }
+  };
+
+  const handleCategoryChange = (selectedVal: string) => {
+    const found = categories.find(
+      (c) => c.id === selectedVal || c.name === selectedVal
+    );
+    if (found) {
+      setCategoryId(found.id);
+      setCategoryName(found.name);
+    } else {
+      setCategoryId('');
+      setCategoryName(selectedVal);
     }
   };
 
@@ -130,7 +158,8 @@ export default function ProjectForm({
         file,
         'covers',
         (pct) => setCoverProgress(pct),
-        initialProject?.id || null
+        initialProject?.id || null,
+        title || file.name
       );
       setCoverImage(uploaded.url);
     } catch (err: unknown) {
@@ -162,7 +191,9 @@ export default function ProjectForm({
             const overall = Math.round(((i + pct / 100) / files.length) * 100);
             setGalleryProgress(overall);
           },
-          initialProject?.id || null
+          initialProject?.id || null,
+          `${title || 'Project'} — Gallery ${gallery.length + i + 1}`,
+          gallery.length + i
         );
         uploadedUrls.push(uploaded.url);
       }
@@ -199,7 +230,7 @@ export default function ProjectForm({
     setFormError(null);
     const cleanTitle = title.trim();
     const cleanSlug = slugify(slug || cleanTitle);
-    const cleanCategory = category.trim();
+    const cleanCategory = categoryName.trim();
 
     if (!cleanTitle) {
       setFormError('Project Title is required.');
@@ -209,7 +240,7 @@ export default function ProjectForm({
       setFormError('A valid project slug is required.');
       return;
     }
-    if (!cleanCategory) {
+    if (!cleanCategory && !categoryId) {
       setFormError('Category is required.');
       return;
     }
@@ -219,21 +250,19 @@ export default function ProjectForm({
       await onSubmit({
         title: cleanTitle,
         slug: cleanSlug,
-        short_description: shortDescription.trim(),
         description: description.trim(),
+        category_id: categoryId || null,
         category: cleanCategory,
         client: client.trim(),
         year: Number(year) || new Date().getFullYear(),
         services,
         cover_image: coverImage,
         gallery,
-        video_url: videoUrl.trim(),
         behance_url: behanceUrl.trim(),
-        instagram_url: instagramUrl.trim(),
-        website_url: websiteUrl.trim(),
+        youtube_url: youtubeUrl.trim(),
+        video_url: youtubeUrl.trim(),
         featured,
         status: targetStatus,
-        sort_order: Number(sortOrder) || 0,
       });
     } catch (err: unknown) {
       setFormError(
@@ -315,18 +344,19 @@ export default function ProjectForm({
             Category *
           </label>
           <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
+            value={categoryId || categoryName}
+            onChange={(e) => handleCategoryChange(e.target.value)}
             className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
           >
             {categories.map((cat) => (
-              <option key={cat.id} value={cat.name}>
+              <option key={cat.id} value={cat.id}>
                 {cat.name}
               </option>
             ))}
-            {category && !categories.some((c) => c.name === category) && (
-              <option value={category}>{category}</option>
-            )}
+            {categoryName &&
+              !categories.some(
+                (c) => c.id === categoryId || c.name === categoryName
+              ) && <option value={categoryName}>{categoryName}</option>}
           </select>
         </div>
 
@@ -360,33 +390,18 @@ export default function ProjectForm({
         </div>
       </div>
 
-      {/* Descriptions */}
-      <div className="space-y-5">
-        <div className="space-y-1.5">
-          <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
-            Short Description (Card Summary)
-          </label>
-          <textarea
-            rows={2}
-            value={shortDescription}
-            onChange={(e) => setShortDescription(e.target.value)}
-            placeholder="Concise 1–2 sentence overview displayed on portfolio cards..."
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
-            Full Description (Case Study Narrative)
-          </label>
-          <textarea
-            rows={5}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Detailed project story, creative direction, process, and outcomes..."
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
-          />
-        </div>
+      {/* Description */}
+      <div className="space-y-1.5">
+        <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
+          Description (Case Study Narrative)
+        </label>
+        <textarea
+          rows={5}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Detailed project story, creative direction, process, and outcomes..."
+          className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
+        />
       </div>
 
       {/* Services Delivered */}
@@ -444,7 +459,7 @@ export default function ProjectForm({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
             <span className="font-tech text-[10px] font-bold uppercase tracking-wider text-[#00685b]">
-              SUPABASE STORAGE (BUCKET: PORTFOLIO)
+              SUPABASE STORAGE (BUCKET: PORTFOLIO-IMAGES)
             </span>
             <h3 className="font-display text-sm font-black text-slate-900">
               Cover Image (JPG, JPEG, PNG, WEBP)
@@ -534,7 +549,7 @@ export default function ProjectForm({
               GALLERY MANAGEMENT ({gallery.length} IMAGES)
             </span>
             <h3 className="font-display text-sm font-black text-slate-900">
-              Project Gallery Images (Drag or use arrows to reorder)
+              Project Gallery Images (Saved in projects.gallery & public.portfolio_images)
             </h3>
           </div>
 
@@ -660,21 +675,8 @@ export default function ProjectForm({
         )}
       </div>
 
-      {/* External Project Links */}
+      {/* External Project Links: Behance URL & YouTube URL */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-        <div className="space-y-1.5">
-          <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
-            Video URL (YouTube / Vimeo / MP4)
-          </label>
-          <input
-            type="url"
-            value={videoUrl}
-            onChange={(e) => setVideoUrl(e.target.value)}
-            placeholder="https://..."
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-xs text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
-          />
-        </div>
-
         <div className="space-y-1.5">
           <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
             Behance URL
@@ -690,33 +692,20 @@ export default function ProjectForm({
 
         <div className="space-y-1.5">
           <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
-            Instagram URL
+            YouTube URL
           </label>
           <input
             type="url"
-            value={instagramUrl}
-            onChange={(e) => setInstagramUrl(e.target.value)}
-            placeholder="https://www.instagram.com/p/..."
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-xs text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
-            Website / Live Project URL
-          </label>
-          <input
-            type="url"
-            value={websiteUrl}
-            onChange={(e) => setWebsiteUrl(e.target.value)}
-            placeholder="https://..."
+            value={youtubeUrl}
+            onChange={(e) => setYoutubeUrl(e.target.value)}
+            placeholder="https://www.youtube.com/watch?v=..."
             className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-xs text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
           />
         </div>
       </div>
 
-      {/* Publishing, Featured & Sort Order Controls */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 pt-2 border-t border-slate-100">
+      {/* Publishing & Featured Controls */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2 border-t border-slate-100">
         <div className="space-y-1.5">
           <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
             Status
@@ -729,18 +718,6 @@ export default function ProjectForm({
             <option value="draft">Draft (Hidden from public)</option>
             <option value="published">Published (Visible on public portfolio)</option>
           </select>
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
-            Sort Order
-          </label>
-          <input
-            type="number"
-            value={sortOrder}
-            onChange={(e) => setSortOrder(Number(e.target.value))}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-xs text-slate-900 focus:border-[#00685b] focus:outline-none"
-          />
         </div>
 
         <div className="flex items-end pb-2">

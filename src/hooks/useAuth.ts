@@ -1,170 +1,195 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase, isSupabaseConfigured, verifyAdminProfile } from '../lib/supabase';
+import type { User } from '@supabase/supabase-js';
+import {
+  supabase,
+  isSupabaseConfigured,
+  SUPABASE_CONFIG_WARNING,
+  verifyAdminProfile,
+} from '../lib/supabase';
 import type { AdminProfile } from '../types/project';
 
-const LOCAL_ADMIN_SESSION_KEY = 'qbench_cms_admin_session_v1';
-
 export interface UseAuthResult {
+  user: User | null;
   adminProfile: AdminProfile | null;
+  isAdmin: boolean;
   loading: boolean;
   authError: string | null;
+  login: (email: string, password: string) => Promise<boolean>;
+  logout: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   clearError: () => void;
 }
 
 export function useAuth(): UseAuthResult {
+  const [user, setUser] = useState<User | null>(null);
   const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const initializedRef = useRef(false);
+
+  const resolveAdminFromUser = useCallback(async (currentUser: User | null) => {
+    if (!currentUser) {
+      setUser(null);
+      setAdminProfile(null);
+      return false;
+    }
+
+    setUser(currentUser);
+    const check = await verifyAdminProfile(currentUser.id, currentUser.email);
+    if (!check.isAdmin || !check.profile) {
+      await supabase.auth.signOut();
+      setUser(null);
+      setAdminProfile(null);
+      setAuthError(
+        check.error ||
+          'Access denied. Only authorized admins (role = "admin" in public.admin_profiles) can access the QBENCH Admin Dashboard.'
+      );
+      return false;
+    }
+
+    setAdminProfile(check.profile);
+    return true;
+  }, []);
 
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
     let mounted = true;
 
-    async function checkSession() {
+    async function initAuth() {
       if (!isSupabaseConfigured) {
-        try {
-          const saved = localStorage.getItem(LOCAL_ADMIN_SESSION_KEY);
-          if (saved && mounted) {
-            setAdminProfile(JSON.parse(saved));
-          }
-        } catch {
-          // Ignore
+        if (mounted) {
+          setUser(null);
+          setAdminProfile(null);
+          setLoading(false);
         }
-        if (mounted) setLoading(false);
         return;
       }
 
       try {
         const {
           data: { session },
+          error,
         } = await supabase.auth.getSession();
 
-        if (!session?.user) {
+        if (error) {
           if (mounted) {
+            setUser(null);
             setAdminProfile(null);
+            setAuthError(error.message);
             setLoading(false);
           }
           return;
         }
 
-        const check = await verifyAdminProfile(session.user.id, session.user.email);
-        if (!check.isAdmin || !check.profile) {
-          await supabase.auth.signOut();
+        if (!session?.user) {
           if (mounted) {
+            setUser(null);
             setAdminProfile(null);
-            setAuthError(
-              check.error ||
-                'Access denied. Only authorized admins (role = "admin") can access QBENCH CMS.'
-            );
             setLoading(false);
           }
           return;
         }
 
         if (mounted) {
-          setAdminProfile(check.profile);
+          await resolveAdminFromUser(session.user);
           setLoading(false);
         }
       } catch (err: unknown) {
         if (mounted) {
+          setUser(null);
           setAdminProfile(null);
-          setLoading(false);
           setAuthError(
-            err instanceof Error ? err.message : 'Failed to verify admin session.'
+            err instanceof Error ? err.message : 'Failed to verify Supabase session.'
           );
+          setLoading(false);
         }
       }
     }
 
-    checkSession();
+    initAuth();
 
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT' && mounted) {
-        setAdminProfile(null);
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
+        if (event === 'SIGNED_OUT' || !session?.user) {
+          setUser(null);
+          setAdminProfile(null);
+        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          await resolveAdminFromUser(session.user);
+        }
       }
-    });
+    );
 
     return () => {
       mounted = false;
-      sub.subscription.unsubscribe();
+      authListener.subscription.unsubscribe();
     };
-  }, []);
+  }, [resolveAdminFromUser]);
 
-  const signIn = useCallback(async (email: string, password: string): Promise<boolean> => {
-    setAuthError(null);
-    setLoading(true);
+  const login = useCallback(
+    async (email: string, password: string): Promise<boolean> => {
+      setAuthError(null);
 
-    try {
+      if (!isSupabaseConfigured) {
+        setAuthError(SUPABASE_CONFIG_WARNING);
+        return false;
+      }
+
       const cleanEmail = email.trim();
       if (!cleanEmail || !password) {
         setAuthError('Email and password are required.');
         return false;
       }
 
-      if (!isSupabaseConfigured) {
-        const localProfile: AdminProfile = {
-          id: 'local-admin-id',
-          user_id: 'local-admin-user-id',
+      setLoading(true);
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
-          role: 'admin',
-          created_at: new Date().toISOString(),
-        };
-        localStorage.setItem(LOCAL_ADMIN_SESSION_KEY, JSON.stringify(localProfile));
-        setAdminProfile(localProfile);
-        return true;
-      }
+          password,
+        });
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
+        if (error || !data.user) {
+          setAuthError(error?.message || 'Invalid email or password.');
+          return false;
+        }
 
-      if (error || !data.user) {
-        setAuthError(error?.message || 'Invalid email or password.');
-        return false;
-      }
-
-      const check = await verifyAdminProfile(data.user.id, data.user.email);
-      if (!check.isAdmin || !check.profile) {
-        await supabase.auth.signOut();
-        setAdminProfile(null);
+        const ok = await resolveAdminFromUser(data.user);
+        return ok;
+      } catch (err: unknown) {
         setAuthError(
-          check.error ||
-            'Access denied. Your account does not have an authorized admin profile (role = "admin").'
+          err instanceof Error ? err.message : 'Authentication failed.'
         );
         return false;
+      } finally {
+        setLoading(false);
       }
+    },
+    [resolveAdminFromUser]
+  );
 
-      setAdminProfile(check.profile);
-      return true;
-    } catch (err: unknown) {
-      setAuthError(err instanceof Error ? err.message : 'Authentication error.');
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const signOut = useCallback(async () => {
-    localStorage.removeItem(LOCAL_ADMIN_SESSION_KEY);
+  const logout = useCallback(async () => {
+    setAuthError(null);
     if (isSupabaseConfigured) {
       await supabase.auth.signOut();
     }
+    setUser(null);
     setAdminProfile(null);
   }, []);
 
   const clearError = useCallback(() => setAuthError(null), []);
 
   return {
+    user,
     adminProfile,
+    isAdmin: Boolean(adminProfile && adminProfile.role === 'admin'),
     loading,
     authError,
-    signIn,
-    signOut,
+    login,
+    logout,
+    signIn: login,
+    signOut: logout,
     clearError,
   };
 }

@@ -10,15 +10,25 @@ const supabaseAnonKey = (
 
 function isValidUrl(url: string): boolean {
   if (!url || !url.startsWith('http')) return false;
-  if (url.includes('your-project-id') || url.includes('placeholder-project')) return false;
+  if (
+    url.includes('YOUR_SUPABASE_PROJECT_URL') ||
+    url.includes('your-project-id') ||
+    url.includes('placeholder-project')
+  ) {
+    return false;
+  }
   return true;
 }
 
 function isValidAnonKey(key: string): boolean {
   if (!key) return false;
-  // Never allow service_role or secret keys in the browser
+  // Never allow service_role or secret keys in frontend code
   if (key.startsWith('sb_secret_') || key.includes('service_role')) return false;
-  if (key.includes('your-supabase') || key.includes('placeholder-')) {
+  if (
+    key.includes('YOUR_SUPABASE_') ||
+    key.includes('your-supabase') ||
+    key.includes('placeholder-')
+  ) {
     return false;
   }
   return true;
@@ -27,6 +37,9 @@ function isValidAnonKey(key: string): boolean {
 export const isSupabaseConfigured = Boolean(
   isValidUrl(supabaseUrl) && isValidAnonKey(supabaseAnonKey)
 );
+
+export const SUPABASE_CONFIG_WARNING =
+  'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment variables to connect to your Supabase project.';
 
 export async function ensureSupabaseConfig(): Promise<boolean> {
   return isSupabaseConfigured;
@@ -45,8 +58,10 @@ export const supabase: SupabaseClient = createClient(
 );
 
 export const PORTFOLIO_BUCKET = 'portfolio-images';
-export const LEGACY_PORTFOLIO_BUCKET = 'portfolio';
 export const STORAGE_BUCKET = 'qbench-resources';
+
+export const AUTHORIZED_ADMIN_EMAIL = 'qbench.official@gmail.com';
+export const AUTHORIZED_ADMIN_USER_ID = 'ab936bea-03f9-428f-a8a2-6b3e0a29edbe';
 
 export function slugify(input: string): string {
   return input
@@ -59,8 +74,8 @@ export function slugify(input: string): string {
 }
 
 /**
- * Verify that the authenticated user has an authorized row in `public.admin_profiles`
- * with `role = 'admin'` (matching either `user_id = auth.uid()` or `id = auth.uid()`).
+ * Verify that the authenticated Supabase user exists in `public.admin_profiles`
+ * with `user_id = auth.uid()` and `role = 'admin'`.
  */
 export async function verifyAdminProfile(
   userId: string,
@@ -70,14 +85,22 @@ export async function verifyAdminProfile(
   profile: AdminProfile | null;
   error?: string;
 }> {
+  if (!isSupabaseConfigured) {
+    return {
+      isAdmin: false,
+      profile: null,
+      error: SUPABASE_CONFIG_WARNING,
+    };
+  }
+
   if (!userId) {
     return { isAdmin: false, profile: null, error: 'Not authenticated.' };
   }
 
   const { data, error } = await supabase
     .from('admin_profiles')
-    .select('*')
-    .or(`user_id.eq.${userId},id.eq.${userId}`)
+    .select('id, user_id, email, role, created_at')
+    .eq('user_id', userId)
     .maybeSingle();
 
   if (error) {
@@ -89,36 +112,36 @@ export async function verifyAdminProfile(
       isAdmin: false,
       profile: (data as AdminProfile) || null,
       error:
-        'Access denied. Your account does not have an authorized admin profile (role = "admin").',
+        'Access denied. Your account is not registered as an admin (role = "admin") in public.admin_profiles.',
     };
   }
 
   return {
     isAdmin: true,
     profile: {
-      id: data.id,
-      user_id: data.user_id || data.id,
-      email: data.email || userEmail || '',
-      role: data.role,
-      created_at: data.created_at,
+      id: String(data.id),
+      user_id: String(data.user_id),
+      email: String(data.email || userEmail || AUTHORIZED_ADMIN_EMAIL),
+      role: String(data.role),
+      created_at: data.created_at ? String(data.created_at) : undefined,
     },
   };
 }
 
 /**
- * Legacy helper for uploading to qbench-resources bucket if used by existing components.
+ * Helper for uploading to qbench-resources bucket if used by existing components.
  */
 export async function uploadToQBenchBucket(
   file: File,
   folder: 'resources' | 'thumbnails'
 ): Promise<string> {
+  if (!isSupabaseConfigured) {
+    throw new Error(SUPABASE_CONFIG_WARNING);
+  }
+
   const ext = file.name.split('.').pop() || 'bin';
   const safeBase = slugify(file.name.replace(/\.[^/.]+$/, '')) || 'file';
   const filePath = `${folder}/${Date.now()}-${safeBase}.${ext}`;
-
-  if (!isSupabaseConfigured) {
-    return URL.createObjectURL(file);
-  }
 
   const { error: uploadError } = await supabase.storage
     .from(STORAGE_BUCKET)

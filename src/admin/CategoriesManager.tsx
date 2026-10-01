@@ -4,7 +4,7 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
-} from '../services/projectService';
+} from '../services/categoryService';
 import type { Category, Project } from '../types/project';
 import { Plus, Edit3, Trash2, Tags, Loader2, X } from 'lucide-react';
 
@@ -68,7 +68,14 @@ export default function CategoriesManager({
     }
   };
 
-  const handleDelete = async (cat: Category) => {
+  const handleDelete = async (cat: Category, linkedCount: number) => {
+    if (linkedCount > 0) {
+      onNotify(
+        'error',
+        `Cannot delete "${cat.name}" while ${linkedCount} project(s) are assigned to it. Reassign those projects first.`
+      );
+      return;
+    }
     try {
       await deleteCategory(cat.id);
       onNotify('success', `Deleted category "${cat.name}".`);
@@ -196,6 +203,7 @@ export default function CategoriesManager({
         {categories.map((cat) => {
           const count = projects.filter(
             (p) =>
+              p.category_id === cat.id ||
               (p.category || '').toLowerCase() === cat.name.toLowerCase() ||
               slugify(p.category || '') === cat.slug
           ).length;
@@ -237,7 +245,7 @@ export default function CategoriesManager({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDelete(cat)}
+                  onClick={() => handleDelete(cat, count)}
                   className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50/70 px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-100 cursor-pointer"
                 >
                   <Trash2 className="h-3.5 w-3.5" />

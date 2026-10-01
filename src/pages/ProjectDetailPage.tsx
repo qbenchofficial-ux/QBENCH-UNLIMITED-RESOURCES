@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { getProjectBySlug } from '../services/projectService';
+import { useAuth } from '../hooks/useAuth';
 import type { Project } from '../types/project';
 import type { NavSection } from '../types';
 import {
@@ -27,18 +28,21 @@ export default function ProjectDetailPage({
   onNavigate,
   onOpenPortfolio,
 }: ProjectDetailPageProps) {
+  const { isAdmin, loading: authLoading } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState<string | null>(null);
 
   useEffect(() => {
+    if (authLoading) return;
     let mounted = true;
     async function fetchDetail() {
       setLoading(true);
       setError(null);
       try {
-        const found = await getProjectBySlug(slug, true);
+        // Only load draft projects if the current user is an authenticated admin
+        const found = await getProjectBySlug(slug, isAdmin);
         if (mounted) {
           setProject(found);
           setActiveImage(found?.cover_image || found?.gallery?.[0] || null);
@@ -59,9 +63,9 @@ export default function ProjectDetailPage({
     return () => {
       mounted = false;
     };
-  }, [slug]);
+  }, [slug, isAdmin, authLoading]);
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="mx-auto max-w-7xl px-6 py-24 lg:px-12 flex flex-col items-center justify-center space-y-4">
         <Loader2 className="h-8 w-8 text-brand-primary animate-spin" />
@@ -138,9 +142,21 @@ export default function ProjectDetailPage({
       ? `${window.location.origin}/portfolio/${project.slug}`
       : `https://qbench.agency/portfolio/${project.slug}`;
 
+  const portfolioImageUrls = (project.portfolio_images || [])
+    .map((img) => img.image_url)
+    .filter(Boolean);
+
   const allImages = Array.from(
-    new Set([project.cover_image, ...(project.gallery || [])].filter(Boolean))
+    new Set(
+      [
+        project.cover_image,
+        ...(project.gallery || []),
+        ...portfolioImageUrls,
+      ].filter(Boolean)
+    )
   ) as string[];
+
+  const youtubeLink = project.youtube_url || project.video_url;
 
   return (
     <article className="mx-auto max-w-7xl px-6 py-12 lg:px-12 lg:py-16 space-y-14">
@@ -184,9 +200,9 @@ export default function ProjectDetailPage({
           <h1 className="font-display text-3xl sm:text-5xl font-black tracking-tight text-brand-text leading-tight">
             {project.title}
           </h1>
-          {project.short_description && (
+          {project.description && (
             <p className="font-sans text-sm sm:text-base text-brand-text-variant leading-relaxed max-w-3xl">
-              {project.short_description}
+              {project.description.split('\n')[0]}
             </p>
           )}
         </div>
@@ -234,11 +250,11 @@ export default function ProjectDetailPage({
             </div>
           )}
 
-          {/* External Links */}
+          {/* External Links: Behance & YouTube */}
           {(project.behance_url ||
-            project.instagram_url ||
+            youtubeLink ||
             project.website_url ||
-            project.video_url) && (
+            project.instagram_url) && (
             <div className="pt-3 border-t border-brand-outline/15 flex flex-wrap gap-2">
               {project.behance_url && (
                 <a
@@ -249,6 +265,17 @@ export default function ProjectDetailPage({
                 >
                   <span>View on Behance</span>
                   <ArrowUpRight className="h-3.5 w-3.5" />
+                </a>
+              )}
+              {youtubeLink && (
+                <a
+                  href={youtubeLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-brand-outline/40 bg-white hover:bg-brand-surface-low px-3.5 py-2 font-display text-xs font-bold text-brand-text transition-colors"
+                >
+                  <Video className="h-3.5 w-3.5 text-brand-primary" />
+                  <span>Watch on YouTube</span>
                 </a>
               )}
               {project.website_url && (
@@ -271,17 +298,6 @@ export default function ProjectDetailPage({
                 >
                   <span>Instagram</span>
                   <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-              )}
-              {project.video_url && (
-                <a
-                  href={project.video_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-brand-outline/40 bg-white hover:bg-brand-surface-low px-3.5 py-2 font-display text-xs font-bold text-brand-text transition-colors"
-                >
-                  <Video className="h-3.5 w-3.5 text-brand-primary" />
-                  <span>Watch Video</span>
                 </a>
               )}
             </div>
@@ -341,7 +357,7 @@ export default function ProjectDetailPage({
       )}
 
       {/* Full Gallery Grid */}
-      {project.gallery && project.gallery.length > 1 && (
+      {allImages.length > 1 && (
         <section className="space-y-6">
           <div className="space-y-1">
             <span className="font-tech text-xs tracking-widest text-brand-primary font-bold uppercase">
@@ -353,7 +369,7 @@ export default function ProjectDetailPage({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {project.gallery.map((imgUrl, idx) => (
+            {allImages.map((imgUrl, idx) => (
               <div
                 key={`gallery-grid-${idx}`}
                 className="rounded-2xl overflow-hidden border border-brand-outline/20 bg-white shadow-2xs"

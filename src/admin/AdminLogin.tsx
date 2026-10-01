@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
+import { isSupabaseConfigured, SUPABASE_CONFIG_WARNING } from '../lib/supabase';
 import QBenchLogo from '../components/QBenchLogo';
 import { Lock, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 
@@ -47,6 +48,16 @@ export default function AdminLogin({
           </div>
         </div>
 
+        {!isSupabaseConfigured && (
+          <div
+            role="status"
+            className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-800"
+          >
+            <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+            <span className="leading-relaxed">{SUPABASE_CONFIG_WARNING}</span>
+          </div>
+        )}
+
         {error && (
           <div
             role="alert"
@@ -72,7 +83,7 @@ export default function AdminLogin({
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@qbench.agency"
+              placeholder="qbench.official@gmail.com"
               className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none transition-colors"
             />
           </div>
