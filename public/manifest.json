@@ -1,21 +1,13 @@
 {
-  "id": "/",
-  "name": "QBench – Unlimited Resources",
-  "short_name": "QBench Resources",
-  "description": "QBench Unlimited Resources – useful study materials, digital tools, learning resources and productivity content in one place.",
+  "name": "QBENCH Creative Agency",
+  "short_name": "QBENCH",
+  "description": "QBENCH Creative Agency — Strategy, Creativity & Execution.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "theme_color": "#4CAF50",
-  "background_color": "#FFFFFF",
-  "lang": "en-IN",
-  "dir": "ltr",
-  "categories": [
-    "education",
-    "productivity",
-    "utilities"
-  ],
+  "background_color": "#0B0B0B",
   "icons": [
     {
       "src": "/icons/icon-192.png",

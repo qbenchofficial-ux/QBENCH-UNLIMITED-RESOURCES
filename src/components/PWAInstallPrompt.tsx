@@ -18,7 +18,7 @@ export const PWAInstallButton: React.FC<{ mobileFullWidth?: boolean }> = ({ mobi
         className={`flex items-center justify-center gap-2 rounded-xl border border-brand-primary/25 bg-brand-primary/10 px-4 py-2.5 font-display text-xs font-semibold tracking-wider text-brand-primary hover:bg-brand-primary hover:text-white transition-all duration-300 cursor-pointer ${
           mobileFullWidth ? 'w-full py-3 text-sm' : ''
         }`}
-        title="Install SSC Prep 2026–27 App"
+        title="Install QBENCH Creative Agency App"
       >
         <Download className="h-4 w-4 shrink-0" />
         <span>Install App</span>
@@ -45,7 +45,7 @@ export const PWAInstallButton: React.FC<{ mobileFullWidth?: boolean }> = ({ mobi
             <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl border border-brand-outline/20">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-display text-base font-bold text-brand-text">
-                  Install SSC Prep 2026–27
+                  Install QBENCH Creative Agency
                 </h3>
                 <button
                   type="button"

@@ -43,57 +43,16 @@ export default defineConfig(({ mode }) => {
         // Generate the service worker automatically.
         strategies: 'generateSW',
 
-        manifestFilename: 'manifest.webmanifest',
+        // Use public/manifest.json directly (linked in index.html) to avoid duplicate manifest files.
+        manifest: false,
 
         includeAssets: [
+          'manifest.json',
           'apple-touch-icon.png',
           'icon.svg',
           'icons/icon-192.png',
           'icons/icon-512.png',
         ],
-
-        manifest: {
-          id: '/',
-          name: 'QBench – Unlimited Resources',
-          short_name: 'QBench Resources',
-
-          description:
-            'QBench Unlimited Resources – useful study materials, digital tools, learning resources and productivity content in one place.',
-
-          start_url: '/',
-          scope: '/',
-
-          display: 'standalone',
-          orientation: 'portrait',
-
-          theme_color: '#4CAF50',
-          background_color: '#FFFFFF',
-
-          lang: 'en-IN',
-          dir: 'ltr',
-
-          categories: [
-            'education',
-            'productivity',
-            'utilities',
-          ],
-
-          icons: [
-            {
-              src: '/icons/icon-192.png',
-              sizes: '192x192',
-              type: 'image/png',
-              purpose: 'any maskable',
-            },
-
-            {
-              src: '/icons/icon-512.png',
-              sizes: '512x512',
-              type: 'image/png',
-              purpose: 'any maskable',
-            },
-          ],
-        },
 
         workbox: {
           // Cache the application shell and static assets.
