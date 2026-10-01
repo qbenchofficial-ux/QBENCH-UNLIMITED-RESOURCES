@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { NavSection, ServiceTab } from '../types';
+import { useProjects } from '../hooks/useProjects';
 import QBenchLogo from './QBenchLogo';
 import { 
   Facebook, 
@@ -22,6 +23,7 @@ interface FooterProps {
 }
 
 export default function Footer({ onNavigate }: FooterProps) {
+  const { settings } = useProjects('public');
   const [copied, setCopied] = useState(false);
   
   const handleScrollTop = () => {
@@ -30,7 +32,7 @@ export default function Footer({ onNavigate }: FooterProps) {
 
   const handleCopyEmail = (e: React.MouseEvent) => {
     e.preventDefault();
-    navigator.clipboard.writeText('qbench.official@gmail.com');
+    navigator.clipboard.writeText(settings.email || 'qbench.official@gmail.com');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -55,7 +57,8 @@ export default function Footer({ onNavigate }: FooterProps) {
             </div>
             
             <p className="font-sans text-xs text-white/60 leading-relaxed font-medium">
-              Creative Agency for Branding, Design, Web Development, Digital Marketing, and Motion Graphics.
+              {settings.agency_description ||
+                'Creative Agency for Branding, Design, Web Development, Digital Marketing, and Motion Graphics.'}
             </p>
             
             {/* Professional Digital Presence Grid */}
@@ -65,7 +68,7 @@ export default function Footer({ onNavigate }: FooterProps) {
               </span>
               <div className="grid grid-cols-2 gap-3">
                 <a 
-                  href="https://linkedin.com/company/qbench" 
+                  href={settings.linkedin_url || 'https://linkedin.com/company/qbench'} 
                   target="_blank" 
                   rel="noreferrer"
                   className="group block p-3.5 rounded-xl bg-white/5 border border-white/10 hover:border-[#45b88a]/40 hover:bg-white/[0.08] transition-all duration-300"
@@ -84,21 +87,24 @@ export default function Footer({ onNavigate }: FooterProps) {
                 </a>
 
                 <a 
-                  href="https://twitter.com/qbench" 
+                  href={
+                    settings.behance_url ||
+                    'https://www.behance.net/gallery/253620337/The-Journey-of-a-Ring-Luxury-Jewellery-Motion-Design'
+                  } 
                   target="_blank" 
                   rel="noreferrer"
                   className="group block p-3.5 rounded-xl bg-white/5 border border-white/10 hover:border-[#45b88a]/40 hover:bg-white/[0.08] transition-all duration-300"
                 >
                   <div className="flex items-center gap-2 mb-1.5">
                     <div className="p-1 rounded-lg bg-[#1da1f2]/10 text-white/90 group-hover:text-[#45b88a] transition-colors">
-                      <Twitter className="h-3.5 w-3.5" />
+                      <Globe className="h-3.5 w-3.5" />
                     </div>
                     <span className="font-display text-xs font-bold text-white group-hover:text-[#45b88a] transition-colors">
-                      Twitter
+                      Behance
                     </span>
                   </div>
                   <p className="text-[10px] text-white/50 leading-normal line-clamp-2">
-                    Design insights, future tech drop-offs & drops.
+                    Creative showcases, motion graphics & visual identity.
                   </p>
                 </a>
               </div>
@@ -116,7 +122,10 @@ export default function Footer({ onNavigate }: FooterProps) {
                     <Facebook className="h-3 w-3" />
                   </a>
                   <a 
-                    href="https://www.instagram.com/qbench_official?igsh=MXdscDgwMHFzd2d1aA==" 
+                    href={
+                      settings.instagram_url ||
+                      'https://www.instagram.com/qbench_official?igsh=MXdscDgwMHFzd2d1aA=='
+                    } 
                     target="_blank" 
                     rel="noreferrer" 
                     className="h-6 w-6 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/40 hover:text-[#45b88a] hover:bg-white/10 transition-colors"
@@ -258,12 +267,12 @@ export default function Footer({ onNavigate }: FooterProps) {
             <ul className="space-y-3.5">
               <li className="flex items-center space-x-2.5">
                 <Phone className="h-4 w-4 text-[#45b88a] shrink-0" />
-                <span className="font-sans text-xs text-white/70 font-semibold tracking-wider">+91 73565 26932</span>
+                <span className="font-sans text-xs text-white/70 font-semibold tracking-wider">{settings.phone || '+91 73565 26932'}</span>
               </li>
               <li className="flex items-center space-x-2.5">
                 <MessageCircle className="h-4 w-4 text-[#25D366] shrink-0" />
                 <a 
-                  href="https://wa.me/917356526932?text=Hello%20Q%20BENCH,%20I'm%20interested%20in%20your%20services!" 
+                  href={`https://wa.me/${(settings.whatsapp || '917356526932').replace(/[^0-9]/g, '')}?text=Hello%20Q%20BENCH,%20I'm%20interested%20in%20your%20services!`} 
                   target="_blank" 
                   rel="noreferrer" 
                   className="font-sans text-xs text-[#25D366] hover:text-[#88f8c5] font-semibold transition-colors"
@@ -274,7 +283,7 @@ export default function Footer({ onNavigate }: FooterProps) {
               <li className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2.5">
                 <div className="flex items-center space-x-2.5">
                   <Mail className="h-4 w-4 text-[#45b88a] shrink-0" />
-                  <a href="mailto:qbench.official@gmail.com" className="font-sans text-xs text-white/70 hover:text-[#88f8c5] transition-colors">qbench.official@gmail.com</a>
+                  <a href={`mailto:${settings.email || 'qbench.official@gmail.com'}`} className="font-sans text-xs text-white/70 hover:text-[#88f8c5] transition-colors">{settings.email || 'qbench.official@gmail.com'}</a>
                 </div>
                 <button
                   onClick={handleCopyEmail}
@@ -297,7 +306,7 @@ export default function Footer({ onNavigate }: FooterProps) {
               </li>
               <li className="flex items-center space-x-2.5">
                 <Globe className="h-4 w-4 text-[#45b88a] shrink-0" />
-                <a href="https://www.qbench.in" target="_blank" rel="noreferrer" className="font-sans text-xs text-white/70 hover:text-[#88f8c5] transition-colors">www.qbench.in</a>
+                <a href={settings.website_url || 'https://www.qbench.in'} target="_blank" rel="noreferrer" className="font-sans text-xs text-white/70 hover:text-[#88f8c5] transition-colors">{(settings.website_url || 'www.qbench.in').replace(/^https?:\/\//, '')}</a>
               </li>
               <li className="flex items-start space-x-2.5">
                 <MapPin className="h-4 w-4 text-[#45b88a] mt-0.5 shrink-0" />

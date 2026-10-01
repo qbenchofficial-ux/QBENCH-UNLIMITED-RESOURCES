@@ -5,7 +5,11 @@ import {
   QBenchAnnouncement,
   RESOURCE_TYPES,
 } from '../types';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  supabase,
+  isSupabaseConfigured,
+  ensureSupabaseConfig,
+} from '../lib/supabase';
 import {
   Search,
   Star,
@@ -27,23 +31,30 @@ export default function PublicResourcesSection() {
   const [selectedType, setSelectedType] = useState<string>('all');
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      try {
-        const localRes = JSON.parse(localStorage.getItem('qbench_local_resources_v1') || '[]');
-        const localCat = JSON.parse(localStorage.getItem('qbench_local_categories_v1') || '[]');
-        const localAnn = JSON.parse(localStorage.getItem('qbench_local_announcements_v1') || '[]');
-        setResources(Array.isArray(localRes) ? localRes.filter((r: any) => r.published) : []);
-        setCategories(Array.isArray(localCat) ? localCat.filter((c: any) => c.published) : []);
-        setAnnouncements(Array.isArray(localAnn) ? localAnn.filter((a: any) => a.published) : []);
-      } catch {
-        // Ignore
-      }
-      return;
-    }
     let mounted = true;
 
     async function loadPublicSupabaseData() {
       setLoading(true);
+      await ensureSupabaseConfig();
+
+      if (!isSupabaseConfigured) {
+        try {
+          const localRes = JSON.parse(localStorage.getItem('qbench_local_resources_v1') || '[]');
+          const localCat = JSON.parse(localStorage.getItem('qbench_local_categories_v1') || '[]');
+          const localAnn = JSON.parse(localStorage.getItem('qbench_local_announcements_v1') || '[]');
+          if (mounted) {
+            setResources(Array.isArray(localRes) ? localRes.filter((r: any) => r.published) : []);
+            setCategories(Array.isArray(localCat) ? localCat.filter((c: any) => c.published) : []);
+            setAnnouncements(Array.isArray(localAnn) ? localAnn.filter((a: any) => a.published) : []);
+          }
+        } catch {
+          // Ignore
+        } finally {
+          if (mounted) setLoading(false);
+        }
+        return;
+      }
+
       try {
         const [resQuery, catQuery, annQuery] = await Promise.all([
           supabase

@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { NavSection, ServiceTab } from '../types';
 import { sendEmailJS } from '../lib/emailService';
+import { useProjects } from '../hooks/useProjects';
 import LeadsDashboard from './LeadsDashboard';
 
 interface ContactViewProps {
@@ -39,6 +40,7 @@ interface ContactViewProps {
 }
 
 export default function ContactView({ onNavigate }: ContactViewProps) {
+  const { settings } = useProjects('public');
   // Load selected package from local storage
   const [selectedPackage, setSelectedPackage] = useState<any>(() => {
     try {
@@ -104,13 +106,17 @@ export default function ContactView({ onNavigate }: ContactViewProps) {
     }));
   };
 
-  // Form State using the exact keys requested for EmailJS
+  // Form State using the exact keys requested for EmailJS + Supabase project_inquiries
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
     email: '',
     company: '',
     service: 'Branding', // Default service option
+    budget: '',
+    timeline: '',
+    projectDescription: '',
+    referenceUrl: '',
     message: ''
   });
 
@@ -532,6 +538,10 @@ ${message}`;
         phone: trimmedPhone,
         company: trimmedCompany,
         service: resolvedService,
+        budget: formData.budget.trim(),
+        timeline: formData.timeline.trim(),
+        project_description: formData.projectDescription.trim() || finalMessage,
+        reference_url: formData.referenceUrl.trim(),
         message: finalMessage,
         selectedPackage,
         selectedBlueprint,
@@ -553,6 +563,10 @@ ${message}`;
         email: trimmedEmail,
         company: trimmedCompany,
         service: resolvedService,
+        budget: formData.budget.trim(),
+        timeline: formData.timeline.trim(),
+        projectDescription: formData.projectDescription.trim(),
+        referenceUrl: formData.referenceUrl.trim(),
         message: finalMessage
       });
 
@@ -577,6 +591,10 @@ ${message}`;
         email: '',
         company: '',
         service: 'Branding',
+        budget: '',
+        timeline: '',
+        projectDescription: '',
+        referenceUrl: '',
         message: ''
       });
       setErrors({});
@@ -590,31 +608,32 @@ ${message}`;
     }
   };
 
+  const waClean = (settings.whatsapp || '917356525932').replace(/[^0-9]/g, '');
   const contactInfos = [
     {
       icon: Mail,
       title: 'Email Address',
-      desc: 'qbench.official@gmail.com',
+      desc: settings.email || 'qbench.official@gmail.com',
       subDesc: 'Click to compose email directly',
-      link: 'mailto:qbench.official@gmail.com?subject=Inquiry%20from%20QBENCH%20Website&body=Hello%20QBENCH%20Team%2C%0A%0AI%20would%20like%20to%20know%20more%20about%20your%20services.%0A%0ARegards%2C',
-      ariaLabel: 'Draft email to QBENCH at qbench.official@gmail.com opening your default mail application',
+      link: `mailto:${settings.email || 'qbench.official@gmail.com'}?subject=Inquiry%20from%20QBENCH%20Website&body=Hello%20QBENCH%20Team%2C%0A%0AI%20would%20like%20to%20know%20more%20about%20your%20services.%0A%0ARegards%2C`,
+      ariaLabel: `Draft email to QBENCH at ${settings.email || 'qbench.official@gmail.com'}`,
       colorClass: 'text-emerald-600 bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20'
     },
     {
       icon: Phone,
       title: 'Phone Number',
-      desc: '+91 7356525932',
+      desc: settings.phone || '+91 7356525932',
       subDesc: 'Click to initiate standard voice call',
-      link: 'tel:+917356525932',
-      ariaLabel: 'Place phone call to QBENCH support team at +91 73565 25932',
+      link: `tel:${(settings.phone || '+917356525932').replace(/\s+/g, '')}`,
+      ariaLabel: `Place phone call to QBENCH support team at ${settings.phone || '+91 73565 25932'}`,
       colorClass: 'text-teal-600 bg-teal-500/10 border-teal-500/20 hover:bg-teal-500/20'
     },
     {
       icon: MessageCircle,
       title: 'WhatsApp Chat',
-      desc: '+91 7356525932',
+      desc: settings.phone || '+91 7356525932',
       subDesc: 'Click to start conversation instantly',
-      link: 'https://wa.me/917356525932?text=Hello%20QBENCH%20Team%2C%20I%20would%20like%20to%20know%20more%20about%20your%20services.',
+      link: `https://wa.me/${waClean}?text=Hello%20QBENCH%20Team%2C%20I%20would%20like%20to%20know%20more%20about%20your%20services.`,
       ariaLabel: 'Start live WhatsApp chat with QBENCH representatives',
       colorClass: 'text-green-600 bg-green-500/10 border-green-500/20 hover:bg-green-500/20'
     },
@@ -623,7 +642,7 @@ ${message}`;
       title: 'Instagram Profile',
       desc: '@qbench_official',
       subDesc: 'Follow or reach out on Instagram',
-      link: 'https://www.instagram.com/qbench_official?igsh=MXdscDgwMHFzd2d1aA==',
+      link: settings.instagram_url || 'https://www.instagram.com/qbench_official?igsh=MXdscDgwMHFzd2d1aA==',
       ariaLabel: 'Visit our official Instagram profile at @qbench_official',
       colorClass: 'text-pink-600 bg-pink-500/10 border-pink-500/20 hover:bg-pink-500/20'
     },
@@ -639,10 +658,10 @@ ${message}`;
     {
       icon: Globe,
       title: 'Official Website',
-      desc: 'www.qbench.in',
+      desc: (settings.website_url || 'www.qbench.in').replace(/^https?:\/\//, ''),
       subDesc: 'Click to check out our company homepage',
-      link: 'https://www.qbench.in',
-      ariaLabel: 'Visit official company website at www.qbench.in',
+      link: settings.website_url || 'https://www.qbench.in',
+      ariaLabel: 'Visit official company website',
       colorClass: 'text-teal-700 bg-teal-500/10 border-teal-500/20 hover:bg-teal-500/20'
     },
     {
@@ -1172,6 +1191,10 @@ ${message}`;
                             email: '',
                             company: '',
                             service: 'Branding',
+                            budget: '',
+                            timeline: '',
+                            projectDescription: '',
+                            referenceUrl: '',
                             message: ''
                           });
                           setFormState('idle');
@@ -1347,16 +1370,79 @@ ${message}`;
                           >
                             <option value="Branding">Branding & Identity</option>
                             <option value="Social Media Design">Social Media Design</option>
+                            <option value="Motion Graphics">Motion Graphics</option>
                             <option value="Video Editing">Video Editing</option>
                             <option value="Digital Marketing">Digital Marketing</option>
                             <option value="UI/UX Design">UI/UX Design</option>
                             <option value="Web Development">Web Development</option>
-                            <option value="Motion Graphics">Motion Graphics</option>
+                            <option value="AI Creative Services">AI Creative Services</option>
+                            <option value="Printing">Printing</option>
                             <option value="Business Support">Business Support</option>
                             <option value="Other">Other Inquiry</option>
                           </select>
                         )}
                       </div>
+
+                      {/* Budget, Timeline & Reference/Website Grid */}
+                      {!selectedPackage && !selectedBlueprint && !freeConsultation && (
+                        <>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <label htmlFor="budget" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Estimated Budget</label>
+                              <input
+                                id="budget"
+                                name="budget"
+                                type="text"
+                                value={formData.budget}
+                                onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+                                placeholder="e.g. ₹25,000 – ₹75,000 / Flexible"
+                                className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label htmlFor="timeline" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Project Timeline</label>
+                              <input
+                                id="timeline"
+                                name="timeline"
+                                type="text"
+                                value={formData.timeline}
+                                onChange={(e) => setFormData({ ...formData, timeline: e.target.value })}
+                                placeholder="e.g. 2–4 Weeks / Immediate"
+                                className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <label htmlFor="projectDescription" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Project Description</label>
+                              <input
+                                id="projectDescription"
+                                name="projectDescription"
+                                type="text"
+                                value={formData.projectDescription}
+                                onChange={(e) => setFormData({ ...formData, projectDescription: e.target.value })}
+                                placeholder="Brief summary of deliverables or goals"
+                                className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors"
+                              />
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label htmlFor="referenceUrl" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Reference / Website</label>
+                              <input
+                                id="referenceUrl"
+                                name="referenceUrl"
+                                type="url"
+                                value={formData.referenceUrl}
+                                onChange={(e) => setFormData({ ...formData, referenceUrl: e.target.value })}
+                                placeholder="https://yourwebsite.com or inspiration link"
+                                className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors"
+                              />
+                            </div>
+                          </div>
+                        </>
+                      )}
                       
                       {/* Message description box */}
                       {!selectedPackage && !selectedBlueprint && (

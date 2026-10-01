@@ -1407,6 +1407,33 @@ function readAdminSettingsSafe() {
   }
 }
 
+app.get('/api/supabase-config', (_req, res) => {
+  const clean = (val?: string) => (val || '').trim().replace(/^["']|["']$/g, '');
+  const url =
+    clean(process.env.VITE_SUPABASE_URL) ||
+    clean(process.env.NEXT_PUBLIC_SUPABASE_URL) ||
+    clean(process.env.SUPABASE_URL) ||
+    'https://zsbpxqzmkhcvxdvjoabp.supabase.co';
+
+  const rawKey =
+    clean(process.env.VITE_SUPABASE_PUBLISHABLE_KEY) ||
+    clean(process.env.VITE_SUPABASE_ANON_KEY) ||
+    clean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) ||
+    clean(process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY) ||
+    clean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) ||
+    clean(process.env.SUPABASE_PUBLISHABLE_KEY) ||
+    clean(process.env.SUPABASE_ANON_KEY) ||
+    '';
+
+  const isSecret =
+    rawKey.startsWith('sb_secret_') || rawKey.includes('service_role');
+
+  return res.status(200).json({
+    url,
+    publishableKey: isSecret ? '' : rawKey,
+  });
+});
+
 app.get('/api/admin-settings', (_req, res) => {
   return res.status(200).json({
     success: true,

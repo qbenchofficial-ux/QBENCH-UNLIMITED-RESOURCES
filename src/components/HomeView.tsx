@@ -1,6 +1,7 @@
-import { useState, useEffect, FormEvent, useRef } from 'react';
+import { useState, useEffect, FormEvent, useRef, useMemo } from 'react';
 import { NavSection, ServiceTab } from '../types';
 import { sendEmailJS } from '../lib/emailService';
+import { useProjects } from '../hooks/useProjects';
 import PublicResourcesSection from './PublicResourcesSection';
 import { 
   ArrowRight, 
@@ -24,6 +25,7 @@ import {
 
 interface HomeViewProps {
   onNavigate: (section: NavSection, tab?: ServiceTab) => void;
+  onOpenProjectDetail?: (slug: string) => void;
 }
 
 function Typewriter({ 
@@ -75,7 +77,8 @@ function Typewriter({
   );
 }
 
-export default function HomeView({ onNavigate }: HomeViewProps) {
+export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewProps) {
+  const { projects: publishedProjects } = useProjects('public');
   // Free Audit Form State
   const [formData, setFormData] = useState({
     fullName: '',
@@ -240,27 +243,21 @@ export default function HomeView({ onNavigate }: HomeViewProps) {
     }
   ];
 
-  const latestProjects = [
-    {
-      id: 'journey-of-a-ring',
-      title: 'The Journey of a Ring',
-      category: 'Luxury Jewellery · Motion Design',
-      imageUrl: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=600&h=450&q=80',
-      externalUrl: 'https://www.behance.net/gallery/253620337/The-Journey-of-a-Ring-Luxury-Jewellery-Motion-Design?platform=direct'
-    },
-    {
-      id: 'luxora',
-      title: 'Luxora Jewellers',
-      category: 'Brand Identity · Social Media',
-      imageUrl: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=600&h=450&q=80'
-    },
-    {
-      id: 'spicehouse',
-      title: 'Spice House Restaurant',
-      category: 'Branding · Menu · Campaign',
-      imageUrl: 'https://images.unsplash.com/photo-1585238342024-78d387f4a707?auto=format&fit=crop&w=600&h=450&q=80'
-    }
-  ];
+  const latestProjects = useMemo(() => {
+    const featuredList = publishedProjects.filter((p) => p.featured);
+    const source = featuredList.length > 0 ? featuredList : publishedProjects;
+    return source.slice(0, 3).map((p) => ({
+      id: p.id,
+      slug: p.slug,
+      title: p.title,
+      category: p.category || 'Creative Work',
+      imageUrl:
+        p.cover_image ||
+        p.gallery?.[0] ||
+        'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=600&h=450&q=80',
+      externalUrl: p.behance_url || p.website_url || undefined,
+    }));
+  }, [publishedProjects]);
 
   const whyChooseItems = [
     {
@@ -621,22 +618,17 @@ export default function HomeView({ onNavigate }: HomeViewProps) {
                 </>
               );
 
-              return proj.externalUrl ? (
-                <a
-                  id={`project-card-${proj.id}`}
-                  key={proj.id}
-                  href={proj.externalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-white border border-brand-outline/15 rounded-2xl overflow-hidden group shadow-xs hover:shadow-md hover:border-[#00685b]/20 transition-all duration-300 block cursor-pointer"
-                >
-                  {cardContent}
-                </a>
-              ) : (
+              return (
                 <div 
                   id={`project-card-${proj.id}`}
                   key={proj.id}
-                  onClick={() => onNavigate('portfolio')}
+                  onClick={() => {
+                    if (onOpenProjectDetail && proj.slug) {
+                      onOpenProjectDetail(proj.slug);
+                    } else {
+                      onNavigate('portfolio');
+                    }
+                  }}
                   className="bg-white border border-brand-outline/15 rounded-2xl overflow-hidden group shadow-xs hover:shadow-md hover:border-[#00685b]/20 transition-all duration-300 cursor-pointer"
                 >
                   {cardContent}
