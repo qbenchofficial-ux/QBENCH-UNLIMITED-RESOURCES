@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
 import {
   supabase,
-  isSupabaseConfigured,
-  SUPABASE_CONFIG_WARNING,
+  ensureSupabaseConfig,
   verifyAdminProfile,
 } from '../lib/supabase';
 import type { AdminProfile } from '../types/project';
@@ -58,16 +57,9 @@ export function useAuth(): UseAuthResult {
     let mounted = true;
 
     async function initAuth() {
-      if (!isSupabaseConfigured) {
-        if (mounted) {
-          setUser(null);
-          setAdminProfile(null);
-          setLoading(false);
-        }
-        return;
-      }
-
       try {
+        await ensureSupabaseConfig();
+
         const {
           data: { session },
           error,
@@ -132,11 +124,6 @@ export function useAuth(): UseAuthResult {
     async (email: string, password: string): Promise<boolean> => {
       setAuthError(null);
 
-      if (!isSupabaseConfigured) {
-        setAuthError(SUPABASE_CONFIG_WARNING);
-        return false;
-      }
-
       const cleanEmail = email.trim();
       if (!cleanEmail || !password) {
         setAuthError('Email and password are required.');
@@ -145,6 +132,8 @@ export function useAuth(): UseAuthResult {
 
       setLoading(true);
       try {
+        await ensureSupabaseConfig();
+
         const { data, error } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
           password,
@@ -171,9 +160,7 @@ export function useAuth(): UseAuthResult {
 
   const logout = useCallback(async () => {
     setAuthError(null);
-    if (isSupabaseConfigured) {
-      await supabase.auth.signOut();
-    }
+    await supabase.auth.signOut();
     setUser(null);
     setAdminProfile(null);
   }, []);

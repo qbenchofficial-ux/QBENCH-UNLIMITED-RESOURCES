@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { isSupabaseConfigured, SUPABASE_CONFIG_WARNING } from '../lib/supabase';
 import QBenchLogo from '../components/QBenchLogo';
 import { Lock, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 
@@ -47,16 +46,6 @@ export default function AdminLogin({
             </p>
           </div>
         </div>
-
-        {!isSupabaseConfigured && (
-          <div
-            role="status"
-            className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-800"
-          >
-            <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-            <span className="leading-relaxed">{SUPABASE_CONFIG_WARNING}</span>
-          </div>
-        )}
 
         {error && (
           <div

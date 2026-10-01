@@ -126,45 +126,88 @@ export default defineConfig(({ mode }) => {
       ),
 
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(
-        process.env.VITE_SUPABASE_URL ||
-          process.env.NEXT_PUBLIC_SUPABASE_URL ||
-          process.env.SUPABASE_URL ||
-          env.VITE_SUPABASE_URL ||
-          env.NEXT_PUBLIC_SUPABASE_URL ||
-          env.SUPABASE_URL ||
-          'https://zsbpxqzmkhcvxdvjoabp.supabase.co'
+        [
+          process.env.VITE_SUPABASE_URL,
+          process.env.NEXT_PUBLIC_SUPABASE_URL,
+          process.env.SUPABASE_URL,
+          env.VITE_SUPABASE_URL,
+          env.NEXT_PUBLIC_SUPABASE_URL,
+          env.SUPABASE_URL,
+        ]
+          .map((v) => (v || '').trim().replace(/^["']|["']$/g, '').trim())
+          .find(
+            (v) =>
+              v.startsWith('http') &&
+              !v.includes('YOUR_SUPABASE_') &&
+              !v.includes('your-project-id') &&
+              !v.includes('placeholder-project')
+          ) || 'https://zsbpxqzmkhcvxdvjoabp.supabase.co'
       ),
 
       'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify(
-        process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-          process.env.VITE_SUPABASE_ANON_KEY ||
-          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-          process.env.SUPABASE_PUBLISHABLE_KEY ||
-          process.env.SUPABASE_ANON_KEY ||
-          env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-          env.VITE_SUPABASE_ANON_KEY ||
-          env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-          env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-          env.SUPABASE_PUBLISHABLE_KEY ||
-          env.SUPABASE_ANON_KEY ||
-          ''
+        [
+          process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          process.env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          process.env.VITE_SUPABASE_ANON_KEY,
+          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          process.env.SUPABASE_PUBLISHABLE_KEY,
+          process.env.SUPABASE_ANON_KEY,
+          env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          env.VITE_SUPABASE_ANON_KEY,
+          env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+          env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          env.SUPABASE_PUBLISHABLE_KEY,
+          env.SUPABASE_ANON_KEY,
+        ]
+          .map((v) => (v || '').trim().replace(/^["']|["']$/g, '').trim())
+          .find(
+            (v) =>
+              Boolean(v) &&
+              !v.startsWith('sb_secret_') &&
+              !v.includes('service_role') &&
+              !v.includes('YOUR_SUPABASE_') &&
+              !v.includes('your-supabase') &&
+              !v.includes('placeholder-') &&
+              v !== 'undefined' &&
+              v !== 'null'
+          ) || 'sb_publishable_BC9COvwoI_v9BX5XJocfLg_NCniLoiR'
       ),
 
       'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(
-        process.env.VITE_SUPABASE_ANON_KEY ||
-          process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-          process.env.SUPABASE_ANON_KEY ||
-          process.env.SUPABASE_PUBLISHABLE_KEY ||
-          env.VITE_SUPABASE_ANON_KEY ||
-          env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-          env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-          env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-          env.SUPABASE_ANON_KEY ||
-          env.SUPABASE_PUBLISHABLE_KEY ||
-          ''
+        [
+          process.env.VITE_SUPABASE_ANON_KEY,
+          process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          process.env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          process.env.SUPABASE_ANON_KEY,
+          process.env.SUPABASE_PUBLISHABLE_KEY,
+          env.VITE_SUPABASE_ANON_KEY,
+          env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+          env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          env.SUPABASE_ANON_KEY,
+          env.SUPABASE_PUBLISHABLE_KEY,
+        ]
+          .map((v) => (v || '').trim().replace(/^["']|["']$/g, '').trim())
+          .find(
+            (v) =>
+              Boolean(v) &&
+              !v.startsWith('sb_secret_') &&
+              !v.includes('service_role') &&
+              !v.includes('YOUR_SUPABASE_') &&
+              !v.includes('your-supabase') &&
+              !v.includes('placeholder-') &&
+              v !== 'undefined' &&
+              v !== 'null'
+          ) || 'sb_publishable_BC9COvwoI_v9BX5XJocfLg_NCniLoiR'
       ),
     },
 

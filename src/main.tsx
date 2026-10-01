@@ -3,11 +3,15 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// In development mode, unregister any stale service workers that may cache old Vite dependency chunks
-if (import.meta.env.DEV && typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+// Proactively update or clear stale service worker caches so new deployments take effect immediately
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then((registrations) => {
     for (const registration of registrations) {
-      registration.unregister();
+      if (import.meta.env.DEV) {
+        registration.unregister();
+      } else {
+        registration.update().catch(() => {});
+      }
     }
   });
 }

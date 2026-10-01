@@ -90,9 +90,12 @@ app.get('/api/integration-config', (_req, res) => {
       process.env.SUPABASE_ANON_KEY
   );
   const safeAnonKey =
-    rawAnon && !rawAnon.startsWith('sb_secret_') && !rawAnon.includes('service_role')
+    rawAnon &&
+    !rawAnon.startsWith('sb_secret_') &&
+    !rawAnon.includes('service_role') &&
+    !rawAnon.includes('YOUR_SUPABASE_')
       ? rawAnon
-      : '';
+      : 'sb_publishable_BC9COvwoI_v9BX5XJocfLg_NCniLoiR';
   return res.status(200).json({
     VITE_SUPABASE_URL:
       clean(
@@ -1442,12 +1445,17 @@ app.get('/api/supabase-config', (_req, res) => {
     clean(process.env.SUPABASE_ANON_KEY) ||
     '';
 
-  const isSecret =
-    rawKey.startsWith('sb_secret_') || rawKey.includes('service_role');
+  const isInvalidOrSecret =
+    !rawKey ||
+    rawKey.startsWith('sb_secret_') ||
+    rawKey.includes('service_role') ||
+    rawKey.includes('YOUR_SUPABASE_');
 
   return res.status(200).json({
     url,
-    publishableKey: isSecret ? '' : rawKey,
+    publishableKey: isInvalidOrSecret
+      ? 'sb_publishable_BC9COvwoI_v9BX5XJocfLg_NCniLoiR'
+      : rawKey,
   });
 });
 
