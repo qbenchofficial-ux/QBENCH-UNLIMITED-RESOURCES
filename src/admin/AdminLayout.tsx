@@ -82,6 +82,12 @@ export default function AdminLayout({
       icon: <PlusCircle className="h-4 w-4" />,
     },
     {
+      id: 'categories',
+      label: 'Portfolio Categories',
+      path: '/admin/categories',
+      icon: <Tags className="h-4 w-4" />,
+    },
+    {
       id: 'packages',
       label: 'Packages & Pricing',
       path: '/admin/packages',
@@ -98,12 +104,6 @@ export default function AdminLayout({
       label: 'Website Content',
       path: '/admin/content',
       icon: <FileText className="h-4 w-4" />,
-    },
-    {
-      id: 'categories',
-      label: 'Categories',
-      path: '/admin/categories',
-      icon: <Tags className="h-4 w-4" />,
     },
     {
       id: 'media',

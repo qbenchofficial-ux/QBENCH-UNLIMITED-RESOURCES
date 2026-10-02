@@ -5,15 +5,26 @@ import {
   PORTFOLIO_BUCKET,
   slugify,
 } from '../lib/supabase';
-import type { MediaFile, PortfolioImage } from '../types/project';
+import type {
+  MediaFile,
+  PortfolioImage,
+  GalleryImageInput,
+} from '../types/project';
 
-const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
-const ALLOWED_MIMES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'];
+const ALLOWED_MIMES = [
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/avif',
+];
 
 export function validatePortfolioImage(file: File): string | null {
   const ext = (file.name.split('.').pop() || '').toLowerCase();
   if (!ALLOWED_EXTENSIONS.includes(ext) && !ALLOWED_MIMES.includes(file.type)) {
-    return `Unsupported file format (${file.name}). Allowed formats: JPG, JPEG, PNG, WEBP.`;
+    return `Unsupported file format (${file.name}). Allowed formats: JPG, JPEG, PNG, WEBP, GIF, AVIF.`;
   }
   if (file.size > 10 * 1024 * 1024) {
     return `File "${file.name}" exceeds the 10MB size limit.`;
@@ -34,17 +45,27 @@ export function extractStoragePathFromUrl(url: string): string | null {
   return null;
 }
 
+export type StorageFolderTarget =
+  | 'categories'
+  | 'projects'
+  | 'covers'
+  | 'gallery'
+  | 'library';
+
 /**
  * Upload an image file to the Supabase `portfolio-images` Storage bucket
- * and return its public URL (never stores base64 in the database).
+ * using organised paths:
+ * - `portfolio-images/categories/...`
+ * - `portfolio-images/projects/{project_id}/...`
+ * Returns its public URL (never stores base64 in the database).
  */
 export async function uploadPortfolioImage(
   file: File,
-  folder: 'covers' | 'gallery' | 'library' = 'gallery',
+  folder: StorageFolderTarget = 'projects',
   onProgress?: (percent: number) => void,
   projectId?: string | null,
   altText?: string | null,
-  sortOrder = 0
+  displayOrder = 0
 ): Promise<MediaFile> {
   if (!isSupabaseConfigured) {
     throw new Error(SUPABASE_CONFIG_WARNING);
@@ -58,10 +79,25 @@ export async function uploadPortfolioImage(
   onProgress?.(15);
 
   const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-  const baseName = slugify(file.name.replace(/\.[^/.]+$/, '')) || 'portfolio-image';
+  const baseName =
+    slugify(file.name.replace(/\.[^/.]+$/, '')) || 'portfolio-image';
   const uniqueSuffix = Math.random().toString(36).slice(2, 8);
   const fileName = `${Date.now()}-${uniqueSuffix}-${baseName}.${ext}`;
-  const filePath = `${folder}/${fileName}`;
+
+  let directoryPath = 'projects/unassigned';
+  if (folder === 'categories') {
+    directoryPath = 'categories';
+  } else if (folder === 'library') {
+    directoryPath = 'library';
+  } else {
+    const cleanProjectId =
+      projectId && !projectId.startsWith('seed-')
+        ? slugify(projectId) || projectId
+        : 'shared';
+    directoryPath = `projects/${cleanProjectId}`;
+  }
+
+  const filePath = `${directoryPath}/${fileName}`;
   const mimeType = file.type || `image/${ext === 'jpg' ? 'jpeg' : ext}`;
 
   onProgress?.(45);
@@ -80,11 +116,20 @@ export async function uploadPortfolioImage(
 
   onProgress?.(85);
 
-  const { data } = supabase.storage.from(PORTFOLIO_BUCKET).getPublicUrl(filePath);
+  const { data } = supabase.storage
+    .from(PORTFOLIO_BUCKET)
+    .getPublicUrl(filePath);
   const publicUrl = data.publicUrl;
 
   let recordId: string | undefined;
-  if (projectId && folder === 'gallery') {
+  const isRealProjectUuid =
+    projectId &&
+    !projectId.startsWith('seed-') &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      projectId
+    );
+
+  if (isRealProjectUuid && (folder === 'projects' || folder === 'gallery')) {
     const { data: imgRow, error: imgInsertErr } = await supabase
       .from('portfolio_images')
       .insert([
@@ -92,7 +137,7 @@ export async function uploadPortfolioImage(
           project_id: projectId,
           image_url: publicUrl,
           alt_text: altText || baseName,
-          sort_order: sortOrder,
+          sort_order: displayOrder,
         },
       ])
       .select('id')
@@ -100,26 +145,6 @@ export async function uploadPortfolioImage(
 
     if (!imgInsertErr && imgRow?.id) {
       recordId = String(imgRow.id);
-    } else if (imgInsertErr) {
-      // Fallback for alternate portfolio_images schema (file_name, storage_path, public_url)
-      const { data: altRow } = await supabase
-        .from('portfolio_images')
-        .insert([
-          {
-            project_id: projectId,
-            file_name: fileName,
-            storage_path: filePath,
-            public_url: publicUrl,
-            folder,
-            mime_type: mimeType,
-            size_bytes: file.size,
-          },
-        ])
-        .select('id')
-        .maybeSingle();
-      if (altRow?.id) {
-        recordId = String(altRow.id);
-      }
     }
   }
 
@@ -131,7 +156,8 @@ export async function uploadPortfolioImage(
     path: filePath,
     url: publicUrl,
     alt_text: altText || baseName,
-    sort_order: sortOrder,
+    sort_order: displayOrder,
+    display_order: displayOrder,
     created_at: new Date().toISOString(),
     size: file.size,
     project_id: projectId || null,
@@ -144,7 +170,7 @@ export async function uploadPortfolioImage(
 export async function getProjectPortfolioImages(
   projectId: string
 ): Promise<PortfolioImage[]> {
-  if (!isSupabaseConfigured || !projectId) {
+  if (!isSupabaseConfigured || !projectId || projectId.startsWith('seed-')) {
     return [];
   }
 
@@ -159,62 +185,147 @@ export async function getProjectPortfolioImages(
   }
 
   const mapped = (data as Record<string, unknown>[])
-    .map((row, idx) => ({
-      id: String(row.id || idx),
-      project_id: row.project_id ? String(row.project_id) : null,
-      image_url: String(row.image_url || row.public_url || ''),
-      alt_text: row.alt_text
-        ? String(row.alt_text)
-        : row.file_name
-        ? String(row.file_name)
-        : null,
-      sort_order: typeof row.sort_order === 'number' ? row.sort_order : idx,
-      created_at: String(row.created_at || new Date().toISOString()),
-    }))
+    .map((row, idx) => {
+      const orderVal =
+        typeof row.display_order === 'number'
+          ? row.display_order
+          : typeof row.sort_order === 'number'
+          ? row.sort_order
+          : idx;
+      return {
+        id: String(row.id || idx),
+        project_id: row.project_id ? String(row.project_id) : null,
+        image_url: String(row.image_url || row.public_url || ''),
+        alt_text: row.alt_text
+          ? String(row.alt_text)
+          : row.file_name
+          ? String(row.file_name)
+          : null,
+        sort_order: orderVal,
+        display_order: orderVal,
+        created_at: String(row.created_at || new Date().toISOString()),
+      };
+    })
     .filter((item) => Boolean(item.image_url));
 
-  return mapped.sort((a, b) => a.sort_order - b.sort_order);
+  return mapped.sort((a, b) => a.display_order - b.display_order);
+}
+
+/**
+ * Fetch all rows from `public.portfolio_images` grouped by project_id for fast batch normalization.
+ */
+export async function getAllPortfolioImagesByProject(): Promise<
+  Map<string, PortfolioImage[]>
+> {
+  const byProject = new Map<string, PortfolioImage[]>();
+  if (!isSupabaseConfigured) return byProject;
+
+  const { data, error } = await supabase
+    .from('portfolio_images')
+    .select('*')
+    .order('created_at', { ascending: true });
+
+  if (error || !data) return byProject;
+
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i] as Record<string, unknown>;
+    const projectId = row.project_id ? String(row.project_id) : null;
+    const imageUrl = String(row.image_url || row.public_url || '');
+    if (!projectId || !imageUrl) continue;
+
+    const orderVal =
+      typeof row.display_order === 'number'
+        ? row.display_order
+        : typeof row.sort_order === 'number'
+        ? row.sort_order
+        : i;
+
+    const item: PortfolioImage = {
+      id: String(row.id || i),
+      project_id: projectId,
+      image_url: imageUrl,
+      alt_text: row.alt_text ? String(row.alt_text) : null,
+      sort_order: orderVal,
+      display_order: orderVal,
+      created_at: String(row.created_at || new Date().toISOString()),
+    };
+
+    const existing = byProject.get(projectId) || [];
+    existing.push(item);
+    byProject.set(projectId, existing);
+  }
+
+  for (const [pid, list] of byProject.entries()) {
+    list.sort((a, b) => a.display_order - b.display_order);
+    byProject.set(pid, list);
+  }
+
+  return byProject;
 }
 
 /**
  * Synchronize `public.portfolio_images` rows for a project whenever its gallery is created or updated.
+ * Supports both string[] URLs and rich GalleryImageInput[] items with alt_text and display_order.
  */
 export async function syncProjectPortfolioImages(
   projectId: string,
   galleryUrls: string[],
-  projectTitle: string
+  projectTitle: string,
+  galleryItems?: GalleryImageInput[]
 ): Promise<void> {
-  if (!isSupabaseConfigured || !projectId) return;
+  if (!isSupabaseConfigured || !projectId || projectId.startsWith('seed-')) {
+    return;
+  }
 
-  const cleanUrls = galleryUrls.map((u) => u.trim()).filter(Boolean);
+  const normalizedItems: GalleryImageInput[] =
+    galleryItems && galleryItems.length > 0
+      ? galleryItems
+          .filter((item) => Boolean(item.image_url?.trim()))
+          .map((item, idx) => ({
+            image_url: item.image_url.trim(),
+            alt_text:
+              item.alt_text?.trim() ||
+              `${projectTitle} — Image ${String(idx + 1).padStart(2, '0')}`,
+            display_order:
+              typeof item.display_order === 'number' ? item.display_order : idx,
+          }))
+      : galleryUrls
+          .map((u) => u.trim())
+          .filter(Boolean)
+          .map((imageUrl, idx) => ({
+            image_url: imageUrl,
+            alt_text: `${projectTitle} — Image ${String(idx + 1).padStart(2, '0')}`,
+            display_order: idx,
+          }));
 
   await supabase.from('portfolio_images').delete().eq('project_id', projectId);
 
-  if (cleanUrls.length === 0) return;
+  if (normalizedItems.length === 0) return;
 
-  const rows = cleanUrls.map((imageUrl, idx) => ({
+  // Try inserting with both sort_order and display_order first
+  const fullRows = normalizedItems.map((item, idx) => ({
     project_id: projectId,
-    image_url: imageUrl,
-    alt_text: `${projectTitle} — Gallery Image ${idx + 1}`,
-    sort_order: idx,
+    image_url: item.image_url,
+    alt_text: item.alt_text,
+    sort_order: typeof item.display_order === 'number' ? item.display_order : idx,
+    display_order:
+      typeof item.display_order === 'number' ? item.display_order : idx,
   }));
 
-  const { error } = await supabase.from('portfolio_images').insert(rows);
-  if (error) {
-    // Fallback if table uses public_url / storage_path / file_name columns
-    const fallbackRows = cleanUrls.map((imageUrl, idx) => {
-      const storagePath =
-        extractStoragePathFromUrl(imageUrl) ||
-        `gallery/${projectId}-${idx}-${Date.now()}.jpg`;
-      return {
-        project_id: projectId,
-        file_name: storagePath.split('/').pop() || `gallery-${idx + 1}.jpg`,
-        storage_path: storagePath,
-        public_url: imageUrl,
-        folder: 'gallery',
-      };
-    });
-    await supabase.from('portfolio_images').insert(fallbackRows);
+  const { error: firstErr } = await supabase
+    .from('portfolio_images')
+    .insert(fullRows);
+
+  if (firstErr) {
+    // Fallback to standard sort_order column in public.portfolio_images
+    const compatRows = normalizedItems.map((item, idx) => ({
+      project_id: projectId,
+      image_url: item.image_url,
+      alt_text: item.alt_text,
+      sort_order:
+        typeof item.display_order === 'number' ? item.display_order : idx,
+    }));
+    await supabase.from('portfolio_images').insert(compatRows);
   }
 }
 
@@ -232,7 +343,15 @@ export async function listPortfolioMedia(): Promise<MediaFile[]> {
   const seenPaths = new Set<string>();
 
   // 1. Scan Storage folders in `portfolio-images`
-  const folders = ['covers', 'gallery', 'library', ''];
+  const folders = [
+    'categories',
+    'projects',
+    'projects/shared',
+    'covers',
+    'gallery',
+    'library',
+    '',
+  ];
 
   for (const folder of folders) {
     const { data, error } = await supabase.storage
@@ -247,6 +366,42 @@ export async function listPortfolioMedia(): Promise<MediaFile[]> {
 
     for (const item of data) {
       if (!item.name || item.name === '.emptyFolderPlaceholder') continue;
+      // If item is a subfolder inside 'projects' (no metadata/id), list inside it
+      if (!item.id && !item.metadata && folder === 'projects') {
+        const subFolder = `projects/${item.name}`;
+        const { data: subData } = await supabase.storage
+          .from(PORTFOLIO_BUCKET)
+          .list(subFolder, {
+            limit: 100,
+            offset: 0,
+            sortBy: { column: 'created_at', order: 'desc' },
+          });
+        if (subData) {
+          for (const subItem of subData) {
+            if (!subItem.name || subItem.name === '.emptyFolderPlaceholder')
+              continue;
+            const subFullPath = `${subFolder}/${subItem.name}`;
+            if (seenPaths.has(subFullPath)) continue;
+            seenPaths.add(subFullPath);
+            const { data: pub } = supabase.storage
+              .from(PORTFOLIO_BUCKET)
+              .getPublicUrl(subFullPath);
+            seenUrls.add(pub.publicUrl);
+            allFiles.push({
+              name: subItem.name,
+              path: subFullPath,
+              url: pub.publicUrl,
+              created_at: subItem.created_at || new Date().toISOString(),
+              size:
+                typeof subItem.metadata?.size === 'number'
+                  ? subItem.metadata.size
+                  : null,
+            });
+          }
+        }
+        continue;
+      }
+
       if (!item.id && !item.metadata) continue;
 
       const fullPath = folder ? `${folder}/${item.name}` : item.name;
@@ -263,7 +418,8 @@ export async function listPortfolioMedia(): Promise<MediaFile[]> {
         path: fullPath,
         url: pub.publicUrl,
         created_at: item.created_at || new Date().toISOString(),
-        size: typeof item.metadata?.size === 'number' ? item.metadata.size : null,
+        size:
+          typeof item.metadata?.size === 'number' ? item.metadata.size : null,
       });
     }
   }
@@ -287,6 +443,13 @@ export async function listPortfolioMedia(): Promise<MediaFile[]> {
         imageUrl.split('/').pop() ||
         `image-${row.id}`;
 
+      const orderVal =
+        typeof row.display_order === 'number'
+          ? row.display_order
+          : typeof row.sort_order === 'number'
+          ? row.sort_order
+          : 0;
+
       allFiles.push({
         id: String(row.id),
         name: row.alt_text
@@ -297,7 +460,8 @@ export async function listPortfolioMedia(): Promise<MediaFile[]> {
         path: storagePath,
         url: imageUrl,
         alt_text: row.alt_text ? String(row.alt_text) : null,
-        sort_order: typeof row.sort_order === 'number' ? row.sort_order : 0,
+        sort_order: orderVal,
+        display_order: orderVal,
         created_at: String(row.created_at || new Date().toISOString()),
         size: typeof row.size_bytes === 'number' ? row.size_bytes : null,
         project_id: row.project_id ? String(row.project_id) : null,
@@ -306,7 +470,8 @@ export async function listPortfolioMedia(): Promise<MediaFile[]> {
   }
 
   return allFiles.sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    (a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 }
 
@@ -357,8 +522,11 @@ export async function deleteProjectStorageAssets(
 ): Promise<void> {
   if (!isSupabaseConfigured) return;
 
-  if (projectId) {
-    await supabase.from('portfolio_images').delete().eq('project_id', projectId);
+  if (projectId && !projectId.startsWith('seed-')) {
+    await supabase
+      .from('portfolio_images')
+      .delete()
+      .eq('project_id', projectId);
   }
 
   const urls = [coverImage, ...(gallery || [])].filter(Boolean) as string[];

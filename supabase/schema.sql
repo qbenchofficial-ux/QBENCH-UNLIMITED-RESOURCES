@@ -41,34 +41,94 @@ create table if not exists public.categories (
   name text not null,
   slug text not null unique,
   description text,
-  created_at timestamptz not null default now()
+  cover_image_url text,
+  display_order integer not null default 0,
+  projects_display_limit integer not null default 4,
+  show_view_all boolean not null default true,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
+alter table if exists public.categories
+  add column if not exists cover_image_url text,
+  add column if not exists display_order integer not null default 0,
+  add column if not exists projects_display_limit integer not null default 4,
+  add column if not exists show_view_all boolean not null default true,
+  add column if not exists is_active boolean not null default true,
+  add column if not exists updated_at timestamptz not null default now();
+
 create index if not exists idx_categories_slug on public.categories(slug);
+create index if not exists idx_categories_display_order on public.categories(display_order asc, name asc);
+create index if not exists idx_categories_is_active on public.categories(is_active);
+
+drop trigger if exists trg_categories_updated_at on public.categories;
+create trigger trg_categories_updated_at
+before update on public.categories
+for each row
+execute function public.handle_updated_at();
+
+create or replace view public.portfolio_categories as
+select
+  id,
+  name,
+  slug,
+  description,
+  cover_image_url,
+  display_order,
+  projects_display_limit,
+  show_view_all,
+  is_active,
+  created_at,
+  updated_at
+from public.categories;
 
 create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   slug text not null unique,
+  short_description text,
   description text,
   category_id uuid references public.categories(id) on delete set null,
   client text,
+  client_name text,
   year integer default extract(year from now())::integer,
+  project_date text,
+  project_type text,
   services text[] not null default '{}',
+  software_tools text[] not null default '{}',
   cover_image text,
+  cover_image_url text,
   gallery text[] not null default '{}',
   behance_url text,
   youtube_url text,
+  video_url text,
   featured boolean not null default false,
+  is_featured boolean not null default false,
   status text not null default 'draft' check (status in ('draft', 'published')),
+  display_order integer not null default 0,
+  sort_order integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table if exists public.projects
+  add column if not exists short_description text,
+  add column if not exists cover_image_url text,
+  add column if not exists video_url text,
+  add column if not exists client_name text,
+  add column if not exists project_date text,
+  add column if not exists project_type text,
+  add column if not exists software_tools text[] not null default '{}',
+  add column if not exists is_featured boolean not null default false,
+  add column if not exists display_order integer not null default 0,
+  add column if not exists sort_order integer not null default 0;
 
 create index if not exists idx_projects_slug on public.projects(slug);
 create index if not exists idx_projects_status on public.projects(status);
 create index if not exists idx_projects_category_id on public.projects(category_id);
 create index if not exists idx_projects_featured on public.projects(featured);
+create index if not exists idx_projects_display_order on public.projects(display_order asc, created_at desc);
 create index if not exists idx_projects_created_at on public.projects(created_at desc);
 
 drop trigger if exists trg_projects_updated_at on public.projects;
@@ -83,10 +143,14 @@ create table if not exists public.portfolio_images (
   image_url text not null,
   alt_text text,
   sort_order integer not null default 0,
+  display_order integer not null default 0,
   created_at timestamptz not null default now()
 );
 
-create index if not exists idx_portfolio_images_project_id on public.portfolio_images(project_id, sort_order asc);
+alter table if exists public.portfolio_images
+  add column if not exists display_order integer not null default 0;
+
+create index if not exists idx_portfolio_images_project_id on public.portfolio_images(project_id, display_order asc, sort_order asc);
 
 create table if not exists public.site_settings (
   id uuid primary key default gen_random_uuid(),
@@ -136,12 +200,14 @@ alter table public.project_inquiries enable row level security;
 
 grant usage on schema public to anon, authenticated;
 grant select on table public.categories to anon, authenticated;
+grant select on table public.portfolio_categories to anon, authenticated;
 grant select on table public.projects to anon, authenticated;
 grant select on table public.portfolio_images to anon, authenticated;
 grant select on table public.site_settings to anon, authenticated;
 grant insert on table public.project_inquiries to anon, authenticated;
 grant all on table public.admin_profiles to authenticated;
 grant all on table public.categories to authenticated;
+grant all on table public.portfolio_categories to authenticated;
 grant all on table public.projects to authenticated;
 grant all on table public.portfolio_images to authenticated;
 grant all on table public.site_settings to authenticated;

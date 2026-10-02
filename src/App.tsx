@@ -23,9 +23,17 @@ import { useProjects } from './hooks/useProjects';
 import { NavSection, ServiceTab } from './types';
 import { MessageSquare, MessageCircle } from 'lucide-react';
 
-function extractPortfolioSlug(pathname: string): string | null {
-  const match = pathname.match(/^\/portfolio\/([^/]+)\/?$/i);
+function extractPortfolioCategorySlug(pathname: string): string | null {
+  const match = pathname.match(/^\/portfolio\/category\/([^/]+)\/?$/i);
   return match ? decodeURIComponent(match[1]) : null;
+}
+
+function extractPortfolioSlug(pathname: string): string | null {
+  if (extractPortfolioCategorySlug(pathname)) return null;
+  const match = pathname.match(/^\/portfolio\/([^/]+)\/?$/i);
+  if (!match) return null;
+  const slug = decodeURIComponent(match[1]);
+  return slug.toLowerCase() === 'category' ? null : slug;
 }
 
 function resolveSectionFromLocation(): NavSection {
@@ -101,6 +109,13 @@ export default function App() {
     return null;
   });
 
+  const [activeCategorySlug, setActiveCategorySlug] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return extractPortfolioCategorySlug(window.location.pathname);
+    }
+    return null;
+  });
+
   const [initialServiceTab, setInitialServiceTab] = useState<ServiceTab | undefined>(undefined);
   const [transitioningTo, setTransitioningTo] = useState<NavSection | null>(null);
 
@@ -108,16 +123,24 @@ export default function App() {
     const onPopState = () => {
       const pathname = window.location.pathname;
       const slug = extractPortfolioSlug(pathname);
+      const catSlug = extractPortfolioCategorySlug(pathname);
       const nextSection = resolveSectionFromLocation();
 
       if (nextSection === 'admin') {
         setActiveProjectSlug(null);
+        setActiveCategorySlug(null);
         setActiveSection('admin');
       } else if (slug) {
         setActiveProjectSlug(slug);
+        setActiveCategorySlug(null);
+        setActiveSection('portfolio');
+      } else if (catSlug) {
+        setActiveProjectSlug(null);
+        setActiveCategorySlug(catSlug);
         setActiveSection('portfolio');
       } else {
         setActiveProjectSlug(null);
+        setActiveCategorySlug(null);
         setActiveSection(nextSection);
       }
     };
@@ -129,7 +152,24 @@ export default function App() {
     if (typeof window !== 'undefined') {
       window.history.pushState({}, '', `/portfolio/${slug}`);
     }
+    setActiveCategorySlug(null);
     setActiveProjectSlug(slug);
+    setActiveSection('portfolio');
+    setTransitioningTo(null);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
+
+  const handleOpenPortfolioCategory = useCallback((categorySlug: string | null) => {
+    const clean = !categorySlug || categorySlug === 'all' ? null : categorySlug;
+    if (typeof window !== 'undefined') {
+      window.history.pushState(
+        {},
+        '',
+        clean ? `/portfolio/category/${clean}` : '/portfolio'
+      );
+    }
+    setActiveProjectSlug(null);
+    setActiveCategorySlug(clean);
     setActiveSection('portfolio');
     setTransitioningTo(null);
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -137,6 +177,11 @@ export default function App() {
 
   const handleOpenPublicPath = useCallback(
     (path: string) => {
+      const catSlug = extractPortfolioCategorySlug(path);
+      if (catSlug) {
+        handleOpenPortfolioCategory(catSlug);
+        return;
+      }
       const slug = extractPortfolioSlug(path);
       if (slug) {
         handleOpenProjectDetail(slug);
@@ -146,15 +191,17 @@ export default function App() {
         window.history.pushState({}, '', path);
       }
       setActiveProjectSlug(null);
+      setActiveCategorySlug(null);
       setActiveSection(resolveSectionFromLocation());
       window.scrollTo({ top: 0, behavior: 'instant' });
     },
-    [handleOpenProjectDetail]
+    [handleOpenProjectDetail, handleOpenPortfolioCategory]
   );
 
   // Smooth scroll to top when changing views and sync clean URL path
   const handleNavigate = (section: NavSection, serviceTab?: ServiceTab) => {
     setActiveProjectSlug(null);
+    setActiveCategorySlug(null);
     if (typeof window !== 'undefined') {
       if (section === 'admin') {
         if (!window.location.pathname.startsWith('/admin')) {
@@ -210,7 +257,7 @@ export default function App() {
 
   return (
     <HelmetProvider>
-      {!activeProjectSlug && (
+      {!activeProjectSlug && !activeCategorySlug && (
         <SEOHead section={transitioningTo || activeSection} activeServiceTab={initialServiceTab} />
       )}
       <div id="qbench-app-shell" className="min-h-screen bg-brand-background text-brand-text flex flex-col font-sans transition-colors duration-300 relative selection:bg-brand-primary/10 selection:text-brand-primary">
@@ -242,7 +289,7 @@ export default function App() {
             </motion.div>
           ) : (
             <motion.div
-              key={`view-${activeSection}-${activeProjectSlug || 'root'}`}
+              key={`view-${activeSection}-${activeProjectSlug || activeCategorySlug || 'root'}`}
               initial={{ opacity: 0, y: 15, filter: 'blur(6px)' }}
               animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
               exit={{ opacity: 0, y: -15, filter: 'blur(6px)' }}
@@ -253,14 +300,8 @@ export default function App() {
                   <ProjectDetailPage
                     slug={activeProjectSlug}
                     onNavigate={handleNavigate}
-                    onOpenPortfolio={() => {
-                      setActiveProjectSlug(null);
-                      if (typeof window !== 'undefined') {
-                        window.history.pushState({}, '', '/portfolio');
-                      }
-                      setActiveSection('portfolio');
-                      window.scrollTo({ top: 0, behavior: 'instant' });
-                    }}
+                    onOpenPortfolio={() => handleOpenPortfolioCategory(null)}
+                    onOpenPortfolioCategory={handleOpenPortfolioCategory}
                   />
                 </div>
               ) : (
@@ -271,13 +312,13 @@ export default function App() {
                       <HomeView
                         onNavigate={handleNavigate}
                         onOpenProjectDetail={handleOpenProjectDetail}
+                        onOpenPortfolioCategory={handleOpenPortfolioCategory}
                       />
                     </div>
                   )}
 
                   {activeSection === 'about' && (
                     <div id="view-about-screen">
-                      {/* Standard rich home presentation but specifically scrolled or customized for About details */}
                       <div className="mx-auto max-w-7xl px-6 pt-16 pb-12 lg:px-12">
                         <span className="font-tech text-xs tracking-widest text-[#00685b] font-bold uppercase block mb-4">
                           ABOUT COOP
@@ -293,6 +334,7 @@ export default function App() {
                       <HomeView
                         onNavigate={handleNavigate}
                         onOpenProjectDetail={handleOpenProjectDetail}
+                        onOpenPortfolioCategory={handleOpenPortfolioCategory}
                       />
                     </div>
                   )}
@@ -308,6 +350,8 @@ export default function App() {
                       <PortfolioView
                         onNavigate={handleNavigate}
                         onOpenProjectDetail={handleOpenProjectDetail}
+                        initialCategorySlug={activeCategorySlug}
+                        onSelectCategorySlug={handleOpenPortfolioCategory}
                       />
                     </div>
                   )}

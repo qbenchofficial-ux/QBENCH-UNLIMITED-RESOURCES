@@ -7,13 +7,16 @@ import {
 import {
   deleteProjectStorageAssets,
   getProjectPortfolioImages,
+  getAllPortfolioImagesByProject,
   syncProjectPortfolioImages,
 } from './mediaService';
 import {
   getCategories,
+  getActiveCategories,
   createCategory,
   updateCategory,
   deleteCategory,
+  sortCategories,
   SEED_CATEGORIES,
 } from './categoryService';
 import {
@@ -33,13 +36,16 @@ import type {
   ProjectFormData,
   Category,
   PortfolioImage,
+  GalleryImageInput,
 } from '../types/project';
 
 export {
   getCategories,
+  getActiveCategories,
   createCategory,
   updateCategory,
   deleteCategory,
+  sortCategories,
   SEED_CATEGORIES,
   createProjectInquiry,
   getProjectInquiries,
@@ -51,6 +57,86 @@ export {
   DEFAULT_SITE_SETTINGS,
 };
 
+const PROJECT_META_SETTING_KEY = 'cms_portfolio_projects_meta_v1';
+
+interface ProjectExtendedMeta {
+  short_description?: string | null;
+  project_date?: string | null;
+  project_type?: string | null;
+  software_tools?: string[];
+  display_order?: number;
+  video_url?: string | null;
+  client_name?: string | null;
+  instagram_url?: string | null;
+  website_url?: string | null;
+  gallery_items?: GalleryImageInput[];
+}
+
+type ProjectMetaMap = Record<string, ProjectExtendedMeta>;
+
+async function loadProjectMetaMap(): Promise<ProjectMetaMap> {
+  let localMap: ProjectMetaMap = {};
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem(PROJECT_META_SETTING_KEY);
+      if (raw) {
+        localMap = JSON.parse(raw) as ProjectMetaMap;
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+  }
+
+  if (!isSupabaseConfigured) {
+    return localMap;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('site_settings')
+      .select('setting_value')
+      .eq('setting_key', PROJECT_META_SETTING_KEY)
+      .maybeSingle();
+
+    if (!error && data?.setting_value) {
+      const parsed = JSON.parse(String(data.setting_value)) as ProjectMetaMap;
+      return { ...localMap, ...parsed };
+    }
+  } catch {
+    // ignore parse errors
+  }
+
+  return localMap;
+}
+
+async function saveProjectMetaMap(metaMap: ProjectMetaMap): Promise<void> {
+  const serialized = JSON.stringify(metaMap);
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(PROJECT_META_SETTING_KEY, serialized);
+    } catch {
+      // ignore localStorage errors
+    }
+  }
+
+  if (!isSupabaseConfigured) return;
+
+  try {
+    await supabase.from('site_settings').upsert(
+      [
+        {
+          setting_key: PROJECT_META_SETTING_KEY,
+          setting_value: serialized,
+          updated_at: new Date().toISOString(),
+        },
+      ],
+      { onConflict: 'setting_key' }
+    );
+  } catch {
+    // ignore if non-admin or transient error
+  }
+}
+
 export const SEED_PROJECTS: Project[] = [
   {
     id: 'seed-1',
@@ -60,16 +146,77 @@ export const SEED_PROJECTS: Project[] = [
       'Cinematic luxury jewellery motion design exploring the craftsmanship, brilliance, and timeless elegance of a fine diamond ring.',
     description:
       'An evocative motion graphics showcase created to highlight the intricate artistry of fine diamond jewellery. Through macro lighting studies, fluid camera choreography, and bespoke sound design, this piece transforms product visualization into an emotional luxury narrative.',
-    category_id: 'cat-motion-graphics',
+    category_id: 'df50ce32-be74-4e0d-acea-f3a388f71690',
     category: 'Motion Graphics',
     client: 'Luxury Jewellery Collective',
+    client_name: 'Luxury Jewellery Collective',
     year: 2026,
+    project_date: 'February 2026',
+    project_type: '3D Luxury Motion Design',
     services: ['Motion Graphics', '3D Visualization', 'Art Direction'],
+    software_tools: ['Cinema 4D', 'Octane Render', 'After Effects', 'Premiere Pro'],
     cover_image:
+      'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=800&h=500&q=80',
+    cover_image_url:
       'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=800&h=500&q=80',
     gallery: [
       'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1603561591411-07134e71a2a9?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1573408301185-9146fe634ad0?auto=format&fit=crop&w=1200&q=80',
+    ],
+    portfolio_images: [
+      {
+        id: 'seed-1-img-1',
+        project_id: 'seed-1',
+        image_url:
+          'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Main Cover Image',
+        sort_order: 0,
+        display_order: 0,
+        created_at: '2026-02-10T10:00:00.000Z',
+      },
+      {
+        id: 'seed-1-img-2',
+        project_id: 'seed-1',
+        image_url:
+          'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Storyboard Image 01',
+        sort_order: 1,
+        display_order: 1,
+        created_at: '2026-02-10T10:00:00.000Z',
+      },
+      {
+        id: 'seed-1-img-3',
+        project_id: 'seed-1',
+        image_url:
+          'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Storyboard Image 02',
+        sort_order: 2,
+        display_order: 2,
+        created_at: '2026-02-10T10:00:00.000Z',
+      },
+      {
+        id: 'seed-1-img-4',
+        project_id: 'seed-1',
+        image_url:
+          'https://images.unsplash.com/photo-1603561591411-07134e71a2a9?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Final Artwork',
+        sort_order: 3,
+        display_order: 3,
+        created_at: '2026-02-10T10:00:00.000Z',
+      },
+      {
+        id: 'seed-1-img-5',
+        project_id: 'seed-1',
+        image_url:
+          'https://images.unsplash.com/photo-1573408301185-9146fe634ad0?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Project Presentation',
+        sort_order: 4,
+        display_order: 4,
+        created_at: '2026-02-10T10:00:00.000Z',
+      },
     ],
     behance_url:
       'https://www.behance.net/gallery/253620337/The-Journey-of-a-Ring-Luxury-Jewellery-Motion-Design?platform=direct',
@@ -78,8 +225,10 @@ export const SEED_PROJECTS: Project[] = [
     instagram_url: null,
     website_url: null,
     featured: true,
+    is_featured: true,
     status: 'published',
     sort_order: 1,
+    display_order: 1,
     created_at: '2026-02-10T10:00:00.000Z',
     updated_at: '2026-02-10T10:00:00.000Z',
   },
@@ -91,15 +240,44 @@ export const SEED_PROJECTS: Project[] = [
       'Atmospheric motion graphics narrative exploring late-night creative focus, urban rhythm, and visual storytelling.',
     description:
       'Sleepless Night is a conceptual motion graphics piece blending kinetic typography, moody lighting transitions, and frame-by-frame visual pacing to capture the energy of midnight creative breakthroughs.',
-    category_id: 'cat-motion-graphics',
+    category_id: 'df50ce32-be74-4e0d-acea-f3a388f71690',
     category: 'Motion Graphics',
     client: 'QBENCH Studio Originals',
+    client_name: 'QBENCH Studio Originals',
     year: 2026,
+    project_date: 'February 2026',
+    project_type: 'Conceptual Motion Film',
     services: ['Motion Graphics', 'Visual Storytelling', 'Sound Sync'],
+    software_tools: ['After Effects', 'Illustrator', 'Photoshop'],
     cover_image:
+      'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=800&h=500&q=80',
+    cover_image_url:
       'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=800&h=500&q=80',
     gallery: [
       'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
+    ],
+    portfolio_images: [
+      {
+        id: 'seed-2-img-1',
+        project_id: 'seed-2',
+        image_url:
+          'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Main Cover Image',
+        sort_order: 0,
+        display_order: 0,
+        created_at: '2026-02-14T10:00:00.000Z',
+      },
+      {
+        id: 'seed-2-img-2',
+        project_id: 'seed-2',
+        image_url:
+          'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Visual Lighting Study',
+        sort_order: 1,
+        display_order: 1,
+        created_at: '2026-02-14T10:00:00.000Z',
+      },
     ],
     behance_url: null,
     youtube_url: null,
@@ -107,8 +285,10 @@ export const SEED_PROJECTS: Project[] = [
     instagram_url: null,
     website_url: null,
     featured: true,
+    is_featured: true,
     status: 'published',
     sort_order: 2,
+    display_order: 2,
     created_at: '2026-02-14T10:00:00.000Z',
     updated_at: '2026-02-14T10:00:00.000Z',
   },
@@ -120,15 +300,33 @@ export const SEED_PROJECTS: Project[] = [
       'High-impact public awareness creative campaign designed to communicate preventive health through approachable visual design.',
     description:
       'A multi-format creative campaign developed to make vital kidney health education engaging, memorable, and shareable across digital and print platforms. Combines clear infographic storytelling with warm, human-centered illustration.',
-    category_id: 'cat-creative-campaigns',
-    category: 'Creative Campaigns',
+    category_id: '5c912245-2ae0-40c2-8781-aef99dab9a24',
+    category: 'Social Media',
     client: 'Healthcare Awareness Initiative',
+    client_name: 'Healthcare Awareness Initiative',
     year: 2026,
+    project_date: 'February 2026',
+    project_type: 'Social Media & Public Awareness Campaign',
     services: ['Creative Campaigns', 'Social Media', 'Infographic Design'],
+    software_tools: ['Illustrator', 'Photoshop', 'After Effects'],
     cover_image:
+      'https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&fit=crop&w=800&h=500&q=80',
+    cover_image_url:
       'https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&fit=crop&w=800&h=500&q=80',
     gallery: [
       'https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&fit=crop&w=1200&q=80',
+    ],
+    portfolio_images: [
+      {
+        id: 'seed-3-img-1',
+        project_id: 'seed-3',
+        image_url:
+          'https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Campaign Key Visual',
+        sort_order: 0,
+        display_order: 0,
+        created_at: '2026-02-18T10:00:00.000Z',
+      },
     ],
     behance_url: null,
     youtube_url: null,
@@ -136,18 +334,36 @@ export const SEED_PROJECTS: Project[] = [
     instagram_url: null,
     website_url: null,
     featured: true,
+    is_featured: true,
     status: 'published',
     sort_order: 3,
+    display_order: 3,
     created_at: '2026-02-18T10:00:00.000Z',
     updated_at: '2026-02-18T10:00:00.000Z',
   },
 ];
 
+export function sortProjects(list: Project[]): Project[] {
+  return [...list].sort((a, b) => {
+    const orderA = a.display_order ?? a.sort_order ?? 999;
+    const orderB = b.display_order ?? b.sort_order ?? 999;
+    if (orderA !== orderB) return orderA - orderB;
+    return (
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  });
+}
+
 function normalizeProject(
   raw: Record<string, unknown>,
   categoriesById: Map<string, Category>,
-  portfolioImages?: PortfolioImage[]
+  portfolioImages?: PortfolioImage[],
+  metaMap?: ProjectMetaMap
 ): Project {
+  const id = String(raw.id || '');
+  const slug = String(raw.slug || '');
+  const meta = (metaMap && (metaMap[id] || metaMap[slug])) || {};
+
   const categoryId = raw.category_id ? String(raw.category_id) : null;
   const matchedCat = categoryId ? categoriesById.get(categoryId) : undefined;
   const categoryName = matchedCat
@@ -159,6 +375,8 @@ function normalizeProject(
   const description = raw.description ? String(raw.description) : null;
   const shortDescription = raw.short_description
     ? String(raw.short_description)
+    : meta.short_description
+    ? String(meta.short_description)
     : description
     ? description.split('\n')[0].slice(0, 220)
     : null;
@@ -167,54 +385,147 @@ function normalizeProject(
     ? raw.gallery.map(String).filter(Boolean)
     : [];
 
-  // Merge gallery URLs from both projects.gallery and public.portfolio_images
-  const extraImages = (portfolioImages || [])
+  // Build portfolio_images from DB rows or meta.gallery_items or rawGallery
+  let resolvedPortfolioImages: PortfolioImage[] = [];
+  if (portfolioImages && portfolioImages.length > 0) {
+    resolvedPortfolioImages = [...portfolioImages].sort(
+      (a, b) => (a.display_order ?? a.sort_order) - (b.display_order ?? b.sort_order)
+    );
+  } else if (meta.gallery_items && meta.gallery_items.length > 0) {
+    resolvedPortfolioImages = meta.gallery_items.map((item, idx) => ({
+      id: item.id || `${id}-img-${idx}`,
+      project_id: id,
+      image_url: item.image_url,
+      alt_text: item.alt_text || null,
+      sort_order: item.display_order ?? idx,
+      display_order: item.display_order ?? idx,
+      created_at: String(raw.created_at || new Date().toISOString()),
+    }));
+  } else if (rawGallery.length > 0) {
+    resolvedPortfolioImages = rawGallery.map((url, idx) => ({
+      id: `${id}-img-${idx}`,
+      project_id: id,
+      image_url: url,
+      alt_text: `${String(raw.title || 'Project')} — Image ${String(
+        idx + 1
+      ).padStart(2, '0')}`,
+      sort_order: idx,
+      display_order: idx,
+      created_at: String(raw.created_at || new Date().toISOString()),
+    }));
+  }
+
+  const extraImages = resolvedPortfolioImages
     .map((img) => img.image_url)
     .filter(Boolean);
-  const mergedGallery = Array.from(new Set([...rawGallery, ...extraImages]));
+  const mergedGallery =
+    extraImages.length > 0
+      ? extraImages
+      : Array.from(new Set([...rawGallery, ...extraImages]));
 
-  const youtubeUrl = raw.youtube_url
-    ? String(raw.youtube_url)
-    : raw.video_url
+  const videoUrl = raw.video_url
     ? String(raw.video_url)
+    : raw.youtube_url
+    ? String(raw.youtube_url)
+    : meta.video_url
+    ? String(meta.video_url)
     : null;
 
+  const clientVal = raw.client_name
+    ? String(raw.client_name)
+    : raw.client
+    ? String(raw.client)
+    : meta.client_name
+    ? String(meta.client_name)
+    : null;
+
+  const yearVal =
+    typeof raw.year === 'number'
+      ? raw.year
+      : raw.year
+      ? Number(raw.year)
+      : new Date().getFullYear();
+
+  const projectDate = raw.project_date
+    ? String(raw.project_date)
+    : meta.project_date
+    ? String(meta.project_date)
+    : String(yearVal);
+
+  const projectType = raw.project_type
+    ? String(raw.project_type)
+    : meta.project_type
+    ? String(meta.project_type)
+    : null;
+
+  const servicesList = Array.isArray(raw.services)
+    ? raw.services.map(String).filter(Boolean)
+    : typeof raw.services === 'string' && raw.services.trim()
+    ? raw.services
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+
+  const softwareTools = Array.isArray(raw.software_tools)
+    ? raw.software_tools.map(String).filter(Boolean)
+    : Array.isArray(meta.software_tools)
+    ? meta.software_tools.map(String).filter(Boolean)
+    : [];
+
+  const coverImg = raw.cover_image_url
+    ? String(raw.cover_image_url)
+    : raw.cover_image
+    ? String(raw.cover_image)
+    : mergedGallery[0] || null;
+
+  const isFeatured =
+    typeof raw.is_featured === 'boolean'
+      ? raw.is_featured
+      : Boolean(raw.featured);
+
+  const displayOrder =
+    typeof raw.display_order === 'number'
+      ? raw.display_order
+      : typeof raw.sort_order === 'number'
+      ? raw.sort_order
+      : typeof meta.display_order === 'number'
+      ? meta.display_order
+      : 0;
+
   return {
-    id: String(raw.id || ''),
+    id,
     title: String(raw.title || ''),
-    slug: String(raw.slug || ''),
+    slug,
     description,
     short_description: shortDescription,
     category_id: categoryId,
     category: categoryName,
-    client: raw.client ? String(raw.client) : null,
-    year:
-      typeof raw.year === 'number'
-        ? raw.year
-        : raw.year
-        ? Number(raw.year)
-        : new Date().getFullYear(),
-    services: Array.isArray(raw.services)
-      ? raw.services.map(String).filter(Boolean)
-      : typeof raw.services === 'string' && raw.services.trim()
-      ? raw.services
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [],
-    cover_image: raw.cover_image
-      ? String(raw.cover_image)
-      : mergedGallery[0] || null,
+    client: clientVal,
+    client_name: clientVal,
+    year: yearVal,
+    project_date: projectDate,
+    project_type: projectType,
+    services: servicesList,
+    software_tools: softwareTools,
+    cover_image: coverImg,
+    cover_image_url: coverImg,
     gallery: mergedGallery,
     behance_url: raw.behance_url ? String(raw.behance_url) : null,
-    youtube_url: youtubeUrl,
-    video_url: youtubeUrl,
-    instagram_url: raw.instagram_url ? String(raw.instagram_url) : null,
-    website_url: raw.website_url ? String(raw.website_url) : null,
-    featured: Boolean(raw.featured),
+    youtube_url: videoUrl,
+    video_url: videoUrl,
+    instagram_url: raw.instagram_url
+      ? String(raw.instagram_url)
+      : meta.instagram_url || null,
+    website_url: raw.website_url
+      ? String(raw.website_url)
+      : meta.website_url || null,
+    featured: isFeatured,
+    is_featured: isFeatured,
     status: raw.status === 'published' ? 'published' : 'draft',
-    sort_order: typeof raw.sort_order === 'number' ? raw.sort_order : 0,
-    portfolio_images: portfolioImages,
+    sort_order: displayOrder,
+    display_order: displayOrder,
+    portfolio_images: resolvedPortfolioImages,
     created_at: raw.created_at
       ? String(raw.created_at)
       : new Date().toISOString(),
@@ -246,173 +557,127 @@ async function resolveCategoryId(
 ): Promise<string | null> {
   const { byId, byNameOrSlug } = await buildCategoryMaps();
 
-  if (formData.category_id && byId.has(formData.category_id)) {
+  if (
+    formData.category_id &&
+    !formData.category_id.startsWith('cat-') &&
+    byId.has(formData.category_id)
+  ) {
     return formData.category_id;
   }
 
-  const cleanCat = (formData.category || '').trim();
-  if (!cleanCat) return null;
+  const rawCategory = (formData.category || '').trim();
+  if (!rawCategory) return null;
 
-  const found =
-    byNameOrSlug.get(cleanCat.toLowerCase()) ||
-    byNameOrSlug.get(slugify(cleanCat));
+  const existing =
+    byNameOrSlug.get(rawCategory.toLowerCase()) ||
+    byNameOrSlug.get(slugify(rawCategory));
 
-  if (found) {
-    return found.id;
+  if (existing && !existing.id.startsWith('cat-')) {
+    return existing.id;
   }
 
-  return null;
+  // Create category in Supabase if it doesn't exist yet
+  try {
+    const created = await createCategory({ name: rawCategory });
+    return created.id;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Fetch all projects (for Admin CMS).
+ * Fetch ALL projects (published + draft) for the Admin CMS.
  */
 export async function getAllProjects(): Promise<Project[]> {
   if (!isSupabaseConfigured) {
-    return SEED_PROJECTS;
+    return sortProjects(SEED_PROJECTS);
   }
 
-  const [{ byId }, { data, error }] = await Promise.all([
+  const [{ byId }, imagesByProject, metaMap] = await Promise.all([
     buildCategoryMaps(),
-    supabase
-      .from('projects')
-      .select('*')
-      .order('created_at', { ascending: false }),
+    getAllPortfolioImagesByProject(),
+    loadProjectMetaMap(),
   ]);
 
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const rows = (data || []).map((row) =>
-    normalizeProject(row as Record<string, unknown>, byId)
-  );
-
-  if (rows.length === 0) {
-    return SEED_PROJECTS;
-  }
-
-  return rows;
-}
-
-/**
- * Fetch published projects (for Public Portfolio).
- * If `includeDraftsForAdmin` is true and the user is an authenticated admin, returns all projects.
- */
-export async function getPublishedProjects(
-  includeDraftsForAdmin = false
-): Promise<Project[]> {
-  if (!isSupabaseConfigured) {
-    return SEED_PROJECTS.filter((p) => p.status === 'published');
-  }
-
-  const { byId } = await buildCategoryMaps();
-
-  let query = supabase
+  const { data, error } = await supabase
     .from('projects')
     .select('*')
-    .order('featured', { ascending: false })
     .order('created_at', { ascending: false });
 
-  if (!includeDraftsForAdmin) {
-    query = query.eq('status', 'published');
-  }
-
-  const { data, error } = await query;
-
   if (error) {
     throw new Error(error.message);
   }
 
-  const rows = (data || []).map((row) =>
-    normalizeProject(row as Record<string, unknown>, byId)
-  );
+  const rows = (data || []).map((row) => {
+    const raw = row as Record<string, unknown>;
+    const pid = String(raw.id || '');
+    return normalizeProject(raw, byId, imagesByProject.get(pid), metaMap);
+  });
 
-  if (rows.length === 0 && !includeDraftsForAdmin) {
-    return SEED_PROJECTS.filter((p) => p.status === 'published');
+  if (rows.length === 0) {
+    return sortProjects(SEED_PROJECTS);
   }
 
-  return rows;
+  return sortProjects(rows);
 }
 
 /**
- * Seed the default QBENCH showcase projects into `public.projects` so the admin can edit them.
+ * Fetch ONLY published projects (`status = 'published'`) for the public website.
  */
-export async function seedDefaultPortfolioProjects(): Promise<number> {
+export async function getPublishedProjects(): Promise<Project[]> {
   if (!isSupabaseConfigured) {
-    throw new Error(SUPABASE_CONFIG_WARNING);
+    return sortProjects(
+      SEED_PROJECTS.filter((p) => p.status === 'published')
+    );
   }
 
-  let insertedCount = 0;
-  for (const seed of SEED_PROJECTS) {
-    const exists = await isSlugTaken(seed.slug);
-    if (exists) continue;
-
-    await createProject({
-      title: seed.title,
-      slug: seed.slug,
-      short_description: seed.short_description || '',
-      description: seed.description || seed.short_description || '',
-      category_id: seed.category_id,
-      category: seed.category || 'Branding',
-      client: seed.client || 'QBENCH Client',
-      year: seed.year || 2026,
-      services: seed.services || [],
-      cover_image: seed.cover_image,
-      gallery: seed.gallery || [],
-      behance_url: seed.behance_url || '',
-      youtube_url: seed.youtube_url || '',
-      video_url: seed.video_url || '',
-      instagram_url: seed.instagram_url || '',
-      website_url: seed.website_url || '',
-      featured: seed.featured,
-      status: seed.status,
-      sort_order: seed.sort_order || 1,
-    });
-    insertedCount++;
-  }
-
-  window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
-  return insertedCount;
-}
-
-/**
- * Fetch a single project by its ID (for /admin/projects/:id/edit).
- */
-export async function getProjectById(id: string): Promise<Project | null> {
-  if (!isSupabaseConfigured) {
-    return SEED_PROJECTS.find((p) => p.id === id) || null;
-  }
-
-  const [{ byId }, { data, error }, portfolioImages] = await Promise.all([
+  const [{ byId }, imagesByProject, metaMap] = await Promise.all([
     buildCategoryMaps(),
-    supabase.from('projects').select('*').eq('id', id).maybeSingle(),
-    getProjectPortfolioImages(id),
+    getAllPortfolioImagesByProject(),
+    loadProjectMetaMap(),
   ]);
 
+  const { data, error } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('status', 'published')
+    .order('created_at', { ascending: false });
+
   if (error) {
     throw new Error(error.message);
   }
 
-  if (!data) {
-    return SEED_PROJECTS.find((p) => p.id === id) || null;
+  const publishedRows = (data || []).map((row) => {
+    const raw = row as Record<string, unknown>;
+    const pid = String(raw.id || '');
+    return normalizeProject(raw, byId, imagesByProject.get(pid), metaMap);
+  });
+
+  if (publishedRows.length > 0) {
+    return sortProjects(publishedRows);
   }
 
-  return normalizeProject(
-    data as Record<string, unknown>,
-    byId,
-    portfolioImages
-  );
+  // Check if any projects exist in DB at all (e.g. if all DB projects are drafts, return empty rather than seed)
+  const { count } = await supabase
+    .from('projects')
+    .select('id', { count: 'exact', head: true });
+
+  if (typeof count === 'number' && count > 0) {
+    return [];
+  }
+
+  return sortProjects(SEED_PROJECTS.filter((p) => p.status === 'published'));
 }
 
 /**
- * Fetch a single project by slug (for /portfolio/:slug).
- * Also loads gallery records from `public.portfolio_images`.
+ * Fetch a single project by its URL slug (`slug`), including its `portfolio_images` rows.
  */
 export async function getProjectBySlug(
   slug: string,
   includeDrafts = false
 ): Promise<Project | null> {
+  if (!slug) return null;
+
   if (!isSupabaseConfigured) {
     return (
       SEED_PROJECTS.find(
@@ -421,7 +686,10 @@ export async function getProjectBySlug(
     );
   }
 
-  const { byId } = await buildCategoryMaps();
+  const [{ byId }, metaMap] = await Promise.all([
+    buildCategoryMaps(),
+    loadProjectMetaMap(),
+  ]);
 
   let query = supabase.from('projects').select('*').eq('slug', slug);
 
@@ -436,6 +704,12 @@ export async function getProjectBySlug(
   }
 
   if (!data) {
+    const { count } = await supabase
+      .from('projects')
+      .select('id', { count: 'exact', head: true });
+    if (typeof count === 'number' && count > 0) {
+      return null;
+    }
     return (
       SEED_PROJECTS.find(
         (p) => p.slug === slug && (includeDrafts || p.status === 'published')
@@ -451,7 +725,8 @@ export async function getProjectBySlug(
   return normalizeProject(
     data as Record<string, unknown>,
     byId,
-    portfolioImages
+    portfolioImages,
+    metaMap
   );
 }
 
@@ -466,7 +741,7 @@ export async function isSlugTaken(
   if (!cleanSlug || !isSupabaseConfigured) return false;
 
   let query = supabase.from('projects').select('id').eq('slug', cleanSlug);
-  if (excludeProjectId) {
+  if (excludeProjectId && !excludeProjectId.startsWith('seed-')) {
     query = query.neq('id', excludeProjectId);
   }
   const { data, error } = await query.maybeSingle();
@@ -479,7 +754,9 @@ export async function isSlugTaken(
 /**
  * Create a new project in `public.projects` and sync `public.portfolio_images`.
  */
-export async function createProject(formData: ProjectFormData): Promise<Project> {
+export async function createProject(
+  formData: ProjectFormData
+): Promise<Project> {
   if (!isSupabaseConfigured) {
     throw new Error(SUPABASE_CONFIG_WARNING);
   }
@@ -502,61 +779,99 @@ export async function createProject(formData: ProjectFormData): Promise<Project>
   const categoryId = await resolveCategoryId(formData);
   const now = new Date().toISOString();
 
+  const shortDesc = formData.short_description?.trim() || null;
   const fullDescription =
-    formData.description.trim() ||
-    formData.short_description?.trim() ||
-    null;
+    formData.description.trim() || shortDesc || null;
 
-  const youtubeUrl =
-    (formData.youtube_url || formData.video_url || '').trim() || null;
+  const videoUrl =
+    (formData.video_url || formData.youtube_url || '').trim() || null;
+
+  const clientVal =
+    (formData.client_name || formData.client || '').trim() || null;
 
   const cleanGallery = formData.gallery.map((u) => u.trim()).filter(Boolean);
+  const coverImage =
+    formData.cover_image_url ||
+    formData.cover_image ||
+    cleanGallery[0] ||
+    null;
 
-  const primaryPayload = {
+  const isFeatured =
+    typeof formData.is_featured === 'boolean'
+      ? formData.is_featured
+      : Boolean(formData.featured);
+
+  const displayOrder =
+    typeof formData.display_order === 'number'
+      ? formData.display_order
+      : typeof formData.sort_order === 'number'
+      ? formData.sort_order
+      : 1;
+
+  const softwareTools = (formData.software_tools || [])
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const fullPayload = {
     title: formData.title.trim(),
     slug: cleanSlug,
+    short_description: shortDesc,
     description: fullDescription,
     category_id: categoryId,
-    client: formData.client.trim() || null,
+    client: clientVal,
+    client_name: clientVal,
     year: Number(formData.year) || new Date().getFullYear(),
+    project_date:
+      formData.project_date?.trim() ||
+      String(formData.year || new Date().getFullYear()),
+    project_type: formData.project_type?.trim() || null,
     services: formData.services.map((s) => s.trim()).filter(Boolean),
-    cover_image: formData.cover_image || cleanGallery[0] || null,
+    software_tools: softwareTools,
+    cover_image: coverImage,
+    cover_image_url: coverImage,
     gallery: cleanGallery,
     behance_url: formData.behance_url.trim() || null,
-    youtube_url: youtubeUrl,
-    featured: Boolean(formData.featured),
+    youtube_url: videoUrl,
+    video_url: videoUrl,
+    featured: isFeatured,
+    is_featured: isFeatured,
     status: formData.status,
+    display_order: displayOrder,
+    sort_order: displayOrder,
     updated_at: now,
   };
 
   let { data, error } = await supabase
     .from('projects')
-    .insert([primaryPayload])
+    .insert([fullPayload])
     .select('*')
     .single();
 
-  if (error && error.message && error.message.includes('youtube_url')) {
-    const fallbackPayload = {
+  if (
+    error &&
+    error.message &&
+    (error.message.includes('column') ||
+      error.message.includes('schema cache'))
+  ) {
+    const basicPayload = {
       title: formData.title.trim(),
       slug: cleanSlug,
       description: fullDescription,
-      short_description: fullDescription ? fullDescription.slice(0, 220) : null,
-      category: (formData.category || '').trim() || null,
       category_id: categoryId,
-      client: formData.client.trim() || null,
+      client: clientVal,
       year: Number(formData.year) || new Date().getFullYear(),
       services: formData.services.map((s) => s.trim()).filter(Boolean),
-      cover_image: formData.cover_image || cleanGallery[0] || null,
+      cover_image: coverImage,
       gallery: cleanGallery,
       behance_url: formData.behance_url.trim() || null,
-      video_url: youtubeUrl,
-      featured: Boolean(formData.featured),
+      youtube_url: videoUrl,
+      featured: isFeatured,
       status: formData.status,
       updated_at: now,
     };
     const retry = await supabase
       .from('projects')
-      .insert([fallbackPayload])
+      .insert([basicPayload])
       .select('*')
       .single();
     data = retry.data;
@@ -573,14 +888,37 @@ export async function createProject(formData: ProjectFormData): Promise<Project>
   const createdRow = data as Record<string, unknown>;
   const createdId = String(createdRow.id);
 
-  // Sync gallery records into public.portfolio_images
-  await syncProjectPortfolioImages(createdId, cleanGallery, primaryPayload.title);
+  // Sync gallery records into public.portfolio_images (preserving custom alt_text and display_order)
+  await syncProjectPortfolioImages(
+    createdId,
+    cleanGallery,
+    fullPayload.title,
+    formData.gallery_items
+  );
+
+  // Persist extended project metadata in site_settings so it survives even before DDL migration
+  const metaMap = await loadProjectMetaMap();
+  const metaEntry: ProjectExtendedMeta = {
+    short_description: shortDesc,
+    project_date: fullPayload.project_date,
+    project_type: fullPayload.project_type,
+    software_tools: softwareTools,
+    display_order: displayOrder,
+    video_url: videoUrl,
+    client_name: clientVal,
+    instagram_url: formData.instagram_url?.trim() || null,
+    website_url: formData.website_url?.trim() || null,
+    gallery_items: formData.gallery_items,
+  };
+  metaMap[createdId] = metaEntry;
+  metaMap[cleanSlug] = metaEntry;
+  await saveProjectMetaMap(metaMap);
 
   const { byId } = await buildCategoryMaps();
   const portfolioImages = await getProjectPortfolioImages(createdId);
 
   window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
-  return normalizeProject(createdRow, byId, portfolioImages);
+  return normalizeProject(createdRow, byId, portfolioImages, metaMap);
 }
 
 /**
@@ -605,20 +943,32 @@ export async function updateProject(
           short_description: seed.short_description || '',
           description: seed.description || seed.short_description || '',
           category_id: seed.category_id,
-          category: seed.category || 'Branding',
+          category: seed.category || 'Motion Graphics',
           client: seed.client || 'QBENCH Client',
+          client_name: seed.client_name || seed.client || 'QBENCH Client',
           year: seed.year || 2026,
+          project_date: seed.project_date || '2026',
+          project_type: seed.project_type || '',
           services: seed.services || [],
+          software_tools: seed.software_tools || [],
           cover_image: seed.cover_image,
+          cover_image_url: seed.cover_image_url || seed.cover_image,
           gallery: seed.gallery || [],
+          gallery_items: (seed.portfolio_images || []).map((img, i) => ({
+            image_url: img.image_url,
+            alt_text: img.alt_text || `${seed.title} — Image ${i + 1}`,
+            display_order: img.display_order ?? i,
+          })),
           behance_url: seed.behance_url || '',
           youtube_url: seed.youtube_url || '',
           video_url: seed.video_url || '',
           instagram_url: seed.instagram_url || '',
           website_url: seed.website_url || '',
           featured: seed.featured,
+          is_featured: seed.is_featured,
           status: seed.status,
           sort_order: seed.sort_order || 1,
+          display_order: seed.display_order || 1,
         });
       }
     }
@@ -643,62 +993,100 @@ export async function updateProject(
   const categoryId = await resolveCategoryId(formData);
   const now = new Date().toISOString();
 
+  const shortDesc = formData.short_description?.trim() || null;
   const fullDescription =
-    formData.description.trim() ||
-    formData.short_description?.trim() ||
-    null;
+    formData.description.trim() || shortDesc || null;
 
-  const youtubeUrl =
-    (formData.youtube_url || formData.video_url || '').trim() || null;
+  const videoUrl =
+    (formData.video_url || formData.youtube_url || '').trim() || null;
+
+  const clientVal =
+    (formData.client_name || formData.client || '').trim() || null;
 
   const cleanGallery = formData.gallery.map((u) => u.trim()).filter(Boolean);
+  const coverImage =
+    formData.cover_image_url ||
+    formData.cover_image ||
+    cleanGallery[0] ||
+    null;
 
-  const primaryPayload = {
+  const isFeatured =
+    typeof formData.is_featured === 'boolean'
+      ? formData.is_featured
+      : Boolean(formData.featured);
+
+  const displayOrder =
+    typeof formData.display_order === 'number'
+      ? formData.display_order
+      : typeof formData.sort_order === 'number'
+      ? formData.sort_order
+      : 1;
+
+  const softwareTools = (formData.software_tools || [])
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const fullPayload = {
     title: formData.title.trim(),
     slug: cleanSlug,
+    short_description: shortDesc,
     description: fullDescription,
     category_id: categoryId,
-    client: formData.client.trim() || null,
+    client: clientVal,
+    client_name: clientVal,
     year: Number(formData.year) || new Date().getFullYear(),
+    project_date:
+      formData.project_date?.trim() ||
+      String(formData.year || new Date().getFullYear()),
+    project_type: formData.project_type?.trim() || null,
     services: formData.services.map((s) => s.trim()).filter(Boolean),
-    cover_image: formData.cover_image || cleanGallery[0] || null,
+    software_tools: softwareTools,
+    cover_image: coverImage,
+    cover_image_url: coverImage,
     gallery: cleanGallery,
     behance_url: formData.behance_url.trim() || null,
-    youtube_url: youtubeUrl,
-    featured: Boolean(formData.featured),
+    youtube_url: videoUrl,
+    video_url: videoUrl,
+    featured: isFeatured,
+    is_featured: isFeatured,
     status: formData.status,
+    display_order: displayOrder,
+    sort_order: displayOrder,
     updated_at: now,
   };
 
   let { data, error } = await supabase
     .from('projects')
-    .update(primaryPayload)
+    .update(fullPayload)
     .eq('id', id)
     .select('*')
     .single();
 
-  if (error && error.message && error.message.includes('youtube_url')) {
-    const fallbackPayload = {
+  if (
+    error &&
+    error.message &&
+    (error.message.includes('column') ||
+      error.message.includes('schema cache'))
+  ) {
+    const basicPayload = {
       title: formData.title.trim(),
       slug: cleanSlug,
       description: fullDescription,
-      short_description: fullDescription ? fullDescription.slice(0, 220) : null,
-      category: (formData.category || '').trim() || null,
       category_id: categoryId,
-      client: formData.client.trim() || null,
+      client: clientVal,
       year: Number(formData.year) || new Date().getFullYear(),
       services: formData.services.map((s) => s.trim()).filter(Boolean),
-      cover_image: formData.cover_image || cleanGallery[0] || null,
+      cover_image: coverImage,
       gallery: cleanGallery,
       behance_url: formData.behance_url.trim() || null,
-      video_url: youtubeUrl,
-      featured: Boolean(formData.featured),
+      youtube_url: videoUrl,
+      featured: isFeatured,
       status: formData.status,
       updated_at: now,
     };
     const retry = await supabase
       .from('projects')
-      .update(fallbackPayload)
+      .update(basicPayload)
       .eq('id', id)
       .select('*')
       .single();
@@ -713,22 +1101,48 @@ export async function updateProject(
     throw new Error(error.message);
   }
 
-  // Sync gallery records into public.portfolio_images
-  await syncProjectPortfolioImages(id, cleanGallery, primaryPayload.title);
+  await syncProjectPortfolioImages(
+    id,
+    cleanGallery,
+    fullPayload.title,
+    formData.gallery_items
+  );
+
+  const metaMap = await loadProjectMetaMap();
+  const metaEntry: ProjectExtendedMeta = {
+    short_description: shortDesc,
+    project_date: fullPayload.project_date,
+    project_type: fullPayload.project_type,
+    software_tools: softwareTools,
+    display_order: displayOrder,
+    video_url: videoUrl,
+    client_name: clientVal,
+    instagram_url: formData.instagram_url?.trim() || null,
+    website_url: formData.website_url?.trim() || null,
+    gallery_items: formData.gallery_items,
+  };
+  metaMap[id] = metaEntry;
+  metaMap[cleanSlug] = metaEntry;
+  await saveProjectMetaMap(metaMap);
 
   const { byId } = await buildCategoryMaps();
   const portfolioImages = await getProjectPortfolioImages(id);
 
   window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
-  return normalizeProject(data as Record<string, unknown>, byId, portfolioImages);
+  return normalizeProject(
+    data as Record<string, unknown>,
+    byId,
+    portfolioImages,
+    metaMap
+  );
 }
 
 /**
- * Quick-toggle a project's status ('published' | 'draft') or featured flag.
+ * Quick-toggle a project's status ('published' | 'draft'), featured flag, or display_order.
  */
 export async function patchProjectFlags(
   id: string,
-  patch: Partial<Pick<Project, 'status' | 'featured'>>
+  patch: Partial<Pick<Project, 'status' | 'featured' | 'display_order'>>
 ): Promise<void> {
   if (!isSupabaseConfigured) {
     throw new Error(SUPABASE_CONFIG_WARNING);
@@ -747,45 +1161,194 @@ export async function patchProjectFlags(
   }
 
   const now = new Date().toISOString();
+  const dbPatch: Record<string, unknown> = { updated_at: now };
+  if (patch.status !== undefined) dbPatch.status = patch.status;
+  if (patch.featured !== undefined) dbPatch.featured = patch.featured;
+
   const { error } = await supabase
     .from('projects')
-    .update({ ...patch, updated_at: now })
+    .update(dbPatch)
     .eq('id', id);
 
   if (error) {
     throw new Error(error.message);
   }
 
+  if (typeof patch.display_order === 'number') {
+    const metaMap = await loadProjectMetaMap();
+    metaMap[id] = {
+      ...(metaMap[id] || {}),
+      display_order: patch.display_order,
+    };
+    await saveProjectMetaMap(metaMap);
+  }
+
   window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
 }
 
 /**
- * Delete a project and clean up its storage files and `public.portfolio_images` rows.
+ * Fetch a single project by its ID (`id`), including its `portfolio_images` rows.
  */
-export async function deleteProject(project: Project): Promise<void> {
-  if (!isSupabaseConfigured) {
-    throw new Error(SUPABASE_CONFIG_WARNING);
+export async function getProjectById(id: string): Promise<Project | null> {
+  if (!id) return null;
+
+  if (id.startsWith('seed-') || !isSupabaseConfigured) {
+    return SEED_PROJECTS.find((p) => p.id === id) || null;
   }
 
-  if (project.id.startsWith('seed-')) {
-    await seedDefaultPortfolioProjects();
-    const existing = await getProjectBySlug(project.slug, true);
-    if (existing && !existing.id.startsWith('seed-')) {
-      await deleteProject(existing);
-    }
-    return;
-  }
+  const [{ byId }, metaMap] = await Promise.all([
+    buildCategoryMaps(),
+    loadProjectMetaMap(),
+  ]);
 
-  await deleteProjectStorageAssets(
-    project.cover_image,
-    project.gallery,
-    project.id
-  );
+  const { data, error } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
 
-  const { error } = await supabase.from('projects').delete().eq('id', project.id);
   if (error) {
     throw new Error(error.message);
   }
 
+  if (!data) {
+    return SEED_PROJECTS.find((p) => p.id === id) || null;
+  }
+
+  const portfolioImages = await getProjectPortfolioImages(id);
+
+  return normalizeProject(
+    data as Record<string, unknown>,
+    byId,
+    portfolioImages,
+    metaMap
+  );
+}
+
+/**
+ * Delete a project from `public.projects`, remove its `portfolio_images` rows,
+ * and clean up associated files in the `portfolio-images` Storage bucket.
+ */
+export async function deleteProject(
+  projectOrId: string | Project
+): Promise<void> {
+  if (!isSupabaseConfigured) {
+    throw new Error(SUPABASE_CONFIG_WARNING);
+  }
+
+  const id = typeof projectOrId === 'string' ? projectOrId : projectOrId.id;
+
+  if (id.startsWith('seed-')) {
+    for (const seed of SEED_PROJECTS) {
+      if (seed.id === id) continue;
+      const taken = await isSlugTaken(seed.slug);
+      if (!taken) {
+        await createProject({
+          title: seed.title,
+          slug: seed.slug,
+          short_description: seed.short_description || '',
+          description: seed.description || seed.short_description || '',
+          category_id: seed.category_id,
+          category: seed.category || 'Motion Graphics',
+          client: seed.client || 'QBENCH Client',
+          year: seed.year || 2026,
+          services: seed.services || [],
+          software_tools: seed.software_tools || [],
+          cover_image: seed.cover_image,
+          gallery: seed.gallery || [],
+          behance_url: seed.behance_url || '',
+          youtube_url: seed.youtube_url || '',
+          video_url: seed.video_url || '',
+          featured: seed.featured,
+          status: seed.status,
+          display_order: seed.display_order || 1,
+        });
+      }
+    }
+    window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
+    return;
+  }
+
+  const { data: existing } = await supabase
+    .from('projects')
+    .select('cover_image, gallery, slug')
+    .eq('id', id)
+    .maybeSingle();
+
+  const { error } = await supabase.from('projects').delete().eq('id', id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const metaMap = await loadProjectMetaMap();
+  if (metaMap[id]) delete metaMap[id];
+  if (existing && (existing as Record<string, unknown>).slug) {
+    delete metaMap[String((existing as Record<string, unknown>).slug)];
+  }
+  await saveProjectMetaMap(metaMap);
+
+  if (existing) {
+    const row = existing as Record<string, unknown>;
+    const coverImage = row.cover_image ? String(row.cover_image) : null;
+    const gallery = Array.isArray(row.gallery)
+      ? row.gallery.map(String).filter(Boolean)
+      : [];
+    await deleteProjectStorageAssets(coverImage, gallery, id);
+  }
+
   window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
+}
+
+/**
+ * Seed default QBENCH categories and showcase projects into Supabase if not already present.
+ */
+export async function seedDefaultPortfolioProjects(): Promise<number> {
+  if (!isSupabaseConfigured) {
+    throw new Error(SUPABASE_CONFIG_WARNING);
+  }
+
+  let insertedCount = 0;
+
+  for (const seed of SEED_PROJECTS) {
+    const exists = await isSlugTaken(seed.slug);
+    if (exists) continue;
+
+    await createProject({
+      title: seed.title,
+      slug: seed.slug,
+      short_description: seed.short_description || '',
+      description: seed.description || seed.short_description || '',
+      category_id: seed.category_id,
+      category: seed.category || 'Motion Graphics',
+      client: seed.client || 'QBENCH Client',
+      client_name: seed.client_name || seed.client || 'QBENCH Client',
+      year: seed.year || 2026,
+      project_date: seed.project_date || 'February 2026',
+      project_type: seed.project_type || '',
+      services: seed.services || [],
+      software_tools: seed.software_tools || [],
+      cover_image: seed.cover_image,
+      cover_image_url: seed.cover_image_url || seed.cover_image,
+      gallery: seed.gallery || [],
+      gallery_items: (seed.portfolio_images || []).map((img, i) => ({
+        image_url: img.image_url,
+        alt_text: img.alt_text || `${seed.title} — Image ${i + 1}`,
+        display_order: img.display_order ?? i,
+      })),
+      behance_url: seed.behance_url || '',
+      youtube_url: seed.youtube_url || '',
+      video_url: seed.video_url || '',
+      instagram_url: seed.instagram_url || '',
+      website_url: seed.website_url || '',
+      featured: seed.featured,
+      is_featured: seed.is_featured,
+      status: seed.status,
+      sort_order: seed.sort_order || 1,
+      display_order: seed.display_order || 1,
+    });
+    insertedCount++;
+  }
+
+  return insertedCount;
 }

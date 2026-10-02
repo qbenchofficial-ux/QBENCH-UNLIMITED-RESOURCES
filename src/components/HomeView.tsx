@@ -4,6 +4,7 @@ import { sendEmailJS } from '../lib/emailService';
 import { createProjectInquiry } from '../services/inquiryService';
 import { useProjects } from '../hooks/useProjects';
 import PublicResourcesSection from './PublicResourcesSection';
+import { buildCategoryPortfolioGroups } from './PortfolioView';
 import { 
   ArrowRight, 
   CheckCircle2, 
@@ -27,6 +28,7 @@ import {
 interface HomeViewProps {
   onNavigate: (section: NavSection, tab?: ServiceTab) => void;
   onOpenProjectDetail?: (slug: string) => void;
+  onOpenPortfolioCategory?: (categorySlug: string) => void;
 }
 
 function Typewriter({ 
@@ -78,8 +80,17 @@ function Typewriter({
   );
 }
 
-export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewProps) {
-  const { projects: publishedProjects, services: cmsServices, websiteContent } = useProjects('public');
+export default function HomeView({
+  onNavigate,
+  onOpenProjectDetail,
+  onOpenPortfolioCategory,
+}: HomeViewProps) {
+  const {
+    projects: publishedProjects,
+    categories,
+    services: cmsServices,
+    websiteContent,
+  } = useProjects('public');
   // Free Audit Form State
   const [formData, setFormData] = useState({
     fullName: '',
@@ -268,21 +279,10 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
         }
       ];
 
-  const latestProjects = useMemo(() => {
-    const featuredList = publishedProjects.filter((p) => p.featured);
-    const source = featuredList.length > 0 ? featuredList : publishedProjects;
-    return source.slice(0, 3).map((p) => ({
-      id: p.id,
-      slug: p.slug,
-      title: p.title,
-      category: p.category || 'Creative Work',
-      imageUrl:
-        p.cover_image ||
-        p.gallery?.[0] ||
-        'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=600&h=450&q=80',
-      externalUrl: p.behance_url || p.website_url || undefined,
-    }));
-  }, [publishedProjects]);
+  const categoryPortfolioGroups = useMemo(
+    () => buildCategoryPortfolioGroups(categories, publishedProjects),
+    [categories, publishedProjects]
+  );
 
   const whyChooseItems = websiteContent?.whyChoose?.items?.length
     ? websiteContent.whyChoose.items
@@ -593,14 +593,14 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
         </div>
       </section>
 
-      {/* 4. RECENT PROJECTS SECTION */}
+      {/* 4. DYNAMIC PORTFOLIO / EXAMPLE PROJECTS SECTION BY CATEGORY */}
       <section id="recent-projects-block" className="bg-brand-surface-low/50 border-t border-brand-outline/20 py-20 px-6 lg:px-12">
-        <div className="mx-auto max-w-7xl">
+        <div className="mx-auto max-w-7xl space-y-14">
           
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-12">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
             <div className="space-y-3.5">
               <span className="font-tech text-[10px] tracking-widest text-[#00685b] font-extrabold uppercase bg-[#00685b]/10 px-3 py-1 rounded-full inline-block">
-                RECENT PROJECTS
+                PORTFOLIO & EXAMPLE PROJECTS
               </span>
               <h2 id="projects-title" className="font-display text-3xl sm:text-4xl font-black text-brand-text tracking-tight">
                 Our Latest Work
@@ -612,81 +612,132 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
               onClick={() => onNavigate('portfolio')}
               className="text-xs font-tech font-bold text-[#00685b] hover:text-[#178373] transition-colors flex items-center gap-1 cursor-pointer"
             >
-              <span>View All Portfolio</span>
+              <span>View Full Portfolio</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>
-          
-          {/* Projects Visual Cards Row */}
-          <div id="projects-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {latestProjects.map((proj) => {
-              const cardContent = (
-                <>
-                  {/* Card Top Image View */}
-                  <div className="aspect-[4/3] overflow-hidden bg-brand-surface relative select-none">
-                    <img
-                      src={proj.imageUrl}
-                      alt={proj.title}
-                      className="w-full h-full object-cover filter brightness-[0.98] saturate-[0.95] group-hover:scale-102 transition-transform duration-500"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-                  </div>
-                  
-                  {/* Card Descriptions text fields */}
-                  <div className="p-4 space-y-1 border-t border-brand-outline/10">
-                    <h4 className="font-display text-sm font-bold text-brand-text group-hover:text-[#00685b] transition-colors duration-200">
-                      {proj.title}
-                    </h4>
-                    <p className="font-sans text-[10.5px] text-brand-text-muted leading-tight">
-                      {proj.category}
-                    </p>
-                  </div>
-                </>
-              );
 
-              return (
-                <div 
-                  id={`project-card-${proj.id}`}
-                  key={proj.id}
-                  onClick={() => {
-                    if (onOpenProjectDetail && proj.slug) {
-                      onOpenProjectDetail(proj.slug);
-                    } else {
-                      onNavigate('portfolio');
-                    }
-                  }}
-                  className="bg-white border border-brand-outline/15 rounded-2xl overflow-hidden group shadow-xs hover:shadow-md hover:border-[#00685b]/20 transition-all duration-300 cursor-pointer"
-                >
-                  {cardContent}
+          {categoryPortfolioGroups.map((group) => {
+            const { category, allProjects, displayedProjects } = group;
+            const showViewAllBtn = category.show_view_all !== false;
+
+            const handleOpenCatPage = () => {
+              if (onOpenPortfolioCategory) {
+                onOpenPortfolioCategory(category.slug);
+              } else {
+                onNavigate('portfolio');
+              }
+            };
+
+            return (
+              <div
+                key={category.id}
+                id={`home-category-section-${category.slug}`}
+                className="space-y-6"
+              >
+                {/* Category Header Row */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-brand-outline/15 pb-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-tech text-[11px] tracking-widest text-[#00685b] font-extrabold uppercase">
+                        {category.name.toUpperCase()}
+                      </span>
+                      <span className="font-mono text-[10px] font-bold text-brand-text-muted bg-white border border-brand-outline/20 px-2 py-0.5 rounded-full">
+                        {displayedProjects.length} / {allProjects.length}
+                      </span>
+                    </div>
+                    {category.description && (
+                      <p className="font-sans text-xs text-brand-text-muted">
+                        {category.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {showViewAllBtn && (
+                    <button
+                      type="button"
+                      onClick={handleOpenCatPage}
+                      className="inline-flex items-center gap-1.5 font-display text-xs font-bold text-[#00685b] hover:text-[#178373] transition-colors cursor-pointer self-start sm:self-auto"
+                    >
+                      <span>View All {category.name} Projects</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
-              );
-            })}
-            
-            {/* View Full Portfolio Box (Final Block space in the row) */}
-            <div 
-              id="view-portfolio-fallback-block"
-              onClick={() => onNavigate('portfolio')}
-              className="bg-white border border-brand-outline/20 rounded-2xl p-6 flex flex-col justify-between hover:border-[#00685b]/45 hover:shadow-md transition-all duration-300 cursor-pointer text-left md:col-span-2 lg:col-span-1"
-            >
-              <div className="space-y-3.5">
-                <span className="p-2 bg-[#00685b]/5 text-[#00685b] rounded outline-none h-fit w-fit flex items-center justify-center">
-                  <Award className="h-5 w-5" />
-                </span>
-                <h4 className="font-display text-base font-bold text-brand-text tracking-tight">View Full Portfolio</h4>
-                <p className="font-sans text-xs text-brand-text-muted leading-relaxed">
-                  See more of our work and success stories in building modern entities.
-                </p>
+
+                {/* Category Projects Grid (Respects category.projects_display_limit) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {displayedProjects.map((proj) => {
+                    const imgUrl =
+                      proj.cover_image_url ||
+                      proj.cover_image ||
+                      proj.gallery?.[0] ||
+                      'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=600&h=450&q=80';
+
+                    return (
+                      <div
+                        id={`project-card-${proj.id}`}
+                        key={proj.id}
+                        onClick={() => {
+                          if (onOpenProjectDetail && proj.slug) {
+                            onOpenProjectDetail(proj.slug);
+                          } else {
+                            onNavigate('portfolio');
+                          }
+                        }}
+                        className="bg-white border border-brand-outline/15 rounded-2xl overflow-hidden group shadow-xs hover:shadow-md hover:border-[#00685b]/25 transition-all duration-300 cursor-pointer flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="aspect-[4/3] overflow-hidden bg-brand-surface relative select-none">
+                            <img
+                              src={imgUrl}
+                              alt={proj.title}
+                              loading="lazy"
+                              className="w-full h-full object-cover filter brightness-[0.98] saturate-[0.95] group-hover:scale-103 transition-transform duration-500"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                          </div>
+
+                          <div className="p-4 space-y-1.5 border-t border-brand-outline/10">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-tech text-[9.5px] font-bold uppercase text-[#00685b]">
+                                {proj.project_type || category.name}
+                              </span>
+                              <span className="font-mono text-[9.5px] text-brand-text-muted">
+                                {proj.project_date || proj.year || 2026}
+                              </span>
+                            </div>
+                            <h4 className="font-display text-sm font-bold text-brand-text group-hover:text-[#00685b] transition-colors duration-200 line-clamp-1">
+                              {proj.title}
+                            </h4>
+                            {proj.short_description && (
+                              <p className="font-sans text-[11px] text-brand-text-muted line-clamp-2 leading-relaxed">
+                                {proj.short_description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {showViewAllBtn && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={handleOpenCatPage}
+                      className="inline-flex items-center gap-2 rounded-xl border border-[#00685b]/25 bg-white hover:bg-[#00685b] hover:text-white text-[#00685b] font-display text-xs font-bold px-4 py-2.5 transition-all duration-200 shadow-2xs cursor-pointer"
+                    >
+                      <span>View All {category.name} Projects</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
-              
-              <div className="border-t border-brand-outline/10 pt-4 mt-6">
-                <span className="font-display text-xs font-bold text-[#00685b] hover:text-[#178373] transition-colors flex items-center gap-1">
-                  <span>View Portfolio</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </span>
-              </div>
-            </div>
-          </div>
+            );
+          })}
           
         </div>
       </section>
