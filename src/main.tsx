@@ -1,23 +1,26 @@
-import {StrictMode} from 'react';
-import {createRoot} from 'react-dom/client';
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Proactively update or clear stale service worker caches so new deployments take effect immediately
+// Unregister stale service workers in dev mode; update active service worker in production
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (const registration of registrations) {
-      if (import.meta.env.DEV) {
-        registration.unregister();
-      } else {
-        registration.update().catch(() => {});
+  navigator.serviceWorker
+    .getRegistrations()
+    .then((registrations) => {
+      for (const registration of registrations) {
+        if (import.meta.env.DEV) {
+          registration.unregister().catch(() => {});
+        } else {
+          registration.update().catch(() => {});
+        }
       }
-    }
-  });
+    })
+    .catch(() => {});
 }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
-  </StrictMode>,
+  </StrictMode>
 );

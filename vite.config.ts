@@ -37,32 +37,40 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'autoUpdate',
 
-        // Let vite-plugin-pwa inject the registration.
+        // Let vite-plugin-pwa inject the service worker registration script (/registerSW.js).
         injectRegister: 'auto',
 
-        // Generate the service worker automatically.
+        // Generate the production service worker (/sw.js) automatically.
         strategies: 'generateSW',
 
-        // Use public/manifest.json directly (linked in index.html) to avoid duplicate manifest files.
+        // Reuse public/manifest.json directly (linked in index.html) to prevent duplicate manifest files.
         manifest: false,
 
         includeAssets: [
           'manifest.json',
           'apple-touch-icon.png',
+          'favicon.png',
           'icon.svg',
           'icons/icon-192.png',
           'icons/icon-512.png',
         ],
 
         workbox: {
-          // Cache the application shell and static assets.
+          // Precache the application shell and static assets.
           globPatterns: [
-            '**/*.{js,css,html,ico,png,svg,webp,jpg,jpeg,woff,woff2,ttf}',
+            '**/*.{js,css,html,ico,png,svg,webp,jpg,jpeg,woff,woff2,ttf,json}',
           ],
 
-          // Do not treat API routes as SPA navigation.
+          // Ensure SPA navigation fallback serves index.html for client routes
+          // while excluding API routes and static PWA files.
+          navigateFallback: '/index.html',
           navigateFallbackDenylist: [
             /^\/api\//,
+            /^\/manifest\.json$/,
+            /^\/sw\.js$/,
+            /^\/registerSW\.js$/,
+            /^\/workbox-.*\.js$/,
+            /^\/icons\//,
           ],
 
           // Keep old caches under control.
@@ -74,8 +82,36 @@ export default defineConfig(({ mode }) => {
           // Take control of open pages immediately.
           clientsClaim: true,
 
-          // Do not cache external/API responses by default.
+          // Runtime caching rules for production HTTPS deployment.
           runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts-cache',
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60 * 24 * 365,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'gstatic-fonts-cache',
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60 * 24 * 365,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
             {
               urlPattern: ({ url }) => {
                 return (
@@ -85,10 +121,13 @@ export default defineConfig(({ mode }) => {
                   url.hostname !== self.location.hostname
                 );
               },
-
               handler: 'NetworkOnly',
             },
           ],
+        },
+
+        devOptions: {
+          enabled: false,
         },
       }),
     ],
