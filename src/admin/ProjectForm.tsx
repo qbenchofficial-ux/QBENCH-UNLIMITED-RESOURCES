@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { slugify } from '../lib/supabase';
+import { slugify, isValidUuid } from '../lib/supabase';
 import { uploadPortfolioImage } from '../services/mediaService';
 import type {
   Project,
@@ -61,7 +61,7 @@ function buildInitialGalleryItems(project?: Project | null): GalleryImageInput[]
           (b.display_order ?? b.sort_order ?? 0)
       )
       .map((img, idx) => ({
-        id: img.id,
+        id: isValidUuid(img.id) ? img.id : undefined,
         image_url: img.image_url,
         alt_text:
           img.alt_text ||
@@ -276,7 +276,7 @@ export default function ProjectForm({
   };
 
   const projectStorageId =
-    initialProject?.id && !initialProject.id.startsWith('seed-')
+    initialProject?.id && isValidUuid(initialProject.id)
       ? initialProject.id
       : slugify(slug || title) || 'draft-project';
 
@@ -514,7 +514,7 @@ export default function ProjectForm({
           shortDescription.trim() ||
           description.trim().split('\n')[0].slice(0, 220),
         description: description.trim() || shortDescription.trim(),
-        category_id: categoryId || null,
+        category_id: isValidUuid(categoryId) ? categoryId : null,
         category: cleanCategory,
         client: client.trim(),
         client_name: client.trim(),

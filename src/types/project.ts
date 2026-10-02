@@ -46,6 +46,7 @@ export interface Project {
   sort_order: number;
   display_order: number;
   portfolio_images?: PortfolioImage[];
+  is_seed?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -90,6 +91,7 @@ export interface Category {
   projects_display_limit: number;
   show_view_all: boolean;
   is_active: boolean;
+  is_seed?: boolean;
   created_at?: string;
   updated_at?: string;
 }

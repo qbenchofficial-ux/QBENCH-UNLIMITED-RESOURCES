@@ -164,6 +164,36 @@ export function slugify(input: string): string {
     .replace(/^-|-$/g, '');
 }
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Strictly validates that a value is a canonical PostgreSQL UUID string.
+ * Prevents seed IDs ("seed-1", "seed-2", "cat-*"), slugs, or temporary strings
+ * from ever being passed into Supabase UUID columns.
+ */
+export function isValidUuid(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith('seed-') || trimmed.startsWith('cat-')) {
+    return false;
+  }
+  return UUID_REGEX.test(trimmed);
+}
+
+/**
+ * Checks whether an identifier is a demo/seed identifier rather than a database UUID.
+ */
+export function isSeedIdentifier(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  return (
+    trimmed.startsWith('seed-') ||
+    trimmed.startsWith('cat-') ||
+    !isValidUuid(trimmed)
+  );
+}
+
 /**
  * Verify that the authenticated Supabase user exists in `public.admin_profiles`
  * with `user_id = auth.uid()` and `role = 'admin'`.

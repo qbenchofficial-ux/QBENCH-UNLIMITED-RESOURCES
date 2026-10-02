@@ -3,6 +3,7 @@ import {
   isSupabaseConfigured,
   SUPABASE_CONFIG_WARNING,
   slugify,
+  isValidUuid,
 } from '../lib/supabase';
 import {
   deleteProjectStorageAssets,
@@ -58,6 +59,7 @@ export {
 };
 
 const PROJECT_META_SETTING_KEY = 'cms_portfolio_projects_meta_v1';
+const DELETED_SEEDS_SETTING_KEY = 'cms_deleted_seed_projects_v1';
 
 interface ProjectExtendedMeta {
   short_description?: string | null;
@@ -137,6 +139,82 @@ async function saveProjectMetaMap(metaMap: ProjectMetaMap): Promise<void> {
   }
 }
 
+async function loadDeletedSeedIds(): Promise<Set<string>> {
+  const deleted = new Set<string>();
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.localStorage.getItem(DELETED_SEEDS_SETTING_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((v) => deleted.add(String(v)));
+        }
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+  }
+
+  if (!isSupabaseConfigured) return deleted;
+
+  try {
+    const { data, error } = await supabase
+      .from('site_settings')
+      .select('setting_value')
+      .eq('setting_key', DELETED_SEEDS_SETTING_KEY)
+      .maybeSingle();
+
+    if (!error && data?.setting_value) {
+      const parsed = JSON.parse(String(data.setting_value));
+      if (Array.isArray(parsed)) {
+        parsed.forEach((v) => deleted.add(String(v)));
+      }
+    }
+  } catch {
+    // ignore parse errors
+  }
+
+  return deleted;
+}
+
+async function markSeedAsDeleted(seedIdOrSlug: string): Promise<void> {
+  const current = await loadDeletedSeedIds();
+  current.add(seedIdOrSlug);
+  const seedMatch = SEED_PROJECTS.find(
+    (p) => p.id === seedIdOrSlug || p.slug === seedIdOrSlug
+  );
+  if (seedMatch) {
+    current.add(seedMatch.id);
+    current.add(seedMatch.slug);
+  }
+
+  const serialized = JSON.stringify(Array.from(current));
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(DELETED_SEEDS_SETTING_KEY, serialized);
+    } catch {
+      // ignore localStorage errors
+    }
+  }
+
+  if (!isSupabaseConfigured) return;
+
+  try {
+    await supabase.from('site_settings').upsert(
+      [
+        {
+          setting_key: DELETED_SEEDS_SETTING_KEY,
+          setting_value: serialized,
+          updated_at: new Date().toISOString(),
+        },
+      ],
+      { onConflict: 'setting_key' }
+    );
+  } catch {
+    // ignore if non-admin
+  }
+}
+
 export const SEED_PROJECTS: Project[] = [
   {
     id: 'seed-1',
@@ -154,7 +232,12 @@ export const SEED_PROJECTS: Project[] = [
     project_date: 'February 2026',
     project_type: '3D Luxury Motion Design',
     services: ['Motion Graphics', '3D Visualization', 'Art Direction'],
-    software_tools: ['Cinema 4D', 'Octane Render', 'After Effects', 'Premiere Pro'],
+    software_tools: [
+      'Cinema 4D',
+      'Octane Render',
+      'After Effects',
+      'Premiere Pro',
+    ],
     cover_image:
       'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=800&h=500&q=80',
     cover_image_url:
@@ -229,6 +312,7 @@ export const SEED_PROJECTS: Project[] = [
     status: 'published',
     sort_order: 1,
     display_order: 1,
+    is_seed: true,
     created_at: '2026-02-10T10:00:00.000Z',
     updated_at: '2026-02-10T10:00:00.000Z',
   },
@@ -289,6 +373,7 @@ export const SEED_PROJECTS: Project[] = [
     status: 'published',
     sort_order: 2,
     display_order: 2,
+    is_seed: true,
     created_at: '2026-02-14T10:00:00.000Z',
     updated_at: '2026-02-14T10:00:00.000Z',
   },
@@ -338,10 +423,54 @@ export const SEED_PROJECTS: Project[] = [
     status: 'published',
     sort_order: 3,
     display_order: 3,
+    is_seed: true,
     created_at: '2026-02-18T10:00:00.000Z',
     updated_at: '2026-02-18T10:00:00.000Z',
   },
 ];
+
+function seedToFormData(seed: Project): ProjectFormData {
+  return {
+    title: seed.title,
+    slug: seed.slug,
+    short_description: seed.short_description || '',
+    description: seed.description || seed.short_description || '',
+    category_id: isValidUuid(seed.category_id) ? seed.category_id : null,
+    category: seed.category || 'Motion Graphics',
+    client: seed.client || 'QBENCH Client',
+    client_name: seed.client_name || seed.client || 'QBENCH Client',
+    year: seed.year || 2026,
+    project_date: seed.project_date || 'February 2026',
+    project_type: seed.project_type || '',
+    services: seed.services || [],
+    software_tools: seed.software_tools || [],
+    cover_image: seed.cover_image,
+    cover_image_url: seed.cover_image_url || seed.cover_image,
+    gallery: seed.gallery || [],
+    gallery_items: (seed.portfolio_images || []).map((img, i) => ({
+      image_url: img.image_url,
+      alt_text: img.alt_text || `${seed.title} — Image ${i + 1}`,
+      display_order: img.display_order ?? i,
+    })),
+    behance_url: seed.behance_url || '',
+    youtube_url: seed.youtube_url || '',
+    video_url: seed.video_url || '',
+    instagram_url: seed.instagram_url || '',
+    website_url: seed.website_url || '',
+    featured: seed.featured,
+    is_featured: seed.is_featured,
+    status: seed.status,
+    sort_order: seed.sort_order || 1,
+    display_order: seed.display_order || 1,
+  };
+}
+
+async function getActiveSeedProjects(): Promise<Project[]> {
+  const deleted = await loadDeletedSeedIds();
+  return SEED_PROJECTS.filter(
+    (seed) => !deleted.has(seed.id) && !deleted.has(seed.slug)
+  );
+}
 
 export function sortProjects(list: Project[]): Project[] {
   return [...list].sort((a, b) => {
@@ -360,11 +489,12 @@ function normalizeProject(
   portfolioImages?: PortfolioImage[],
   metaMap?: ProjectMetaMap
 ): Project {
-  const id = String(raw.id || '');
-  const slug = String(raw.slug || '');
+  const id = String(raw.id || '').trim();
+  const slug = String(raw.slug || '').trim();
   const meta = (metaMap && (metaMap[id] || metaMap[slug])) || {};
 
-  const categoryId = raw.category_id ? String(raw.category_id) : null;
+  const rawCatId = raw.category_id ? String(raw.category_id).trim() : null;
+  const categoryId = isValidUuid(rawCatId) ? rawCatId : null;
   const matchedCat = categoryId ? categoriesById.get(categoryId) : undefined;
   const categoryName = matchedCat
     ? matchedCat.name
@@ -389,12 +519,13 @@ function normalizeProject(
   let resolvedPortfolioImages: PortfolioImage[] = [];
   if (portfolioImages && portfolioImages.length > 0) {
     resolvedPortfolioImages = [...portfolioImages].sort(
-      (a, b) => (a.display_order ?? a.sort_order) - (b.display_order ?? b.sort_order)
+      (a, b) =>
+        (a.display_order ?? a.sort_order) - (b.display_order ?? b.sort_order)
     );
   } else if (meta.gallery_items && meta.gallery_items.length > 0) {
     resolvedPortfolioImages = meta.gallery_items.map((item, idx) => ({
-      id: item.id || `${id}-img-${idx}`,
-      project_id: id,
+      id: isValidUuid(item.id) ? item.id : `${id}-img-${idx}`,
+      project_id: isValidUuid(id) ? id : null,
       image_url: item.image_url,
       alt_text: item.alt_text || null,
       sort_order: item.display_order ?? idx,
@@ -404,7 +535,7 @@ function normalizeProject(
   } else if (rawGallery.length > 0) {
     resolvedPortfolioImages = rawGallery.map((url, idx) => ({
       id: `${id}-img-${idx}`,
-      project_id: id,
+      project_id: isValidUuid(id) ? id : null,
       image_url: url,
       alt_text: `${String(raw.title || 'Project')} — Image ${String(
         idx + 1
@@ -526,6 +657,7 @@ function normalizeProject(
     sort_order: displayOrder,
     display_order: displayOrder,
     portfolio_images: resolvedPortfolioImages,
+    is_seed: !isValidUuid(id),
     created_at: raw.created_at
       ? String(raw.created_at)
       : new Date().toISOString(),
@@ -559,10 +691,10 @@ async function resolveCategoryId(
 
   if (
     formData.category_id &&
-    !formData.category_id.startsWith('cat-') &&
-    byId.has(formData.category_id)
+    isValidUuid(formData.category_id) &&
+    byId.has(formData.category_id.trim())
   ) {
-    return formData.category_id;
+    return formData.category_id.trim();
   }
 
   const rawCategory = (formData.category || '').trim();
@@ -572,26 +704,95 @@ async function resolveCategoryId(
     byNameOrSlug.get(rawCategory.toLowerCase()) ||
     byNameOrSlug.get(slugify(rawCategory));
 
-  if (existing && !existing.id.startsWith('cat-')) {
-    return existing.id;
+  if (existing && isValidUuid(existing.id)) {
+    return existing.id.trim();
   }
 
-  // Create category in Supabase if it doesn't exist yet
+  // Create category in Supabase if it doesn't exist yet as a real UUID row
   try {
     const created = await createCategory({ name: rawCategory });
-    return created.id;
+    return isValidUuid(created.id) ? created.id.trim() : null;
   } catch {
     return null;
   }
 }
 
 /**
+ * Migrate a single demo/seed project into `public.projects` as a real UUID record.
+ * Prevents duplicate imports by checking `.eq('slug', seed.slug)` first.
+ */
+export async function migrateSeedProjectToSupabase(
+  seed: Project
+): Promise<Project> {
+  const existing = await getProjectBySlug(seed.slug, true);
+  if (existing && isValidUuid(existing.id)) {
+    return existing;
+  }
+  return createProject(seedToFormData(seed));
+}
+
+let seedMigrationPromise: Promise<void> | null = null;
+
+/**
+ * Ensure all non-deleted demo/seed projects are migrated into `public.projects`
+ * with real PostgreSQL UUIDs when an authenticated admin session is active.
+ */
+async function ensureSeedProjectsMigratedIfEmpty(): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  if (seedMigrationPromise) {
+    return seedMigrationPromise;
+  }
+
+  seedMigrationPromise = (async () => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user) return;
+
+      const { count, error: countErr } = await supabase
+        .from('projects')
+        .select('id', { count: 'exact', head: true });
+
+      if (countErr || (typeof count === 'number' && count > 0)) {
+        return;
+      }
+
+      const activeSeeds = await getActiveSeedProjects();
+      for (const seed of activeSeeds) {
+        try {
+          const { data: existingSlug } = await supabase
+            .from('projects')
+            .select('id')
+            .eq('slug', seed.slug)
+            .maybeSingle();
+
+          if (!existingSlug) {
+            await createProject(seedToFormData(seed));
+          }
+        } catch {
+          // Ignore individual seed migration failure
+        }
+      }
+    } finally {
+      seedMigrationPromise = null;
+    }
+  })();
+
+  return seedMigrationPromise;
+}
+
+/**
  * Fetch ALL projects (published + draft) for the Admin CMS.
+ * Automatically migrates seed projects into real Supabase UUID records if the table is empty
+ * and an admin session is active.
  */
 export async function getAllProjects(): Promise<Project[]> {
   if (!isSupabaseConfigured) {
-    return sortProjects(SEED_PROJECTS);
+    return sortProjects(await getActiveSeedProjects());
   }
+
+  await ensureSeedProjectsMigratedIfEmpty();
 
   const [{ byId }, imagesByProject, metaMap] = await Promise.all([
     buildCategoryMaps(),
@@ -610,12 +811,12 @@ export async function getAllProjects(): Promise<Project[]> {
 
   const rows = (data || []).map((row) => {
     const raw = row as Record<string, unknown>;
-    const pid = String(raw.id || '');
+    const pid = String(raw.id || '').trim();
     return normalizeProject(raw, byId, imagesByProject.get(pid), metaMap);
   });
 
   if (rows.length === 0) {
-    return sortProjects(SEED_PROJECTS);
+    return sortProjects(await getActiveSeedProjects());
   }
 
   return sortProjects(rows);
@@ -626,9 +827,8 @@ export async function getAllProjects(): Promise<Project[]> {
  */
 export async function getPublishedProjects(): Promise<Project[]> {
   if (!isSupabaseConfigured) {
-    return sortProjects(
-      SEED_PROJECTS.filter((p) => p.status === 'published')
-    );
+    const activeSeeds = await getActiveSeedProjects();
+    return sortProjects(activeSeeds.filter((p) => p.status === 'published'));
   }
 
   const [{ byId }, imagesByProject, metaMap] = await Promise.all([
@@ -649,7 +849,7 @@ export async function getPublishedProjects(): Promise<Project[]> {
 
   const publishedRows = (data || []).map((row) => {
     const raw = row as Record<string, unknown>;
-    const pid = String(raw.id || '');
+    const pid = String(raw.id || '').trim();
     return normalizeProject(raw, byId, imagesByProject.get(pid), metaMap);
   });
 
@@ -666,7 +866,8 @@ export async function getPublishedProjects(): Promise<Project[]> {
     return [];
   }
 
-  return sortProjects(SEED_PROJECTS.filter((p) => p.status === 'published'));
+  const activeSeeds = await getActiveSeedProjects();
+  return sortProjects(activeSeeds.filter((p) => p.status === 'published'));
 }
 
 /**
@@ -676,12 +877,15 @@ export async function getProjectBySlug(
   slug: string,
   includeDrafts = false
 ): Promise<Project | null> {
-  if (!slug) return null;
+  const cleanSlug = slug.trim();
+  if (!cleanSlug) return null;
 
   if (!isSupabaseConfigured) {
+    const activeSeeds = await getActiveSeedProjects();
     return (
-      SEED_PROJECTS.find(
-        (p) => p.slug === slug && (includeDrafts || p.status === 'published')
+      activeSeeds.find(
+        (p) =>
+          p.slug === cleanSlug && (includeDrafts || p.status === 'published')
       ) || null
     );
   }
@@ -691,7 +895,7 @@ export async function getProjectBySlug(
     loadProjectMetaMap(),
   ]);
 
-  let query = supabase.from('projects').select('*').eq('slug', slug);
+  let query = supabase.from('projects').select('*').eq('slug', cleanSlug);
 
   if (!includeDrafts) {
     query = query.eq('status', 'published');
@@ -710,15 +914,17 @@ export async function getProjectBySlug(
     if (typeof count === 'number' && count > 0) {
       return null;
     }
+    const activeSeeds = await getActiveSeedProjects();
     return (
-      SEED_PROJECTS.find(
-        (p) => p.slug === slug && (includeDrafts || p.status === 'published')
+      activeSeeds.find(
+        (p) =>
+          p.slug === cleanSlug && (includeDrafts || p.status === 'published')
       ) || null
     );
   }
 
-  const projectId = String((data as Record<string, unknown>).id || '');
-  const portfolioImages = projectId
+  const projectId = String((data as Record<string, unknown>).id || '').trim();
+  const portfolioImages = isValidUuid(projectId)
     ? await getProjectPortfolioImages(projectId)
     : [];
 
@@ -731,7 +937,8 @@ export async function getProjectBySlug(
 }
 
 /**
- * Verify whether a project slug is already taken by another project.
+ * Verify whether a project slug is already taken by another project in `public.projects`.
+ * Never sends non-UUID `excludeProjectId` values to `.neq('id', ...)`.
  */
 export async function isSlugTaken(
   slug: string,
@@ -741,8 +948,8 @@ export async function isSlugTaken(
   if (!cleanSlug || !isSupabaseConfigured) return false;
 
   let query = supabase.from('projects').select('id').eq('slug', cleanSlug);
-  if (excludeProjectId && !excludeProjectId.startsWith('seed-')) {
-    query = query.neq('id', excludeProjectId);
+  if (excludeProjectId && isValidUuid(excludeProjectId)) {
+    query = query.neq('id', excludeProjectId.trim());
   }
   const { data, error } = await query.maybeSingle();
   if (error) {
@@ -753,6 +960,7 @@ export async function isSlugTaken(
 
 /**
  * Create a new project in `public.projects` and sync `public.portfolio_images`.
+ * Lets PostgreSQL generate the UUID automatically and returns the created record.
  */
 export async function createProject(
   formData: ProjectFormData
@@ -776,7 +984,10 @@ export async function createProject(
     );
   }
 
-  const categoryId = await resolveCategoryId(formData);
+  const resolvedCatId = await resolveCategoryId(formData);
+  const safeCategoryId = isValidUuid(resolvedCatId)
+    ? resolvedCatId.trim()
+    : null;
   const now = new Date().toISOString();
 
   const shortDesc = formData.short_description?.trim() || null;
@@ -817,7 +1028,7 @@ export async function createProject(
     slug: cleanSlug,
     short_description: shortDesc,
     description: fullDescription,
-    category_id: categoryId,
+    category_id: safeCategoryId,
     client: clientVal,
     client_name: clientVal,
     year: Number(formData.year) || new Date().getFullYear(),
@@ -857,7 +1068,7 @@ export async function createProject(
       title: formData.title.trim(),
       slug: cleanSlug,
       description: fullDescription,
-      category_id: categoryId,
+      category_id: safeCategoryId,
       client: clientVal,
       year: Number(formData.year) || new Date().getFullYear(),
       services: formData.services.map((s) => s.trim()).filter(Boolean),
@@ -886,15 +1097,17 @@ export async function createProject(
   }
 
   const createdRow = data as Record<string, unknown>;
-  const createdId = String(createdRow.id);
+  const createdId = String(createdRow.id || '').trim();
 
-  // Sync gallery records into public.portfolio_images (preserving custom alt_text and display_order)
-  await syncProjectPortfolioImages(
-    createdId,
-    cleanGallery,
-    fullPayload.title,
-    formData.gallery_items
-  );
+  // Sync gallery records into public.portfolio_images using the newly generated UUID
+  if (isValidUuid(createdId)) {
+    await syncProjectPortfolioImages(
+      createdId,
+      cleanGallery,
+      fullPayload.title,
+      formData.gallery_items
+    );
+  }
 
   // Persist extended project metadata in site_settings so it survives even before DDL migration
   const metaMap = await loadProjectMetaMap();
@@ -910,12 +1123,16 @@ export async function createProject(
     website_url: formData.website_url?.trim() || null,
     gallery_items: formData.gallery_items,
   };
-  metaMap[createdId] = metaEntry;
+  if (createdId) {
+    metaMap[createdId] = metaEntry;
+  }
   metaMap[cleanSlug] = metaEntry;
   await saveProjectMetaMap(metaMap);
 
   const { byId } = await buildCategoryMaps();
-  const portfolioImages = await getProjectPortfolioImages(createdId);
+  const portfolioImages = isValidUuid(createdId)
+    ? await getProjectPortfolioImages(createdId)
+    : [];
 
   window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
   return normalizeProject(createdRow, byId, portfolioImages, metaMap);
@@ -923,6 +1140,9 @@ export async function createProject(
 
 /**
  * Update an existing project in `public.projects` and sync `public.portfolio_images`.
+ * - If `id` is a seed/demo identifier (e.g. "seed-1", "seed-2", "seed-3"), never sends `id`
+ *   to a UUID column; instead migrates/upserts into `public.projects` with a real UUID.
+ * - If `id` is a valid database UUID, updates the record via `.eq('id', id)`.
  */
 export async function updateProject(
   id: string,
@@ -932,46 +1152,52 @@ export async function updateProject(
     throw new Error(SUPABASE_CONFIG_WARNING);
   }
 
-  if (id.startsWith('seed-')) {
-    for (const seed of SEED_PROJECTS) {
-      if (seed.id === id) continue;
-      const taken = await isSlugTaken(seed.slug);
-      if (!taken) {
-        await createProject({
-          title: seed.title,
-          slug: seed.slug,
-          short_description: seed.short_description || '',
-          description: seed.description || seed.short_description || '',
-          category_id: seed.category_id,
-          category: seed.category || 'Motion Graphics',
-          client: seed.client || 'QBENCH Client',
-          client_name: seed.client_name || seed.client || 'QBENCH Client',
-          year: seed.year || 2026,
-          project_date: seed.project_date || '2026',
-          project_type: seed.project_type || '',
-          services: seed.services || [],
-          software_tools: seed.software_tools || [],
-          cover_image: seed.cover_image,
-          cover_image_url: seed.cover_image_url || seed.cover_image,
-          gallery: seed.gallery || [],
-          gallery_items: (seed.portfolio_images || []).map((img, i) => ({
-            image_url: img.image_url,
-            alt_text: img.alt_text || `${seed.title} — Image ${i + 1}`,
-            display_order: img.display_order ?? i,
-          })),
-          behance_url: seed.behance_url || '',
-          youtube_url: seed.youtube_url || '',
-          video_url: seed.video_url || '',
-          instagram_url: seed.instagram_url || '',
-          website_url: seed.website_url || '',
-          featured: seed.featured,
-          is_featured: seed.is_featured,
-          status: seed.status,
-          sort_order: seed.sort_order || 1,
-          display_order: seed.display_order || 1,
-        });
+  const cleanId = (id || '').trim();
+
+  // Handle seed/demo project IDs safely without ever querying `.eq('id', 'seed-...')`
+  if (!isValidUuid(cleanId)) {
+    const seedMatch = SEED_PROJECTS.find(
+      (p) => p.id === cleanId || p.slug === cleanId
+    );
+    const activeSeeds = await getActiveSeedProjects();
+
+    // Migrate the other active seed projects first so they remain in the database
+    for (const seed of activeSeeds) {
+      if (seed.id === cleanId || (seedMatch && seed.id === seedMatch.id)) {
+        continue;
+      }
+      try {
+        const taken = await isSlugTaken(seed.slug);
+        if (!taken) {
+          await createProject(seedToFormData(seed));
+        }
+      } catch {
+        // Ignore if another seed project is already present
       }
     }
+
+    // Check if the seed project being edited was already migrated to Supabase (by original slug or target slug)
+    const candidateSlugs = Array.from(
+      new Set(
+        [seedMatch?.slug, slugify(formData.slug || formData.title)].filter(
+          Boolean
+        ) as string[]
+      )
+    );
+
+    for (const slugCandidate of candidateSlugs) {
+      const { data: existingRow } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('slug', slugCandidate)
+        .maybeSingle();
+
+      if (existingRow?.id && isValidUuid(String(existingRow.id))) {
+        return updateProject(String(existingRow.id).trim(), formData);
+      }
+    }
+
+    // Otherwise insert it into Supabase as a new real UUID record
     return createProject(formData);
   }
 
@@ -983,14 +1209,17 @@ export async function updateProject(
     throw new Error('A valid URL slug is required.');
   }
 
-  const duplicate = await isSlugTaken(cleanSlug, id);
+  const duplicate = await isSlugTaken(cleanSlug, cleanId);
   if (duplicate) {
     throw new Error(
       `The slug "${cleanSlug}" is already used by another project.`
     );
   }
 
-  const categoryId = await resolveCategoryId(formData);
+  const resolvedCatId = await resolveCategoryId(formData);
+  const safeCategoryId = isValidUuid(resolvedCatId)
+    ? resolvedCatId.trim()
+    : null;
   const now = new Date().toISOString();
 
   const shortDesc = formData.short_description?.trim() || null;
@@ -1031,7 +1260,7 @@ export async function updateProject(
     slug: cleanSlug,
     short_description: shortDesc,
     description: fullDescription,
-    category_id: categoryId,
+    category_id: safeCategoryId,
     client: clientVal,
     client_name: clientVal,
     year: Number(formData.year) || new Date().getFullYear(),
@@ -1058,7 +1287,7 @@ export async function updateProject(
   let { data, error } = await supabase
     .from('projects')
     .update(fullPayload)
-    .eq('id', id)
+    .eq('id', cleanId)
     .select('*')
     .single();
 
@@ -1072,7 +1301,7 @@ export async function updateProject(
       title: formData.title.trim(),
       slug: cleanSlug,
       description: fullDescription,
-      category_id: categoryId,
+      category_id: safeCategoryId,
       client: clientVal,
       year: Number(formData.year) || new Date().getFullYear(),
       services: formData.services.map((s) => s.trim()).filter(Boolean),
@@ -1087,7 +1316,7 @@ export async function updateProject(
     const retry = await supabase
       .from('projects')
       .update(basicPayload)
-      .eq('id', id)
+      .eq('id', cleanId)
       .select('*')
       .single();
     data = retry.data;
@@ -1102,7 +1331,7 @@ export async function updateProject(
   }
 
   await syncProjectPortfolioImages(
-    id,
+    cleanId,
     cleanGallery,
     fullPayload.title,
     formData.gallery_items
@@ -1121,12 +1350,12 @@ export async function updateProject(
     website_url: formData.website_url?.trim() || null,
     gallery_items: formData.gallery_items,
   };
-  metaMap[id] = metaEntry;
+  metaMap[cleanId] = metaEntry;
   metaMap[cleanSlug] = metaEntry;
   await saveProjectMetaMap(metaMap);
 
   const { byId } = await buildCategoryMaps();
-  const portfolioImages = await getProjectPortfolioImages(id);
+  const portfolioImages = await getProjectPortfolioImages(cleanId);
 
   window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
   return normalizeProject(
@@ -1148,12 +1377,16 @@ export async function patchProjectFlags(
     throw new Error(SUPABASE_CONFIG_WARNING);
   }
 
-  if (id.startsWith('seed-')) {
+  const cleanId = (id || '').trim();
+
+  if (!isValidUuid(cleanId)) {
     await seedDefaultPortfolioProjects();
-    const seed = SEED_PROJECTS.find((p) => p.id === id);
+    const seed = SEED_PROJECTS.find(
+      (p) => p.id === cleanId || p.slug === cleanId
+    );
     if (seed) {
       const existing = await getProjectBySlug(seed.slug, true);
-      if (existing && !existing.id.startsWith('seed-')) {
+      if (existing && isValidUuid(existing.id)) {
         await patchProjectFlags(existing.id, patch);
       }
     }
@@ -1163,12 +1396,35 @@ export async function patchProjectFlags(
   const now = new Date().toISOString();
   const dbPatch: Record<string, unknown> = { updated_at: now };
   if (patch.status !== undefined) dbPatch.status = patch.status;
-  if (patch.featured !== undefined) dbPatch.featured = patch.featured;
+  if (patch.featured !== undefined) {
+    dbPatch.featured = patch.featured;
+    dbPatch.is_featured = patch.featured;
+  }
+  if (typeof patch.display_order === 'number') {
+    dbPatch.display_order = patch.display_order;
+    dbPatch.sort_order = patch.display_order;
+  }
 
-  const { error } = await supabase
+  let { error } = await supabase
     .from('projects')
     .update(dbPatch)
-    .eq('id', id);
+    .eq('id', cleanId);
+
+  if (
+    error &&
+    error.message &&
+    (error.message.includes('column') ||
+      error.message.includes('schema cache'))
+  ) {
+    const basicPatch: Record<string, unknown> = { updated_at: now };
+    if (patch.status !== undefined) basicPatch.status = patch.status;
+    if (patch.featured !== undefined) basicPatch.featured = patch.featured;
+    const retry = await supabase
+      .from('projects')
+      .update(basicPatch)
+      .eq('id', cleanId);
+    error = retry.error;
+  }
 
   if (error) {
     throw new Error(error.message);
@@ -1176,8 +1432,8 @@ export async function patchProjectFlags(
 
   if (typeof patch.display_order === 'number') {
     const metaMap = await loadProjectMetaMap();
-    metaMap[id] = {
-      ...(metaMap[id] || {}),
+    metaMap[cleanId] = {
+      ...(metaMap[cleanId] || {}),
       display_order: patch.display_order,
     };
     await saveProjectMetaMap(metaMap);
@@ -1188,12 +1444,66 @@ export async function patchProjectFlags(
 
 /**
  * Fetch a single project by its ID (`id`), including its `portfolio_images` rows.
+ * - Strictly validates `isValidUuid(id)` before querying `.eq('id', id)`.
+ * - If `id` is a seed ID ("seed-1", "seed-2", "seed-3"), checks if that project's slug
+ *   already exists in `public.projects` (or migrates it if admin is authenticated) and returns
+ *   the real database UUID record, falling back to the seed object without ever passing
+ *   a seed ID to a UUID database column.
  */
 export async function getProjectById(id: string): Promise<Project | null> {
-  if (!id) return null;
+  const cleanId = (id || '').trim();
+  if (!cleanId) return null;
 
-  if (id.startsWith('seed-') || !isSupabaseConfigured) {
-    return SEED_PROJECTS.find((p) => p.id === id) || null;
+  if (!isValidUuid(cleanId)) {
+    const seedMatch = SEED_PROJECTS.find(
+      (p) => p.id === cleanId || p.slug === cleanId
+    );
+
+    if (!isSupabaseConfigured) {
+      return seedMatch || null;
+    }
+
+    const lookupSlug = seedMatch ? seedMatch.slug : slugify(cleanId);
+    if (lookupSlug) {
+      try {
+        const existingInDb = await getProjectBySlug(lookupSlug, true);
+        if (existingInDb && isValidUuid(existingInDb.id)) {
+          return existingInDb;
+        }
+      } catch {
+        // Fallback below
+      }
+    }
+
+    // If an admin session is active and this is a valid seed project, migrate it to Supabase
+    // so editing immediately operates on a real database UUID
+    if (seedMatch) {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (session?.user) {
+          await ensureSeedProjectsMigratedIfEmpty();
+          const migrated = await getProjectBySlug(seedMatch.slug, true);
+          if (migrated && isValidUuid(migrated.id)) {
+            return migrated;
+          }
+          const created = await migrateSeedProjectToSupabase(seedMatch);
+          if (created && isValidUuid(created.id)) {
+            return created;
+          }
+        }
+      } catch {
+        // Return in-memory seed fallback if migration is not permitted
+      }
+      return seedMatch;
+    }
+
+    return null;
+  }
+
+  if (!isSupabaseConfigured) {
+    return null;
   }
 
   const [{ byId }, metaMap] = await Promise.all([
@@ -1204,7 +1514,7 @@ export async function getProjectById(id: string): Promise<Project | null> {
   const { data, error } = await supabase
     .from('projects')
     .select('*')
-    .eq('id', id)
+    .eq('id', cleanId)
     .maybeSingle();
 
   if (error) {
@@ -1212,10 +1522,10 @@ export async function getProjectById(id: string): Promise<Project | null> {
   }
 
   if (!data) {
-    return SEED_PROJECTS.find((p) => p.id === id) || null;
+    return null;
   }
 
-  const portfolioImages = await getProjectPortfolioImages(id);
+  const portfolioImages = await getProjectPortfolioImages(cleanId);
 
   return normalizeProject(
     data as Record<string, unknown>,
@@ -1228,6 +1538,7 @@ export async function getProjectById(id: string): Promise<Project | null> {
 /**
  * Delete a project from `public.projects`, remove its `portfolio_images` rows,
  * and clean up associated files in the `portfolio-images` Storage bucket.
+ * Never sends non-UUID seed IDs to `.eq('id', ...)`.
  */
 export async function deleteProject(
   projectOrId: string | Project
@@ -1236,35 +1547,59 @@ export async function deleteProject(
     throw new Error(SUPABASE_CONFIG_WARNING);
   }
 
-  const id = typeof projectOrId === 'string' ? projectOrId : projectOrId.id;
+  const rawId =
+    typeof projectOrId === 'string' ? projectOrId : projectOrId.id;
+  const cleanId = (rawId || '').trim();
+  const projectSlug =
+    typeof projectOrId === 'object' && projectOrId?.slug
+      ? projectOrId.slug
+      : undefined;
 
-  if (id.startsWith('seed-')) {
-    for (const seed of SEED_PROJECTS) {
-      if (seed.id === id) continue;
-      const taken = await isSlugTaken(seed.slug);
-      if (!taken) {
-        await createProject({
-          title: seed.title,
-          slug: seed.slug,
-          short_description: seed.short_description || '',
-          description: seed.description || seed.short_description || '',
-          category_id: seed.category_id,
-          category: seed.category || 'Motion Graphics',
-          client: seed.client || 'QBENCH Client',
-          year: seed.year || 2026,
-          services: seed.services || [],
-          software_tools: seed.software_tools || [],
-          cover_image: seed.cover_image,
-          gallery: seed.gallery || [],
-          behance_url: seed.behance_url || '',
-          youtube_url: seed.youtube_url || '',
-          video_url: seed.video_url || '',
-          featured: seed.featured,
-          status: seed.status,
-          display_order: seed.display_order || 1,
-        });
+  if (!isValidUuid(cleanId)) {
+    const seedMatch = SEED_PROJECTS.find(
+      (p) =>
+        p.id === cleanId ||
+        p.slug === cleanId ||
+        (projectSlug && p.slug === projectSlug)
+    );
+
+    await markSeedAsDeleted(cleanId);
+    if (seedMatch) {
+      await markSeedAsDeleted(seedMatch.id);
+      await markSeedAsDeleted(seedMatch.slug);
+    }
+
+    // Migrate the remaining non-deleted seed projects into Supabase
+    const remainingSeeds = await getActiveSeedProjects();
+    for (const seed of remainingSeeds) {
+      if (seed.id === cleanId || (seedMatch && seed.id === seedMatch.id)) {
+        continue;
+      }
+      try {
+        const taken = await isSlugTaken(seed.slug);
+        if (!taken) {
+          await createProject(seedToFormData(seed));
+        }
+      } catch {
+        // Ignore
       }
     }
+
+    // If a row with that slug was already in Supabase, delete it by its real UUID
+    const targetSlug = seedMatch?.slug || projectSlug;
+    if (targetSlug) {
+      const { data: existingBySlug } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('slug', targetSlug)
+        .maybeSingle();
+
+      if (existingBySlug?.id && isValidUuid(String(existingBySlug.id))) {
+        await deleteProject(String(existingBySlug.id));
+        return;
+      }
+    }
+
     window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
     return;
   }
@@ -1272,19 +1607,35 @@ export async function deleteProject(
   const { data: existing } = await supabase
     .from('projects')
     .select('cover_image, gallery, slug')
-    .eq('id', id)
+    .eq('id', cleanId)
     .maybeSingle();
 
-  const { error } = await supabase.from('projects').delete().eq('id', id);
+  const existingSlug =
+    existing && (existing as Record<string, unknown>).slug
+      ? String((existing as Record<string, unknown>).slug)
+      : projectSlug;
+
+  if (existingSlug) {
+    const matchingSeed = SEED_PROJECTS.find((p) => p.slug === existingSlug);
+    if (matchingSeed) {
+      await markSeedAsDeleted(matchingSeed.id);
+      await markSeedAsDeleted(matchingSeed.slug);
+    }
+  }
+
+  const { error } = await supabase
+    .from('projects')
+    .delete()
+    .eq('id', cleanId);
 
   if (error) {
     throw new Error(error.message);
   }
 
   const metaMap = await loadProjectMetaMap();
-  if (metaMap[id]) delete metaMap[id];
-  if (existing && (existing as Record<string, unknown>).slug) {
-    delete metaMap[String((existing as Record<string, unknown>).slug)];
+  if (metaMap[cleanId]) delete metaMap[cleanId];
+  if (existingSlug && metaMap[existingSlug]) {
+    delete metaMap[existingSlug];
   }
   await saveProjectMetaMap(metaMap);
 
@@ -1294,7 +1645,7 @@ export async function deleteProject(
     const gallery = Array.isArray(row.gallery)
       ? row.gallery.map(String).filter(Boolean)
       : [];
-    await deleteProjectStorageAssets(coverImage, gallery, id);
+    await deleteProjectStorageAssets(coverImage, gallery, cleanId);
   }
 
   window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
@@ -1309,44 +1660,13 @@ export async function seedDefaultPortfolioProjects(): Promise<number> {
   }
 
   let insertedCount = 0;
+  const activeSeeds = await getActiveSeedProjects();
 
-  for (const seed of SEED_PROJECTS) {
+  for (const seed of activeSeeds) {
     const exists = await isSlugTaken(seed.slug);
     if (exists) continue;
 
-    await createProject({
-      title: seed.title,
-      slug: seed.slug,
-      short_description: seed.short_description || '',
-      description: seed.description || seed.short_description || '',
-      category_id: seed.category_id,
-      category: seed.category || 'Motion Graphics',
-      client: seed.client || 'QBENCH Client',
-      client_name: seed.client_name || seed.client || 'QBENCH Client',
-      year: seed.year || 2026,
-      project_date: seed.project_date || 'February 2026',
-      project_type: seed.project_type || '',
-      services: seed.services || [],
-      software_tools: seed.software_tools || [],
-      cover_image: seed.cover_image,
-      cover_image_url: seed.cover_image_url || seed.cover_image,
-      gallery: seed.gallery || [],
-      gallery_items: (seed.portfolio_images || []).map((img, i) => ({
-        image_url: img.image_url,
-        alt_text: img.alt_text || `${seed.title} — Image ${i + 1}`,
-        display_order: img.display_order ?? i,
-      })),
-      behance_url: seed.behance_url || '',
-      youtube_url: seed.youtube_url || '',
-      video_url: seed.video_url || '',
-      instagram_url: seed.instagram_url || '',
-      website_url: seed.website_url || '',
-      featured: seed.featured,
-      is_featured: seed.is_featured,
-      status: seed.status,
-      sort_order: seed.sort_order || 1,
-      display_order: seed.display_order || 1,
-    });
+    await createProject(seedToFormData(seed));
     insertedCount++;
   }
 

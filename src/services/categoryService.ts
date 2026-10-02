@@ -3,6 +3,7 @@ import {
   isSupabaseConfigured,
   SUPABASE_CONFIG_WARNING,
   slugify,
+  isValidUuid,
 } from '../lib/supabase';
 import type { Category, CategoryFormData } from '../types/project';
 
@@ -275,6 +276,7 @@ function normalizeCategoryRow(
     projects_display_limit: displayLimit,
     show_view_all: showViewAll,
     is_active: isActive,
+    is_seed: !isValidUuid(id),
     created_at: row.created_at
       ? String(row.created_at)
       : new Date().toISOString(),
@@ -471,8 +473,18 @@ export async function updateCategory(
 
   const now = new Date().toISOString();
 
-  // If id is a non-UUID seed category, create it in Supabase first
-  if (id.startsWith('cat-')) {
+  // If id is not a valid database UUID (e.g. a seed category), check if its slug already exists in Supabase or create it
+  if (!isValidUuid(id)) {
+    const { data: existingBySlug } = await supabase
+      .from('categories')
+      .select('id')
+      .eq('slug', slug)
+      .maybeSingle();
+
+    if (existingBySlug?.id && isValidUuid(String(existingBySlug.id))) {
+      return updateCategory(String(existingBySlug.id), input);
+    }
+
     return createCategory({
       name,
       slug,
@@ -484,6 +496,8 @@ export async function updateCategory(
       is_active: isActive,
     });
   }
+
+  const cleanId = id.trim();
 
   const fullPayload = {
     name,
@@ -503,7 +517,7 @@ export async function updateCategory(
   let { data, error } = await supabase
     .from('categories')
     .update(fullPayload)
-    .eq('id', id)
+    .eq('id', cleanId)
     .select('*')
     .single();
 
@@ -524,7 +538,7 @@ export async function updateCategory(
     const retry = await supabase
       .from('categories')
       .update(basicPayload)
-      .eq('id', id)
+      .eq('id', cleanId)
       .select('*')
       .single();
     data = retry.data;
@@ -547,7 +561,7 @@ export async function updateCategory(
     is_active: isActive,
     updated_at: now,
   };
-  metaMap[id] = metaEntry;
+  metaMap[cleanId] = metaEntry;
   metaMap[slug] = metaEntry;
   await saveCategoryMetaMap(metaMap);
 
@@ -563,15 +577,19 @@ export async function deleteCategory(
     throw new Error(SUPABASE_CONFIG_WARNING);
   }
 
-  if (!id.startsWith('cat-')) {
+  if (isValidUuid(id)) {
+    const cleanId = id.trim();
     if (unassignLinkedProjects) {
       await supabase
         .from('projects')
         .update({ category_id: null })
-        .eq('category_id', id);
+        .eq('category_id', cleanId);
     }
 
-    const { error } = await supabase.from('categories').delete().eq('id', id);
+    const { error } = await supabase
+      .from('categories')
+      .delete()
+      .eq('id', cleanId);
     if (error) {
       if (error.code === '23503') {
         throw new Error(

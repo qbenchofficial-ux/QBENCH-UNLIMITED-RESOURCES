@@ -4,6 +4,7 @@ import {
   SUPABASE_CONFIG_WARNING,
   ensureSupabaseConfig,
   getSupabaseClientDiagnostics,
+  isValidUuid,
 } from '../lib/supabase';
 import type {
   ProjectInquiry,
@@ -302,19 +303,26 @@ export async function updateProjectInquiryStatus(
     });
   }
 
+  if (!isValidUuid(id)) {
+    window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
+    return;
+  }
+
+  const cleanId = id.trim();
+
   const { error } = await supabase
     .from('project_inquiries')
     .update({
       status,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', id);
+    .eq('id', cleanId);
 
   if (error) {
     const retry = await supabase
       .from('project_inquiries')
       .update({ status })
-      .eq('id', id);
+      .eq('id', cleanId);
     if (retry.error) {
       const formatted = formatSupabaseError(retry.error);
       throw new SupabaseInquiryError(formatted);
@@ -337,10 +345,15 @@ export async function deleteProjectInquiry(id: string): Promise<void> {
     });
   }
 
+  if (!isValidUuid(id)) {
+    window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
+    return;
+  }
+
   const { error } = await supabase
     .from('project_inquiries')
     .delete()
-    .eq('id', id);
+    .eq('id', id.trim());
 
   if (error) {
     const formatted = formatSupabaseError(error);

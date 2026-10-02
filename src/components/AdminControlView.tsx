@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useProjects } from '../hooks/useProjects';
+import { isValidUuid } from '../lib/supabase';
 import {
   createProject,
   updateProject,
@@ -151,11 +152,24 @@ export default function AdminControlView({
     async function loadProjectForEdit(id: string) {
       setLoadingEditProject(true);
       try {
-        const found = await getProjectById(id);
+        let found = await getProjectById(id);
+        if (!found && projects.length > 0) {
+          found =
+            projects.find((p) => p.id === id || p.slug === id) || null;
+        }
         if (mounted) {
           setEditingProject(found);
           if (!found) {
             notify('error', 'The requested project could not be found.');
+          } else if (isValidUuid(found.id) && found.id !== id) {
+            const canonicalEditPath = `/admin/projects/${found.id}/edit`;
+            setCurrentPath(canonicalEditPath);
+            if (
+              typeof window !== 'undefined' &&
+              window.location.pathname !== canonicalEditPath
+            ) {
+              window.history.replaceState({}, '', canonicalEditPath);
+            }
           }
         }
       } catch (err: unknown) {
@@ -180,7 +194,7 @@ export default function AdminControlView({
     return () => {
       mounted = false;
     };
-  }, [parsedRoute.section, parsedRoute.projectId, notify]);
+  }, [parsedRoute.section, parsedRoute.projectId, projects, notify]);
 
   const handleLogin = async (email: string, password: string): Promise<boolean> => {
     const ok = await signIn(email, password);
@@ -216,8 +230,12 @@ export default function AdminControlView({
   };
 
   const handleUpdateProject = async (data: ProjectFormData) => {
-    if (!parsedRoute.projectId) return;
-    const updated = await updateProject(parsedRoute.projectId, data);
+    const targetId =
+      editingProject?.id && isValidUuid(editingProject.id)
+        ? editingProject.id
+        : editingProject?.id || parsedRoute.projectId;
+    if (!targetId) return;
+    const updated = await updateProject(targetId, data);
     notify('success', `Updated project "${updated.title}".`);
     await refresh();
     navigateRoute('/admin/projects');

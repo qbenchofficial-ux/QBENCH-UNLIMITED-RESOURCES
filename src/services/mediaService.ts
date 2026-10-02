@@ -4,6 +4,7 @@ import {
   SUPABASE_CONFIG_WARNING,
   PORTFOLIO_BUCKET,
   slugify,
+  isValidUuid,
 } from '../lib/supabase';
 import type {
   MediaFile,
@@ -122,19 +123,14 @@ export async function uploadPortfolioImage(
   const publicUrl = data.publicUrl;
 
   let recordId: string | undefined;
-  const isRealProjectUuid =
-    projectId &&
-    !projectId.startsWith('seed-') &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      projectId
-    );
+  const isRealProjectUuid = isValidUuid(projectId);
 
   if (isRealProjectUuid && (folder === 'projects' || folder === 'gallery')) {
     const { data: imgRow, error: imgInsertErr } = await supabase
       .from('portfolio_images')
       .insert([
         {
-          project_id: projectId,
+          project_id: projectId.trim(),
           image_url: publicUrl,
           alt_text: altText || baseName,
           sort_order: displayOrder,
@@ -170,14 +166,14 @@ export async function uploadPortfolioImage(
 export async function getProjectPortfolioImages(
   projectId: string
 ): Promise<PortfolioImage[]> {
-  if (!isSupabaseConfigured || !projectId || projectId.startsWith('seed-')) {
+  if (!isSupabaseConfigured || !isValidUuid(projectId)) {
     return [];
   }
 
   const { data, error } = await supabase
     .from('portfolio_images')
     .select('*')
-    .eq('project_id', projectId)
+    .eq('project_id', projectId.trim())
     .order('created_at', { ascending: true });
 
   if (error || !data) {
@@ -273,9 +269,11 @@ export async function syncProjectPortfolioImages(
   projectTitle: string,
   galleryItems?: GalleryImageInput[]
 ): Promise<void> {
-  if (!isSupabaseConfigured || !projectId || projectId.startsWith('seed-')) {
+  if (!isSupabaseConfigured || !isValidUuid(projectId)) {
     return;
   }
+
+  const cleanProjectId = projectId.trim();
 
   const normalizedItems: GalleryImageInput[] =
     galleryItems && galleryItems.length > 0
@@ -298,13 +296,16 @@ export async function syncProjectPortfolioImages(
             display_order: idx,
           }));
 
-  await supabase.from('portfolio_images').delete().eq('project_id', projectId);
+  await supabase
+    .from('portfolio_images')
+    .delete()
+    .eq('project_id', cleanProjectId);
 
   if (normalizedItems.length === 0) return;
 
   // Try inserting with both sort_order and display_order first
   const fullRows = normalizedItems.map((item, idx) => ({
-    project_id: projectId,
+    project_id: cleanProjectId,
     image_url: item.image_url,
     alt_text: item.alt_text,
     sort_order: typeof item.display_order === 'number' ? item.display_order : idx,
@@ -319,7 +320,7 @@ export async function syncProjectPortfolioImages(
   if (firstErr) {
     // Fallback to standard sort_order column in public.portfolio_images
     const compatRows = normalizedItems.map((item, idx) => ({
-      project_id: projectId,
+      project_id: cleanProjectId,
       image_url: item.image_url,
       alt_text: item.alt_text,
       sort_order:
@@ -522,11 +523,11 @@ export async function deleteProjectStorageAssets(
 ): Promise<void> {
   if (!isSupabaseConfigured) return;
 
-  if (projectId && !projectId.startsWith('seed-')) {
+  if (isValidUuid(projectId)) {
     await supabase
       .from('portfolio_images')
       .delete()
-      .eq('project_id', projectId);
+      .eq('project_id', projectId.trim());
   }
 
   const urls = [coverImage, ...(gallery || [])].filter(Boolean) as string[];
