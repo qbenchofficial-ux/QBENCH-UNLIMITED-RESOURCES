@@ -13,6 +13,9 @@ import AdminLayout, { AdminCmsSection } from '../admin/AdminLayout';
 import AdminDashboard from '../admin/AdminDashboard';
 import ProjectList from '../admin/ProjectList';
 import ProjectForm from '../admin/ProjectForm';
+import PackagesManager from '../admin/PackagesManager';
+import ServicesManager from '../admin/ServicesManager';
+import SiteContentManager from '../admin/SiteContentManager';
 import CategoriesManager from '../admin/CategoriesManager';
 import MediaLibrary from '../admin/MediaLibrary';
 import InquiriesManager from '../admin/InquiriesManager';
@@ -46,6 +49,15 @@ function parseAdminPathname(pathname: string): ParsedAdminRoute {
   if (clean === '/admin/projects') {
     return { section: 'projects' };
   }
+  if (clean === '/admin/packages') {
+    return { section: 'packages' };
+  }
+  if (clean === '/admin/services') {
+    return { section: 'services' };
+  }
+  if (clean === '/admin/content') {
+    return { section: 'site-content' };
+  }
   if (clean === '/admin/categories') {
     return { section: 'categories' };
   }
@@ -71,6 +83,10 @@ export default function AdminControlView({
     categories,
     settings,
     inquiries,
+    packages,
+    businessSupport,
+    services,
+    websiteContent,
     loading: dataLoading,
     refresh,
   } = useProjects('admin');
@@ -296,6 +312,9 @@ export default function AdminControlView({
         <AdminDashboard
           projects={projects}
           categories={categories}
+          packages={packages}
+          services={services}
+          inquiries={inquiries}
           loading={dataLoading}
           onNavigateRoute={navigateRoute}
           onToggleStatus={handleToggleStatus}
@@ -355,6 +374,31 @@ export default function AdminControlView({
             </div>
           )}
         </>
+      )}
+
+      {parsedRoute.section === 'packages' && (
+        <PackagesManager
+          packages={packages}
+          businessSupport={businessSupport}
+          onRefresh={refresh}
+          onNotify={notify}
+        />
+      )}
+
+      {parsedRoute.section === 'services' && (
+        <ServicesManager
+          services={services}
+          onRefresh={refresh}
+          onNotify={notify}
+        />
+      )}
+
+      {parsedRoute.section === 'site-content' && (
+        <SiteContentManager
+          websiteContent={websiteContent}
+          onRefresh={refresh}
+          onNotify={notify}
+        />
       )}
 
       {parsedRoute.section === 'categories' && (

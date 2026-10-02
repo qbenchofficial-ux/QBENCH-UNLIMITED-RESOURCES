@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useProjects } from '../hooks/useProjects';
 import { 
   Compass, 
   Share2, 
@@ -218,6 +219,9 @@ interface PackagesViewProps {
 }
 
 export default function PackagesView({ onNavigate }: PackagesViewProps) {
+  const { packages: cmsPackages, businessSupport: cmsBs, websiteContent } = useProjects('public');
+  const activePackagesList = cmsPackages && cmsPackages.length > 0 ? cmsPackages : SERVICES_DATA;
+
   // active service shown in pricing sheets
   const [selectedServiceId, setSelectedServiceId] = useState<string>('branding');
   const [showMatrix, setShowMatrix] = useState<boolean>(false);
@@ -235,13 +239,25 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
     'business-support': 'none',
   });
 
+  useEffect(() => {
+    setCalcTiers((prev) => {
+      const next = { ...prev };
+      activePackagesList.forEach((pkg) => {
+        if (!(pkg.id in next)) {
+          next[pkg.id] = 'none';
+        }
+      });
+      return next;
+    });
+  }, [activePackagesList]);
+
   const [masterTier, setMasterTier] = useState<'basic' | 'standard' | 'premium'>('standard');
 
   const [calcSpeed, setCalcSpeed] = useState<'standard' | 'fast' | 'extended'>('standard');
   const [prioritySupport, setPrioritySupport] = useState<boolean>(false);
   const [copiedEstimate, setCopiedEstimate] = useState<boolean>(false);
 
-  const activeService = SERVICES_DATA.find(s => s.id === selectedServiceId) || SERVICES_DATA[0];
+  const activeService = activePackagesList.find(s => s.id === selectedServiceId) || activePackagesList[0];
 
   const getServiceIcon = (iconName: string) => {
     switch (iconName) {
@@ -263,10 +279,10 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
     let basePrice = 0;
     const selectedModules: string[] = [];
 
-    SERVICES_DATA.forEach(service => {
+    activePackagesList.forEach(service => {
       const tier = calcTiers[service.id];
-      if (tier !== 'none') {
-        const p = service.prices[tier];
+      if (tier && tier !== 'none') {
+        const p = Number(service.prices[tier]) || 0;
         basePrice += p;
         selectedModules.push(`${service.name} (${tier.toUpperCase()})`);
       }
@@ -430,14 +446,14 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
       {/* Title block segment */}
       <div id="packages-title-block" className="text-center max-w-3xl mx-auto mb-16 space-y-4">
         <span className="font-tech text-xs tracking-widest text-[#00685b] font-bold bg-[#00685b]/10 px-4 py-1.5 rounded-full inline-block uppercase">
-          PORTFOLIO COLLECTION
+          {websiteContent?.packagesHero?.badge || 'PORTFOLIO COLLECTION'}
         </span>
         <h1 className="font-display text-4xl sm:text-5xl font-black tracking-tight text-brand-text">
-          Design with Purpose.<br />
-          <span className="text-[#00685b] font-light italic tracking-normal">Built with Precision.</span>
+          {websiteContent?.packagesHero?.titleLine1 || 'Design with Purpose.'}<br />
+          <span className="text-[#00685b] font-light italic tracking-normal">{websiteContent?.packagesHero?.titleHighlight || 'Built with Precision.'}</span>
         </h1>
         <p className="font-display text-sm text-brand-text-muted leading-relaxed max-w-2xl mx-auto">
-          Explore a curated collection of branding, web design, motion graphics, social media, and creative projects that reflect thoughtful design and attention to detail.
+          {websiteContent?.packagesHero?.description || 'Explore a curated collection of branding, web design, motion graphics, social media, and creative projects that reflect thoughtful design and attention to detail.'}
         </p>
       </div>
 
@@ -448,13 +464,13 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
             // PROJECT CATEGORIES
           </span>
           <h2 className="font-display text-lg font-bold text-brand-text">
-            Explore pricing and inclusions across our 9 core capabilities:
+            Explore pricing and inclusions across our {activePackagesList.length} core capabilities:
           </h2>
         </div>
 
         {/* Categories Tab selector bar */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2 bg-brand-surface-low border border-brand-outline/20 p-2 rounded-2xl">
-          {SERVICES_DATA.map((service) => {
+          {activePackagesList.map((service) => {
             const isSelected = selectedServiceId === service.id;
             return (
               <button
@@ -627,31 +643,31 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                 <div className="space-y-6">
                   <div className="space-y-2">
                     <span className="font-tech text-[10px] uppercase tracking-widest text-[#00685b] font-bold bg-[#00685b]/10 px-3 py-1 rounded-full">
-                      Starter Package
+                      {cmsBs?.tiers?.[0]?.name || 'Starter'} Package
                     </span>
                     <p className="font-display text-xs text-brand-text-muted mt-2">
-                      Ideal for startups, freelancers, and small businesses.
+                      {cmsBs?.tiers?.[0]?.subtitle || 'Ideal for startups, freelancers, and small businesses.'}
                     </p>
                   </div>
 
                   <div className="pb-4 border-b border-brand-outline/15">
                     <span className="font-display text-3xl sm:text-4xl font-extrabold text-brand-text">
-                      ₹4,999
+                      {cmsBs?.tiers?.[0]?.price || '₹4,999'}
                     </span>
-                    <span className="text-brand-text-muted text-xs font-semibold block mt-1">/ Month</span>
+                    <span className="text-brand-text-muted text-xs font-semibold block mt-1">{cmsBs?.tiers?.[0]?.period || '/ Month'}</span>
                   </div>
 
                   <div className="space-y-3 pt-2">
                     <p className="font-tech text-[10px] uppercase font-bold text-brand-text-variant tracking-wider">Inclusions —</p>
                     <ul className="space-y-2.5">
-                      {[
+                      {(cmsBs?.tiers?.[0]?.inclusions || [
                         "Data Entry Support",
                         "Billing & Invoice Management",
                         "Customer Inquiry Handling",
                         "Basic Excel Reports",
                         "Monthly MIS Report",
                         "Email Support"
-                      ].map((item, iIdx) => (
+                      ]).map((item, iIdx) => (
                         <li key={iIdx} className="flex items-start gap-2.5 text-xs text-brand-text font-semibold font-display">
                           <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
                           <span>{item}</span>
@@ -669,14 +685,14 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                     <span>View comparison grid ↓</span>
                   </a>
                   <button
-                    onClick={() => handleSelectPackageCTA('Starter', 'Business Support', '₹4,999/Month')}
+                    onClick={() => handleSelectPackageCTA(cmsBs?.tiers?.[0]?.name || 'Starter', 'Business Support', `${cmsBs?.tiers?.[0]?.price || '₹4,999'}${cmsBs?.tiers?.[0]?.period || '/Month'}`)}
                     className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-brand-dark text-white hover:bg-[#2d3030] cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    <span>Select Starter Package</span>
+                    <span>Select {cmsBs?.tiers?.[0]?.name || 'Starter'} Package</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                   <button
-                    onClick={() => handleWhatsAppPackageClick('Starter', 'Business Support', '₹4,999/Month')}
+                    onClick={() => handleWhatsAppPackageClick(cmsBs?.tiers?.[0]?.name || 'Starter', 'Business Support', `${cmsBs?.tiers?.[0]?.price || '₹4,999'}${cmsBs?.tiers?.[0]?.period || '/Month'}`)}
                     className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#25D366] hover:bg-[#20ba5a] text-white cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                   >
                     <MessageSquare className="h-3.5 w-3.5" />
@@ -688,30 +704,30 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
               {/* Growth Package */}
               <div className="bg-white border-2 border-[#00685b] rounded-3xl p-6 sm:p-8 flex flex-col justify-between transition-all duration-300 relative shadow-md ring-4 ring-[#00685b]/10">
                 <span className="absolute -top-3.5 right-6 bg-[#00685b] text-white text-[10px] font-tech font-extrabold uppercase py-1 px-3.5 rounded-full tracking-widest shadow-md">
-                  ★ RECOMMENDED SELECTION
+                  {cmsBs?.tiers?.[1]?.badge || '★ RECOMMENDED SELECTION'}
                 </span>
 
                 <div className="space-y-6">
                   <div className="space-y-2">
                     <span className="font-tech text-[10px] uppercase tracking-widest text-emerald-800 font-bold bg-[#00685b]/10 px-3 py-1 rounded-full">
-                      Growth Package
+                      {cmsBs?.tiers?.[1]?.name || 'Growth'} Package
                     </span>
                     <p className="font-display text-xs text-brand-text-muted mt-2">
-                      Designed for growing businesses requiring regular operational support.
+                      {cmsBs?.tiers?.[1]?.subtitle || 'Designed for growing businesses requiring regular operational support.'}
                     </p>
                   </div>
 
                   <div className="pb-4 border-b border-brand-outline/15">
                     <span className="font-display text-3xl sm:text-4xl font-extrabold text-[#00685b]">
-                      ₹9,999
+                      {cmsBs?.tiers?.[1]?.price || '₹9,999'}
                     </span>
-                    <span className="text-[#00685b] text-xs font-bold block mt-1">/ Month</span>
+                    <span className="text-[#00685b] text-xs font-bold block mt-1">{cmsBs?.tiers?.[1]?.period || '/ Month'}</span>
                   </div>
 
                   <div className="space-y-3 pt-2">
                     <p className="font-tech text-[10px] uppercase font-bold text-[#00685b] tracking-wider">Inclusions —</p>
                     <ul className="space-y-2.5">
-                      {[
+                      {(cmsBs?.tiers?.[1]?.inclusions || [
                         "Everything in Starter",
                         "CRM Management",
                         "Customer Follow-Ups",
@@ -720,7 +736,7 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                         "Itinerary Preparation",
                         "Appointment Scheduling",
                         "Business Reporting"
-                      ].map((item, iIdx) => (
+                      ]).map((item, iIdx) => (
                         <li key={iIdx} className="flex items-start gap-2.5 text-xs text-brand-text font-bold text-[#00685b] font-display">
                           <CheckCircle2 className="h-4 w-4 text-[#00685b] mt-0.5 shrink-0" />
                           <span>{item}</span>
@@ -738,14 +754,14 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                     <span>View comparison grid ↓</span>
                   </a>
                   <button
-                    onClick={() => handleSelectPackageCTA('Growth', 'Business Support', '₹9,999/Month')}
+                    onClick={() => handleSelectPackageCTA(cmsBs?.tiers?.[1]?.name || 'Growth', 'Business Support', `${cmsBs?.tiers?.[1]?.price || '₹9,999'}${cmsBs?.tiers?.[1]?.period || '/Month'}`)}
                     className="w-full py-3.5 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#00685b] text-white hover:bg-[#005a4e] cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
                   >
-                    <span>Select Growth Package</span>
+                    <span>Select {cmsBs?.tiers?.[1]?.name || 'Growth'} Package</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                   <button
-                    onClick={() => handleWhatsAppPackageClick('Growth', 'Business Support', '₹9,999/Month')}
+                    onClick={() => handleWhatsAppPackageClick(cmsBs?.tiers?.[1]?.name || 'Growth', 'Business Support', `${cmsBs?.tiers?.[1]?.price || '₹9,999'}${cmsBs?.tiers?.[1]?.period || '/Month'}`)}
                     className="w-full py-3.5 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#25D366] hover:bg-[#20ba5a] text-white cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                   >
                     <MessageSquare className="h-3.5 w-3.5" />
@@ -759,24 +775,24 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                 <div className="space-y-6">
                   <div className="space-y-2">
                     <span className="font-tech text-[10px] uppercase tracking-widest text-[#178373] font-bold bg-[#178373]/10 px-3 py-1 rounded-full">
-                      Business Partner
+                      {cmsBs?.tiers?.[2]?.name || 'Business Partner'}
                     </span>
                     <p className="font-display text-xs text-brand-text-muted mt-2">
-                      Complete outsourced back-office solution for complete operations.
+                      {cmsBs?.tiers?.[2]?.subtitle || 'Complete outsourced back-office solution for complete operations.'}
                     </p>
                   </div>
 
                   <div className="pb-4 border-b border-brand-outline/15">
                     <span className="font-display text-3xl sm:text-4xl font-extrabold text-[#178373]">
-                      ₹19,999
+                      {cmsBs?.tiers?.[2]?.price || '₹19,999'}
                     </span>
-                    <span className="text-[#178373] text-xs font-semibold block mt-1">/ Month</span>
+                    <span className="text-[#178373] text-xs font-semibold block mt-1">{cmsBs?.tiers?.[2]?.period || '/ Month'}</span>
                   </div>
 
                   <div className="space-y-3 pt-2">
                     <p className="font-tech text-[10px] uppercase font-bold text-brand-text-variant tracking-wider">Inclusions —</p>
                     <ul className="space-y-2.5">
-                      {[
+                      {(cmsBs?.tiers?.[2]?.inclusions || [
                         "Everything in Growth",
                         "Accounts Management Support",
                         "Payroll Assistance",
@@ -785,7 +801,7 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                         "Dedicated Support Executive",
                         "Daily Reporting",
                         "Priority Support"
-                      ].map((item, iIdx) => (
+                      ]).map((item, iIdx) => (
                         <li key={iIdx} className="flex items-start gap-2.5 text-xs text-brand-text font-black text-[#178373] font-display">
                           <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 shrink-0" />
                           <span>{item}</span>
@@ -803,14 +819,14 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                     <span>View comparison grid ↓</span>
                   </a>
                   <button
-                    onClick={() => handleSelectPackageCTA('Business Partner', 'Business Support', '₹19,999/Month')}
+                    onClick={() => handleSelectPackageCTA(cmsBs?.tiers?.[2]?.name || 'Business Partner', 'Business Support', `${cmsBs?.tiers?.[2]?.price || '₹19,999'}${cmsBs?.tiers?.[2]?.period || '/Month'}`)}
                     className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-gradient-to-r from-[#178373] to-[#00685b] text-white hover:opacity-95 cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                   >
-                    <span>Deploy Partner Package</span>
+                    <span>Deploy {cmsBs?.tiers?.[2]?.name || 'Partner'} Package</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                   <button
-                    onClick={() => handleWhatsAppPackageClick('Business Partner', 'Business Support', '₹19,999/Month')}
+                    onClick={() => handleWhatsAppPackageClick(cmsBs?.tiers?.[2]?.name || 'Business Partner', 'Business Support', `${cmsBs?.tiers?.[2]?.price || '₹19,999'}${cmsBs?.tiers?.[2]?.period || '/Month'}`)}
                     className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#25D366] hover:bg-[#20ba5a] text-white cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                   >
                     <MessageSquare className="h-3.5 w-3.5" />
@@ -837,13 +853,13 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                   <thead>
                     <tr className="bg-brand-surface-low border-b border-brand-outline/20">
                       <th className="p-5 font-display text-[11px] font-bold uppercase tracking-wider text-brand-text-variant">Features</th>
-                      <th className="p-5 font-display text-[11px] font-bold uppercase tracking-wider text-brand-text text-center bg-[#00685b]/5 border-x border-brand-outline/10">Starter</th>
-                      <th className="p-5 font-display text-[11px] font-bold uppercase tracking-wider text-[#00685b] text-center bg-[#00685b]/10">Growth</th>
-                      <th className="p-5 font-display text-[11px] font-bold uppercase tracking-wider text-brand-text text-center bg-brand-primary/5">Business Partner</th>
+                      <th className="p-5 font-display text-[11px] font-bold uppercase tracking-wider text-brand-text text-center bg-[#00685b]/5 border-x border-brand-outline/10">{cmsBs?.tiers?.[0]?.name || 'Starter'}</th>
+                      <th className="p-5 font-display text-[11px] font-bold uppercase tracking-wider text-[#00685b] text-center bg-[#00685b]/10">{cmsBs?.tiers?.[1]?.name || 'Growth'}</th>
+                      <th className="p-5 font-display text-[11px] font-bold uppercase tracking-wider text-brand-text text-center bg-brand-primary/5">{cmsBs?.tiers?.[2]?.name || 'Business Partner'}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-brand-outline/10">
-                    {[
+                    {(cmsBs?.comparisonRows || [
                       { name: "Data Entry Support", starter: true, growth: true, partner: true },
                       { name: "Billing & Invoicing", starter: true, growth: true, partner: true },
                       { name: "Customer Handling", starter: true, growth: true, partner: true },
@@ -861,7 +877,7 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                       { name: "GST Documentation Support", starter: false, growth: false, partner: true },
                       { name: "Dedicated Executive", starter: false, growth: false, partner: true },
                       { name: "Priority Support", starter: false, growth: false, partner: true }
-                    ].map((row, rIdx) => (
+                    ]).map((row, rIdx) => (
                       <tr key={rIdx} className="hover:bg-brand-surface-low/30 transition-colors">
                         <td className="p-4 sm:p-5 font-display text-xs font-semibold text-brand-text">{row.name}</td>
                         
@@ -915,7 +931,7 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {[
+              {(cmsBs?.addOns || [
                 { name: "Accounting & Tax Support", price: "Starting from ₹500" },
                 { name: "GST Filing Assistance", price: "Starting from ₹500" },
                 { name: "Payroll Processing", price: "Starting from ₹1,500/month" },
@@ -924,7 +940,7 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                 { name: "Business Reports & MIS", price: "Starting from ₹2,000" },
                 { name: "Custom Excel Automation", price: "Starting from ₹3,500" },
                 { name: "Travel Itinerary Preparation", price: "Starting from ₹1,000" }
-              ].map((addon, aIdx) => (
+              ]).map((addon, aIdx) => (
                 <div key={aIdx} className="bg-white border border-brand-outline/20 rounded-2xl p-5 flex flex-col justify-between hover:border-[#00685b]/40 transition-colors">
                   <h4 className="font-display text-xs font-black text-brand-text mb-2">{addon.name}</h4>
                   <div>
@@ -1032,10 +1048,10 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
 
               <div className="space-y-1">
                 <h3 className="font-display text-2xl font-black text-brand-text tracking-tight uppercase">
-                  {activeService.id === 'branding' ? 'Starter' : 'Basic'} package
+                  {(activeService as any).tierNames?.basic || (activeService.id === 'branding' ? 'Starter' : 'Basic')} package
                 </h3>
                 <p className="font-display text-xs text-brand-text-muted">
-                  {activeService.id === 'branding' ? 'Perfect for startups and personal brands.' : 'Essential tools designed to establish initial capability and structure.'}
+                  {(activeService as any).tierDescriptions?.basic || (activeService.id === 'branding' ? 'Perfect for startups and personal brands.' : 'Essential tools designed to establish initial capability and structure.')}
                 </p>
               </div>
 
@@ -1079,17 +1095,17 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
 
             <div className="mt-8 pt-6 border-t border-brand-outline/15 space-y-4">
               <span className="text-[10px] py-1 bg-brand-surface-low rounded px-2 font-mono text-brand-text-muted block text-center">
-                Timeline Objective: approx. 1-2 Weeks
+                Timeline Objective: {(activeService as any).tierTimelines?.basic || 'approx. 1-2 Weeks'}
               </span>
               <button
-                onClick={() => handleSelectPackageCTA('Basic', activeService.name, activeService.priceLabels.basic)}
+                onClick={() => handleSelectPackageCTA((activeService as any).tierNames?.basic || 'Basic', activeService.name, activeService.priceLabels.basic)}
                 className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-brand-dark text-white hover:bg-[#2d3030] cursor-pointer flex items-center justify-center gap-1.5"
               >
-                <span>Deploy Basic Tier</span>
+                <span>Deploy {(activeService as any).tierNames?.basic || 'Basic'} Tier</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </button>
               <button
-                onClick={() => handleWhatsAppPackageClick('Basic', activeService.name, activeService.priceLabels.basic)}
+                onClick={() => handleWhatsAppPackageClick((activeService as any).tierNames?.basic || 'Basic', activeService.name, activeService.priceLabels.basic)}
                 className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#25D366] hover:bg-[#20ba5a] text-white cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
               >
                 <MessageSquare className="h-3.5 w-3.5" />
@@ -1116,10 +1132,10 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
 
               <div className="space-y-1">
                 <h3 className="font-display text-2xl font-black text-brand-text tracking-tight uppercase">
-                  {activeService.id === 'branding' ? 'Professional ⭐' : 'Standard'} package
+                  {(activeService as any).tierNames?.standard || (activeService.id === 'branding' ? 'Professional ⭐' : 'Standard')} package
                 </h3>
                 <p className="font-display text-xs text-brand-text-muted">
-                  {activeService.id === 'branding' ? 'For businesses ready to establish a strong brand.' : 'Fully featured setup delivering complete utility, design details, and workflow scaling tools.'}
+                  {(activeService as any).tierDescriptions?.standard || (activeService.id === 'branding' ? 'For businesses ready to establish a strong brand.' : 'Fully featured setup delivering complete utility, design details, and workflow scaling tools.')}
                 </p>
               </div>
 
@@ -1163,17 +1179,17 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
 
             <div className="mt-8 pt-6 border-t border-brand-outline/15 space-y-4">
               <span className="text-[10px] py-1 bg-brand-surface-low rounded px-2 font-mono text-[#00685b] font-bold block text-center">
-                Timeline Objective: {activeService.id === 'branding' ? 'approx. 2-3 Weeks' : 'approx. 3-4 Weeks'}
+                Timeline Objective: {(activeService as any).tierTimelines?.standard || (activeService.id === 'branding' ? 'approx. 2-3 Weeks' : 'approx. 3-4 Weeks')}
               </span>
               <button
-                onClick={() => handleSelectPackageCTA('Standard', activeService.name, activeService.priceLabels.standard)}
+                onClick={() => handleSelectPackageCTA((activeService as any).tierNames?.standard || 'Standard', activeService.name, activeService.priceLabels.standard)}
                 className="w-full py-3.5 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#00685b] text-white hover:bg-[#005a4e] cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
               >
-                <span>Deploy Standard Tier</span>
+                <span>Deploy {(activeService as any).tierNames?.standard || 'Standard'} Tier</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </button>
               <button
-                onClick={() => handleWhatsAppPackageClick('Standard', activeService.name, activeService.priceLabels.standard)}
+                onClick={() => handleWhatsAppPackageClick((activeService as any).tierNames?.standard || 'Standard', activeService.name, activeService.priceLabels.standard)}
                 className="w-full py-3.5 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#25D366] hover:bg-[#20ba5a] text-white cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
               >
                 <MessageSquare className="h-3.5 w-3.5" />
@@ -1196,10 +1212,10 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
 
               <div className="space-y-1">
                 <h3 className="font-display text-2xl font-black text-brand-text tracking-tight uppercase">
-                  {activeService.id === 'branding' ? 'Enterprise' : (activeService.id === 'video-editing' ? 'PREMIUM ADS' : 'PREMIUM')} package
+                  {(activeService as any).tierNames?.premium || (activeService.id === 'branding' ? 'Enterprise' : (activeService.id === 'video-editing' ? 'PREMIUM ADS' : 'PREMIUM'))} package
                 </h3>
                 <p className="font-display text-xs text-brand-text-muted">
-                  {activeService.id === 'branding' ? 'A complete branding solution with premium support.' : 'Maximized capability targets, continuous priority iterations, and elite enterprise support.'}
+                  {(activeService as any).tierDescriptions?.premium || (activeService.id === 'branding' ? 'A complete branding solution with premium support.' : 'Maximized capability targets, continuous priority iterations, and elite enterprise support.')}
                 </p>
               </div>
 
@@ -1243,17 +1259,17 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
 
             <div className="mt-8 pt-6 border-t border-brand-outline/15 space-y-4">
               <span className="text-[10px] py-1 bg-brand-surface-low rounded px-2 font-mono text-[#178373] font-bold block text-center">
-                Timeline Objective: {activeService.id === 'branding' ? 'approx. 3-4 Weeks' : 'Continuous Sprint Delivery'}
+                Timeline Objective: {(activeService as any).tierTimelines?.premium || (activeService.id === 'branding' ? 'approx. 3-4 Weeks' : 'Continuous Sprint Delivery')}
               </span>
               <button
-                onClick={() => handleSelectPackageCTA('Premium', activeService.name, activeService.priceLabels.premium)}
+                onClick={() => handleSelectPackageCTA((activeService as any).tierNames?.premium || 'Premium', activeService.name, activeService.priceLabels.premium)}
                 className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-gradient-to-r from-[#178373] to-[#00685b] text-white hover:opacity-95 cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
               >
-                <span>Deploy Premium Tier</span>
+                <span>Deploy {(activeService as any).tierNames?.premium || 'Premium'} Tier</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </button>
               <button
-                onClick={() => handleWhatsAppPackageClick('Premium', activeService.name, activeService.priceLabels.premium)}
+                onClick={() => handleWhatsAppPackageClick((activeService as any).tierNames?.premium || 'Premium', activeService.name, activeService.priceLabels.premium)}
                 className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#25D366] hover:bg-[#20ba5a] text-white cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
               >
                 <MessageSquare className="h-3.5 w-3.5" />
@@ -1397,7 +1413,7 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                 2. TOGGLE NEEDED CAPABILITIES
               </span>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {SERVICES_DATA.map((service) => {
+                {activePackagesList.map((service) => {
                   const isActive = calcTiers[service.id] !== 'none';
                   const servicePrice = service.prices[masterTier as 'basic' | 'standard' | 'premium'];
                   

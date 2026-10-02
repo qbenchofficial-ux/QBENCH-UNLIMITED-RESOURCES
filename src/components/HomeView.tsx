@@ -1,6 +1,7 @@
 import { useState, useEffect, FormEvent, useRef, useMemo } from 'react';
 import { NavSection, ServiceTab } from '../types';
 import { sendEmailJS } from '../lib/emailService';
+import { createProjectInquiry } from '../services/inquiryService';
 import { useProjects } from '../hooks/useProjects';
 import PublicResourcesSection from './PublicResourcesSection';
 import { 
@@ -78,7 +79,7 @@ function Typewriter({
 }
 
 export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewProps) {
-  const { projects: publishedProjects } = useProjects('public');
+  const { projects: publishedProjects, services: cmsServices, websiteContent } = useProjects('public');
   // Free Audit Form State
   const [formData, setFormData] = useState({
     fullName: '',
@@ -125,7 +126,17 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
     setFormError(null);
 
     try {
-      await sendEmailJS({
+      await createProjectInquiry({
+        name: trimmedName,
+        email: trimmedEmail,
+        phone: trimmedPhone,
+        company: trimmedCompany,
+        service: 'Free Brand Visibility Audit',
+        budget: 'Free Audit',
+        message: auditMessage,
+      });
+
+      sendEmailJS({
         name: trimmedName,
         email: trimmedEmail,
         phone: trimmedPhone,
@@ -137,6 +148,8 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
         start_date: 'Immediate / Flexible',
         message: auditMessage,
         lead_source: 'QBENCH Website'
+      }).catch((emailErr) => {
+        console.warn('[Audit Form] Background email notification warning:', emailErr);
       });
 
       setFormState('success');
@@ -163,85 +176,97 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
     emoji: string; 
     title: string; 
     desc: string; 
-  }[] = [
-    {
-      id: 'branding',
-      emoji: '🎨',
-      title: 'Branding & Identity',
-      desc: 'Logos, brand identity systems, visual guidelines, and brand assets that create a lasting impression.'
-    },
-    {
-      id: 'social-media',
-      emoji: '📱',
-      title: 'Social Media Design',
-      desc: 'Creative social media designs that strengthen your brand across every platform.'
-    },
-    {
-      id: 'video-editing',
-      emoji: '🎬',
-      title: 'Video Editing',
-      desc: 'Professional editing for promotional videos, product showcases, reels, and brand stories.'
-    },
-    {
-      id: 'webdev',
-      emoji: '🌐',
-      title: 'Website Development',
-      desc: 'Modern, responsive websites designed for performance, usability, and great user experiences.'
-    },
-    {
-      id: 'digital-marketing',
-      emoji: '📈',
-      title: 'Digital Marketing',
-      desc: 'Creative campaigns and digital solutions that help brands build a stronger online presence.'
-    },
-    {
-      id: 'motion',
-      emoji: '✨',
-      title: 'Motion Graphics',
-      desc: 'Eye-catching animations and motion visuals that bring ideas to life.'
-    },
-    {
-      id: 'uiux',
-      emoji: '🖥️',
-      title: 'UI/UX Design',
-      desc: 'User-centered interfaces designed for intuitive, engaging, and seamless digital experiences.'
-    },
-    {
-      id: 'growth',
-      emoji: '🚀',
-      title: 'Creative Strategy',
-      desc: 'Creative direction and digital solutions that help brands communicate with clarity and confidence.'
-    },
-    {
-      id: 'business-support',
-      emoji: '💼',
-      title: 'Creative Support',
-      desc: 'Ongoing design support for presentations, marketing materials, print media, and creative content.'
+  }[] = useMemo(() => {
+    if (cmsServices && cmsServices.length > 0) {
+      return cmsServices.map((s) => ({
+        id: s.id,
+        emoji: s.emoji || '✨',
+        title: s.title,
+        desc: s.desc,
+      }));
     }
-  ];
+    return [
+      {
+        id: 'branding',
+        emoji: '🎨',
+        title: 'Branding & Identity',
+        desc: 'Logos, brand identity systems, visual guidelines, and brand assets that create a lasting impression.'
+      },
+      {
+        id: 'social-media',
+        emoji: '📱',
+        title: 'Social Media Design',
+        desc: 'Creative social media designs that strengthen your brand across every platform.'
+      },
+      {
+        id: 'video-editing',
+        emoji: '🎬',
+        title: 'Video Editing',
+        desc: 'Professional editing for promotional videos, product showcases, reels, and brand stories.'
+      },
+      {
+        id: 'webdev',
+        emoji: '🌐',
+        title: 'Website Development',
+        desc: 'Modern, responsive websites designed for performance, usability, and great user experiences.'
+      },
+      {
+        id: 'digital-marketing',
+        emoji: '📈',
+        title: 'Digital Marketing',
+        desc: 'Creative campaigns and digital solutions that help brands build a stronger online presence.'
+      },
+      {
+        id: 'motion',
+        emoji: '✨',
+        title: 'Motion Graphics',
+        desc: 'Eye-catching animations and motion visuals that bring ideas to life.'
+      },
+      {
+        id: 'uiux',
+        emoji: '🖥️',
+        title: 'UI/UX Design',
+        desc: 'User-centered interfaces designed for intuitive, engaging, and seamless digital experiences.'
+      },
+      {
+        id: 'growth',
+        emoji: '🚀',
+        title: 'Creative Strategy',
+        desc: 'Creative direction and digital solutions that help brands communicate with clarity and confidence.'
+      },
+      {
+        id: 'business-support',
+        emoji: '💼',
+        title: 'Creative Support',
+        desc: 'Ongoing design support for presentations, marketing materials, print media, and creative content.'
+      }
+    ];
+  }, [cmsServices]);
 
-  const processSteps = [
-    {
-      num: '01',
-      title: 'Discover',
-      desc: 'We learn about your goals, audience, and vision.'
-    },
-    {
-      num: '02',
-      title: 'Create',
-      desc: 'We design and iterate until it is perfect.'
-    },
-    {
-      num: '03',
-      title: 'Deliver',
-      desc: 'We hand over the final files and assets.'
-    },
-    {
-      num: '04',
-      title: 'Support',
-      desc: 'We help you launch and grow your brand.'
-    }
-  ];
+  const processSteps = websiteContent?.homeProcessSummary?.length
+    ? websiteContent.homeProcessSummary
+    : [
+        {
+          num: '01',
+          title: 'Discover',
+          desc: 'We learn about your goals, audience, and vision.'
+        },
+        {
+          num: '02',
+          title: 'Create',
+          desc: 'We design and iterate until it is perfect.'
+        },
+        {
+          num: '03',
+          title: 'Deliver',
+          desc: 'We hand over the final files and assets.'
+        },
+        {
+          num: '04',
+          title: 'Support',
+          desc: 'We help you launch and grow your brand.'
+        }
+      ];
 
   const latestProjects = useMemo(() => {
     const featuredList = publishedProjects.filter((p) => p.featured);
@@ -259,24 +284,26 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
     }));
   }, [publishedProjects]);
 
-  const whyChooseItems = [
-    {
-      title: 'Strategic Thinking',
-      desc: 'We focus on business outcomes, not just design.'
-    },
-    {
-      title: 'End-to-End Solutions',
-      desc: "From branding to business support, we've got you covered."
-    },
-    {
-      title: 'Growth Focused',
-      desc: 'Everything we do is built around visibility, leads and growth.'
-    },
-    {
-      title: 'Scalable Partnership',
-      desc: 'Solutions that grow with your business.'
-    }
-  ];
+  const whyChooseItems = websiteContent?.whyChoose?.items?.length
+    ? websiteContent.whyChoose.items
+    : [
+        {
+          title: 'Strategic Thinking',
+          desc: 'We focus on business outcomes, not just design.'
+        },
+        {
+          title: 'End-to-End Solutions',
+          desc: "From branding to business support, we've got you covered."
+        },
+        {
+          title: 'Growth Focused',
+          desc: 'Everything we do is built around visibility, leads and growth.'
+        },
+        {
+          title: 'Scalable Partnership',
+          desc: 'Solutions that grow with your business.'
+        }
+      ];
 
   return (
     <div id="qbench-homepage" className="w-full">
@@ -288,16 +315,16 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
           {/* Left Text Detail */}
           <div className="lg:col-span-6 space-y-6 sm:space-y-8">
             <span id="hero-badge" className="font-tech text-xs tracking-widest text-[#00685b] font-extrabold uppercase flex items-center gap-2 bg-[#00685b]/10 w-fit px-3 py-1 rounded-full">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#00685b] animate-pulse" /> WE DESIGN BRANDS THAT PEOPLE REMEMBER
+              <span className="h-1.5 w-1.5 rounded-full bg-[#00685b] animate-pulse" /> {websiteContent?.hero?.badge || 'WE DESIGN BRANDS THAT PEOPLE REMEMBER'}
             </span>
             
             <h1 id="hero-title" className="font-display text-4xl sm:text-5xl lg:text-6xl font-black text-brand-text leading-[1.1] tracking-tight">
-              We Design Brands<br />
-              That <span className="text-[#00685b]">People Remember</span>.
+              {websiteContent?.hero?.headlinePrefix || 'We Design Brands'}<br />
+              That <span className="text-[#00685b]">{websiteContent?.hero?.headlineHighlight || 'People Remember'}</span>.
             </h1>
             
             <p id="hero-intro" className="font-sans text-sm sm:text-base text-brand-text-muted leading-relaxed max-w-xl">
-              QBench is a creative agency specializing in branding, web design, social media, video production, and digital marketing. We create thoughtful visual experiences that help businesses grow and stand out.
+              {websiteContent?.hero?.description || 'QBench is a creative agency specializing in branding, web design, social media, video production, and digital marketing. We create thoughtful visual experiences that help businesses grow and stand out.'}
             </p>
             
             <div id="hero-actions" className="flex flex-col sm:flex-row gap-4">
@@ -306,7 +333,7 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
                 onClick={() => onNavigate('contact')}
                 className="rounded-xl bg-[#00685b] text-white px-7 py-3.5 font-display text-sm font-bold hover:bg-[#178373] transition-all duration-300 shadow-md flex items-center justify-center gap-2 cursor-pointer group"
               >
-                <span>Start a Project</span>
+                <span>{websiteContent?.hero?.primaryCtaText || 'Start a Project'}</span>
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
               </button>
               
@@ -315,7 +342,7 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
                 onClick={() => onNavigate('portfolio')}
                 className="rounded-xl bg-white border border-brand-outline/40 text-brand-text px-7 py-3.5 font-display text-sm font-semibold hover:border-[#00685b] hover:bg-brand-surface-low transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer"
               >
-                <span>View Portfolio</span>
+                <span>{websiteContent?.hero?.secondaryCtaText || 'View Portfolio'}</span>
               </button>
             </div>
             
@@ -860,13 +887,13 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
           <div className="lg:col-span-7 space-y-10">
             <div className="space-y-3.5">
               <span className="font-tech text-[10px] tracking-widest text-[#00685b] font-extrabold uppercase bg-[#00685b]/10 px-3 py-1 rounded-full inline-block">
-                WHY CHOOSE Q BENCH?
+                {websiteContent?.whyChoose?.badge || 'WHY CHOOSE Q BENCH?'}
               </span>
               <h2 className="font-display text-3xl sm:text-4xl font-black text-brand-text tracking-tight">
-                Why Choose Us
+                {websiteContent?.whyChoose?.title || 'Why Choose Us'}
               </h2>
               <p className="font-sans text-sm text-brand-text-muted leading-relaxed max-w-xl">
-                We are a Kerala-based branding and creative agency helping startups and businesses grow.
+                {websiteContent?.whyChoose?.subtitle || 'We are a Kerala-based branding and creative agency helping startups and businesses grow.'}
               </p>
             </div>
             

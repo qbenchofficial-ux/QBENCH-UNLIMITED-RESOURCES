@@ -284,9 +284,15 @@ export async function getAllProjects(): Promise<Project[]> {
     throw new Error(error.message);
   }
 
-  return (data || []).map((row) =>
+  const rows = (data || []).map((row) =>
     normalizeProject(row as Record<string, unknown>, byId)
   );
+
+  if (rows.length === 0) {
+    return SEED_PROJECTS;
+  }
+
+  return rows;
 }
 
 /**
@@ -318,9 +324,56 @@ export async function getPublishedProjects(
     throw new Error(error.message);
   }
 
-  return (data || []).map((row) =>
+  const rows = (data || []).map((row) =>
     normalizeProject(row as Record<string, unknown>, byId)
   );
+
+  if (rows.length === 0 && !includeDraftsForAdmin) {
+    return SEED_PROJECTS.filter((p) => p.status === 'published');
+  }
+
+  return rows;
+}
+
+/**
+ * Seed the default QBENCH showcase projects into `public.projects` so the admin can edit them.
+ */
+export async function seedDefaultPortfolioProjects(): Promise<number> {
+  if (!isSupabaseConfigured) {
+    throw new Error(SUPABASE_CONFIG_WARNING);
+  }
+
+  let insertedCount = 0;
+  for (const seed of SEED_PROJECTS) {
+    const exists = await isSlugTaken(seed.slug);
+    if (exists) continue;
+
+    await createProject({
+      title: seed.title,
+      slug: seed.slug,
+      short_description: seed.short_description || '',
+      description: seed.description || seed.short_description || '',
+      category_id: seed.category_id,
+      category: seed.category || 'Branding',
+      client: seed.client || 'QBENCH Client',
+      year: seed.year || 2026,
+      services: seed.services || [],
+      cover_image: seed.cover_image,
+      gallery: seed.gallery || [],
+      behance_url: seed.behance_url || '',
+      youtube_url: seed.youtube_url || '',
+      video_url: seed.video_url || '',
+      instagram_url: seed.instagram_url || '',
+      website_url: seed.website_url || '',
+      featured: seed.featured,
+      status: seed.status,
+      sort_order: seed.sort_order || 1,
+    });
+    insertedCount++;
+  }
+
+  window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
+  return insertedCount;
 }
 
 /**
@@ -341,7 +394,9 @@ export async function getProjectById(id: string): Promise<Project | null> {
     throw new Error(error.message);
   }
 
-  if (!data) return null;
+  if (!data) {
+    return SEED_PROJECTS.find((p) => p.id === id) || null;
+  }
 
   return normalizeProject(
     data as Record<string, unknown>,
@@ -381,7 +436,11 @@ export async function getProjectBySlug(
   }
 
   if (!data) {
-    return null;
+    return (
+      SEED_PROJECTS.find(
+        (p) => p.slug === slug && (includeDrafts || p.status === 'published')
+      ) || null
+    );
   }
 
   const projectId = String((data as Record<string, unknown>).id || '');
@@ -535,6 +594,37 @@ export async function updateProject(
     throw new Error(SUPABASE_CONFIG_WARNING);
   }
 
+  if (id.startsWith('seed-')) {
+    for (const seed of SEED_PROJECTS) {
+      if (seed.id === id) continue;
+      const taken = await isSlugTaken(seed.slug);
+      if (!taken) {
+        await createProject({
+          title: seed.title,
+          slug: seed.slug,
+          short_description: seed.short_description || '',
+          description: seed.description || seed.short_description || '',
+          category_id: seed.category_id,
+          category: seed.category || 'Branding',
+          client: seed.client || 'QBENCH Client',
+          year: seed.year || 2026,
+          services: seed.services || [],
+          cover_image: seed.cover_image,
+          gallery: seed.gallery || [],
+          behance_url: seed.behance_url || '',
+          youtube_url: seed.youtube_url || '',
+          video_url: seed.video_url || '',
+          instagram_url: seed.instagram_url || '',
+          website_url: seed.website_url || '',
+          featured: seed.featured,
+          status: seed.status,
+          sort_order: seed.sort_order || 1,
+        });
+      }
+    }
+    return createProject(formData);
+  }
+
   const cleanSlug = slugify(formData.slug || formData.title);
   if (!formData.title.trim()) {
     throw new Error('Project Title is required.');
@@ -644,6 +734,18 @@ export async function patchProjectFlags(
     throw new Error(SUPABASE_CONFIG_WARNING);
   }
 
+  if (id.startsWith('seed-')) {
+    await seedDefaultPortfolioProjects();
+    const seed = SEED_PROJECTS.find((p) => p.id === id);
+    if (seed) {
+      const existing = await getProjectBySlug(seed.slug, true);
+      if (existing && !existing.id.startsWith('seed-')) {
+        await patchProjectFlags(existing.id, patch);
+      }
+    }
+    return;
+  }
+
   const now = new Date().toISOString();
   const { error } = await supabase
     .from('projects')
@@ -663,6 +765,15 @@ export async function patchProjectFlags(
 export async function deleteProject(project: Project): Promise<void> {
   if (!isSupabaseConfigured) {
     throw new Error(SUPABASE_CONFIG_WARNING);
+  }
+
+  if (project.id.startsWith('seed-')) {
+    await seedDefaultPortfolioProjects();
+    const existing = await getProjectBySlug(project.slug, true);
+    if (existing && !existing.id.startsWith('seed-')) {
+      await deleteProject(existing);
+    }
+    return;
   }
 
   await deleteProjectStorageAssets(
