@@ -18,14 +18,17 @@ import type {
   ProjectVideoInput,
 } from '../types/project';
 
-const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'];
+export const MAX_PORTFOLIO_IMAGE_SIZE_MB = 10;
+export const MAX_PORTFOLIO_IMAGE_SIZE_BYTES =
+  MAX_PORTFOLIO_IMAGE_SIZE_MB * 1024 * 1024;
+
+const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'svg'];
 const ALLOWED_MIMES = [
   'image/jpeg',
   'image/jpg',
   'image/png',
   'image/webp',
-  'image/gif',
-  'image/avif',
+  'image/svg+xml',
 ];
 
 const ALLOWED_VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov'];
@@ -36,15 +39,133 @@ const ALLOWED_VIDEO_MIMES = [
   'video/x-m4v',
 ];
 
-export function validatePortfolioImage(file: File): string | null {
-  const ext = (file.name.split('.').pop() || '').toLowerCase();
-  if (!ALLOWED_EXTENSIONS.includes(ext) && !ALLOWED_MIMES.includes(file.type)) {
-    return `Unsupported file format (${file.name}). Allowed formats: JPG, JPEG, PNG, WEBP, GIF, AVIF.`;
+/**
+ * Detects whether a string looks like a local computer path (e.g. C:\..., D:\..., file://..., /Users/..., blob:...)
+ * so local paths are never stored in Supabase database records.
+ */
+export function isLocalComputerPath(value?: string | null): boolean {
+  if (!value) return false;
+  const v = value.trim();
+  if (!v) return false;
+  if (
+    /^[a-zA-Z]:[\\/]/.test(v) ||
+    v.startsWith('\\\\') ||
+    v.toLowerCase().startsWith('file://') ||
+    v.toLowerCase().startsWith('blob:') ||
+    v.startsWith('/Users/') ||
+    v.startsWith('/home/') ||
+    v.includes('\\Users\\') ||
+    v.includes('\\Desktop\\') ||
+    v.includes('\\Downloads\\')
+  ) {
+    return true;
   }
-  if (file.size > 10 * 1024 * 1024) {
-    return `File "${file.name}" exceeds the 10MB size limit.`;
+  return false;
+}
+
+export function validatePortfolioImage(file: File): string | null {
+  if (!file || !(file instanceof File)) {
+    return 'Please select a valid image file from your computer.';
+  }
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const mime = (file.type || '').toLowerCase();
+  const extAllowed = ALLOWED_EXTENSIONS.includes(ext);
+  const mimeAllowed = ALLOWED_MIMES.includes(mime);
+
+  if (!extAllowed || (mime && !mimeAllowed)) {
+    return `Unsupported image format "${file.name}". Supported formats: JPG, JPEG, PNG, WEBP, and sanitized SVG.`;
+  }
+  if (file.size <= 0) {
+    return `File "${file.name}" is empty (0 bytes).`;
+  }
+  if (file.size > MAX_PORTFOLIO_IMAGE_SIZE_BYTES) {
+    return `File "${file.name}" (${formatFileSize(
+      file.size
+    )}) exceeds the ${MAX_PORTFOLIO_IMAGE_SIZE_MB} MB maximum size limit.`;
   }
   return null;
+}
+
+/**
+ * Securely sanitizes an SVG file before uploading to Supabase Storage or displaying publicly.
+ * Removes <script>, <foreignObject>, <iframe>, <object>, <embed>, inline event handlers (on*),
+ * and unsafe javascript:/data: URIs.
+ */
+export async function sanitizeSvgFile(file: File): Promise<File> {
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const mime = (file.type || '').toLowerCase();
+  if (ext !== 'svg' && mime !== 'image/svg+xml') {
+    return file;
+  }
+
+  const rawText = await file.text();
+  if (!rawText || !rawText.includes('<svg')) {
+    throw new Error(`Invalid SVG file "${file.name}".`);
+  }
+
+  if (typeof DOMParser !== 'undefined' && typeof XMLSerializer !== 'undefined') {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawText, 'image/svg+xml');
+    const parserError = doc.querySelector('parsererror');
+    if (parserError) {
+      throw new Error(`Malformed SVG XML in "${file.name}".`);
+    }
+
+    const forbiddenTags = [
+      'script',
+      'foreignObject',
+      'iframe',
+      'object',
+      'embed',
+      'link',
+      'meta',
+    ];
+    forbiddenTags.forEach((tag) => {
+      doc.querySelectorAll(tag).forEach((el) => el.remove());
+    });
+
+    const allElements = doc.querySelectorAll('*');
+    allElements.forEach((el) => {
+      const attrs = Array.from(el.attributes);
+      for (const attr of attrs) {
+        const nameLower = attr.name.toLowerCase();
+        const valLower = attr.value.trim().toLowerCase();
+        if (nameLower.startsWith('on')) {
+          el.removeAttribute(attr.name);
+        } else if (
+          (nameLower === 'href' || nameLower === 'xlink:href') &&
+          (valLower.startsWith('javascript:') ||
+            valLower.startsWith('data:text/html') ||
+            valLower.startsWith('vbscript:'))
+        ) {
+          el.removeAttribute(attr.name);
+        } else if (
+          nameLower === 'style' &&
+          (valLower.includes('javascript:') || valLower.includes('expression('))
+        ) {
+          el.removeAttribute(attr.name);
+        }
+      }
+    });
+
+    const serialized = new XMLSerializer().serializeToString(doc);
+    return new File([serialized], file.name, {
+      type: 'image/svg+xml',
+      lastModified: Date.now(),
+    });
+  }
+
+  // Regex fallback if DOMParser is unavailable
+  const cleaned = rawText
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+    .replace(/<foreignObject[\s\S]*?>[\s\S]*?<\/foreignObject>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/javascript:/gi, '');
+
+  return new File([cleaned], file.name, {
+    type: 'image/svg+xml',
+    lastModified: Date.now(),
+  });
 }
 
 export function formatFileSize(bytes?: number | null): string {
@@ -154,6 +275,7 @@ export function extractVideoStorageInfoFromUrl(url: string): {
 export type StorageFolderTarget =
   | 'categories'
   | 'projects'
+  | 'site'
   | 'covers'
   | 'gallery'
   | 'library';
@@ -161,12 +283,13 @@ export type StorageFolderTarget =
 /**
  * Upload an image file to the Supabase `portfolio-images` Storage bucket
  * using organised paths:
- * - `portfolio-images/categories/...`
- * - `portfolio-images/projects/{project_id}/...`
- * Returns its public URL (never stores base64 in the database).
+ * - `portfolio-images/projects/{project_id}/`
+ * - `portfolio-images/categories/`
+ * - `portfolio-images/site/`
+ * Returns its public URL and storage path (never stores base64 or local paths in the database).
  */
 export async function uploadPortfolioImage(
-  file: File,
+  rawFile: File,
   folder: StorageFolderTarget = 'projects',
   onProgress?: (percent: number) => void,
   projectId?: string | null,
@@ -177,12 +300,17 @@ export async function uploadPortfolioImage(
     throw new Error(SUPABASE_CONFIG_WARNING);
   }
 
-  const validationError = validatePortfolioImage(file);
+  const validationError = validatePortfolioImage(rawFile);
   if (validationError) {
     throw new Error(validationError);
   }
 
-  onProgress?.(15);
+  onProgress?.(10);
+
+  // Sanitize SVG files before uploading to Supabase Storage
+  const file = await sanitizeSvgFile(rawFile);
+
+  onProgress?.(25);
 
   const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
   const baseName =
@@ -190,11 +318,11 @@ export async function uploadPortfolioImage(
   const uniqueSuffix = Math.random().toString(36).slice(2, 8);
   const fileName = `${Date.now()}-${uniqueSuffix}-${baseName}.${ext}`;
 
-  let directoryPath = 'projects/unassigned';
+  let directoryPath = 'projects/shared';
   if (folder === 'categories') {
     directoryPath = 'categories';
-  } else if (folder === 'library') {
-    directoryPath = 'library';
+  } else if (folder === 'site' || folder === 'library') {
+    directoryPath = 'site';
   } else {
     const rawPid = typeof projectId === 'string' ? projectId.trim() : '';
     const cleanProjectId = isValidUuid(rawPid)
@@ -206,9 +334,13 @@ export async function uploadPortfolioImage(
   }
 
   const filePath = `${directoryPath}/${fileName}`;
-  const mimeType = file.type || `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+  const mimeType =
+    file.type ||
+    (ext === 'svg'
+      ? 'image/svg+xml'
+      : `image/${ext === 'jpg' ? 'jpeg' : ext}`);
 
-  onProgress?.(45);
+  onProgress?.(50);
 
   const { error: uploadError } = await supabase.storage
     .from(PORTFOLIO_BUCKET)
@@ -222,40 +354,19 @@ export async function uploadPortfolioImage(
     throw new Error(uploadError.message);
   }
 
-  onProgress?.(85);
+  onProgress?.(90);
 
   const { data } = supabase.storage
     .from(PORTFOLIO_BUCKET)
     .getPublicUrl(filePath);
   const publicUrl = data.publicUrl;
 
-  let recordId: string | undefined;
-  const isRealProjectUuid = isValidUuid(projectId);
-
-  if (isRealProjectUuid && (folder === 'projects' || folder === 'gallery')) {
-    const { data: imgRow, error: imgInsertErr } = await supabase
-      .from('portfolio_images')
-      .insert([
-        {
-          project_id: projectId.trim(),
-          image_url: publicUrl,
-          alt_text: altText || baseName,
-          sort_order: displayOrder,
-        },
-      ])
-      .select('id')
-      .maybeSingle();
-
-    if (!imgInsertErr && imgRow?.id) {
-      recordId = String(imgRow.id);
-    }
-  }
-
   onProgress?.(100);
 
+  const isRealProjectUuid = isValidUuid(projectId);
+
   return {
-    id: recordId,
-    name: fileName,
+    name: file.name || fileName,
     path: filePath,
     url: publicUrl,
     alt_text: altText || baseName,
@@ -263,7 +374,7 @@ export async function uploadPortfolioImage(
     display_order: displayOrder,
     created_at: new Date().toISOString(),
     size: file.size,
-    project_id: isRealProjectUuid ? projectId.trim() : null,
+    project_id: isRealProjectUuid && projectId ? projectId.trim() : null,
   };
 }
 
@@ -652,21 +763,31 @@ export async function getProjectPortfolioImages(
           : typeof row.sort_order === 'number'
           ? row.sort_order
           : idx;
+      const imageUrl = String(row.image_url || row.public_url || '');
+      const storagePath = row.storage_path
+        ? String(row.storage_path)
+        : extractStoragePathFromUrl(imageUrl);
+      const fileName = row.file_name
+        ? String(row.file_name)
+        : storagePath
+        ? storagePath.split('/').pop() || null
+        : null;
       return {
         id: String(row.id || idx),
         project_id: row.project_id ? String(row.project_id) : null,
-        image_url: String(row.image_url || row.public_url || ''),
+        image_url: imageUrl,
+        storage_path: storagePath,
+        file_name: fileName,
+        file_size: typeof row.size_bytes === 'number' ? row.size_bytes : null,
         alt_text: row.alt_text
           ? String(row.alt_text)
-          : row.file_name
-          ? String(row.file_name)
-          : null,
+          : fileName,
         sort_order: orderVal,
         display_order: orderVal,
         created_at: String(row.created_at || new Date().toISOString()),
       };
     })
-    .filter((item) => Boolean(item.image_url));
+    .filter((item) => Boolean(item.image_url) && !isLocalComputerPath(item.image_url));
 
   return mapped.sort((a, b) => a.display_order - b.display_order);
 }
@@ -691,7 +812,13 @@ export async function getAllPortfolioImagesByProject(): Promise<
     const row = data[i] as Record<string, unknown>;
     const projectId = row.project_id ? String(row.project_id).trim() : null;
     const imageUrl = String(row.image_url || row.public_url || '');
-    if (!projectId || !isValidUuid(projectId) || !imageUrl) continue;
+    if (
+      !projectId ||
+      !isValidUuid(projectId) ||
+      !imageUrl ||
+      isLocalComputerPath(imageUrl)
+    )
+      continue;
 
     const orderVal =
       typeof row.display_order === 'number'
@@ -700,11 +827,23 @@ export async function getAllPortfolioImagesByProject(): Promise<
         ? row.sort_order
         : i;
 
+    const storagePath = row.storage_path
+      ? String(row.storage_path)
+      : extractStoragePathFromUrl(imageUrl);
+    const fileName = row.file_name
+      ? String(row.file_name)
+      : storagePath
+      ? storagePath.split('/').pop() || null
+      : null;
+
     const item: PortfolioImage = {
       id: String(row.id || i),
       project_id: projectId,
       image_url: imageUrl,
-      alt_text: row.alt_text ? String(row.alt_text) : null,
+      storage_path: storagePath,
+      file_name: fileName,
+      file_size: typeof row.size_bytes === 'number' ? row.size_bytes : null,
+      alt_text: row.alt_text ? String(row.alt_text) : fileName,
       sort_order: orderVal,
       display_order: orderVal,
       created_at: String(row.created_at || new Date().toISOString()),
@@ -721,6 +860,39 @@ export async function getAllPortfolioImagesByProject(): Promise<
   }
 
   return byProject;
+}
+
+/**
+ * Delete a single image file from `portfolio-images` Storage bucket and `public.portfolio_images` table.
+ */
+export async function deleteSinglePortfolioImageAsset(
+  storagePath?: string | null,
+  imageUrl?: string | null
+): Promise<void> {
+  if (!isSupabaseConfigured) return;
+
+  const resolvedPath =
+    (storagePath ? storagePath.trim() : null) ||
+    (imageUrl ? extractStoragePathFromUrl(imageUrl) : null);
+
+  if (resolvedPath) {
+    try {
+      await supabase.storage.from(PORTFOLIO_BUCKET).remove([resolvedPath]);
+    } catch {
+      // Ignore if object already removed
+    }
+  }
+
+  if (imageUrl && imageUrl.trim()) {
+    try {
+      await supabase
+        .from('portfolio_images')
+        .delete()
+        .eq('image_url', imageUrl.trim());
+    } catch {
+      // Ignore if row already removed
+    }
+  }
 }
 
 /**
@@ -742,9 +914,15 @@ export async function syncProjectPortfolioImages(
   const normalizedItems: GalleryImageInput[] =
     galleryItems && galleryItems.length > 0
       ? galleryItems
-          .filter((item) => Boolean(item.image_url?.trim()))
+          .filter(
+            (item) =>
+              Boolean(item.image_url?.trim()) &&
+              !isLocalComputerPath(item.image_url)
+          )
           .map((item, idx) => ({
             image_url: item.image_url.trim(),
+            storage_path:
+              item.storage_path || extractStoragePathFromUrl(item.image_url),
             alt_text:
               item.alt_text?.trim() ||
               `${projectTitle} — Image ${String(idx + 1).padStart(2, '0')}`,
@@ -753,9 +931,10 @@ export async function syncProjectPortfolioImages(
           }))
       : galleryUrls
           .map((u) => u.trim())
-          .filter(Boolean)
+          .filter((u) => Boolean(u) && !isLocalComputerPath(u))
           .map((imageUrl, idx) => ({
             image_url: imageUrl,
+            storage_path: extractStoragePathFromUrl(imageUrl),
             alt_text: `${projectTitle} — Image ${String(idx + 1).padStart(2, '0')}`,
             display_order: idx,
           }));
@@ -767,10 +946,11 @@ export async function syncProjectPortfolioImages(
 
   if (normalizedItems.length === 0) return;
 
-  // Try inserting with both sort_order and display_order first
+  // Try inserting with sort_order, display_order, and storage_path first
   const fullRows = normalizedItems.map((item, idx) => ({
     project_id: cleanProjectId,
     image_url: item.image_url,
+    storage_path: item.storage_path || null,
     alt_text: item.alt_text,
     sort_order: typeof item.display_order === 'number' ? item.display_order : idx,
     display_order:
@@ -812,6 +992,7 @@ export async function listPortfolioMedia(): Promise<MediaFile[]> {
     'categories',
     'projects',
     'projects/shared',
+    'site',
     'covers',
     'gallery',
     'library',

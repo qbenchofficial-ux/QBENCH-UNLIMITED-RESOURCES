@@ -13,6 +13,8 @@ import {
   getProjectVideos,
   getAllProjectVideosByProject,
   syncProjectVideos,
+  isLocalComputerPath,
+  extractStoragePathFromUrl,
 } from './mediaService';
 import {
   getCategories,
@@ -521,7 +523,9 @@ function normalizeProject(
     : null;
 
   const rawGallery = Array.isArray(raw.gallery)
-    ? raw.gallery.map(String).filter(Boolean)
+    ? raw.gallery
+        .map(String)
+        .filter((u) => Boolean(u) && !isLocalComputerPath(u))
     : [];
 
   // Build portfolio_images from DB rows or meta.gallery_items or rawGallery
@@ -532,20 +536,35 @@ function normalizeProject(
         (a.display_order ?? a.sort_order) - (b.display_order ?? b.sort_order)
     );
   } else if (meta.gallery_items && meta.gallery_items.length > 0) {
-    resolvedPortfolioImages = meta.gallery_items.map((item, idx) => ({
-      id: isValidUuid(item.id) ? item.id : `${id}-img-${idx}`,
-      project_id: isValidUuid(id) ? id : null,
-      image_url: item.image_url,
-      alt_text: item.alt_text || null,
-      sort_order: item.display_order ?? idx,
-      display_order: item.display_order ?? idx,
-      created_at: String(raw.created_at || new Date().toISOString()),
-    }));
+    resolvedPortfolioImages = meta.gallery_items
+      .filter(
+        (item) =>
+          Boolean(item.image_url?.trim()) &&
+          !isLocalComputerPath(item.image_url)
+      )
+      .map((item, idx) => ({
+        id: isValidUuid(item.id) ? item.id : `${id}-img-${idx}`,
+        project_id: isValidUuid(id) ? id : null,
+        image_url: item.image_url,
+        storage_path:
+          item.storage_path || extractStoragePathFromUrl(item.image_url),
+        file_name:
+          item.file_name ||
+          (item.storage_path
+            ? item.storage_path.split('/').pop() || null
+            : null),
+        file_size: item.file_size ?? null,
+        alt_text: item.alt_text || null,
+        sort_order: item.display_order ?? idx,
+        display_order: item.display_order ?? idx,
+        created_at: String(raw.created_at || new Date().toISOString()),
+      }));
   } else if (rawGallery.length > 0) {
     resolvedPortfolioImages = rawGallery.map((url, idx) => ({
       id: `${id}-img-${idx}`,
       project_id: isValidUuid(id) ? id : null,
       image_url: url,
+      storage_path: extractStoragePathFromUrl(url),
       alt_text: `${String(raw.title || 'Project')} — Image ${String(
         idx + 1
       ).padStart(2, '0')}`,
@@ -1066,12 +1085,18 @@ export async function createProject(
   const clientVal =
     (formData.client_name || formData.client || '').trim() || null;
 
-  const cleanGallery = formData.gallery.map((u) => u.trim()).filter(Boolean);
-  const coverImage =
+  const cleanGallery = formData.gallery
+    .map((u) => u.trim())
+    .filter((u) => Boolean(u) && !isLocalComputerPath(u));
+  const rawCoverCandidate =
     formData.cover_image_url ||
     formData.cover_image ||
     cleanGallery[0] ||
     null;
+  const coverImage =
+    rawCoverCandidate && !isLocalComputerPath(rawCoverCandidate)
+      ? rawCoverCandidate
+      : cleanGallery[0] || null;
 
   const isFeatured =
     typeof formData.is_featured === 'boolean'
@@ -1332,12 +1357,18 @@ export async function updateProject(
   const clientVal =
     (formData.client_name || formData.client || '').trim() || null;
 
-  const cleanGallery = formData.gallery.map((u) => u.trim()).filter(Boolean);
-  const coverImage =
+  const cleanGallery = formData.gallery
+    .map((u) => u.trim())
+    .filter((u) => Boolean(u) && !isLocalComputerPath(u));
+  const rawCoverCandidate =
     formData.cover_image_url ||
     formData.cover_image ||
     cleanGallery[0] ||
     null;
+  const coverImage =
+    rawCoverCandidate && !isLocalComputerPath(rawCoverCandidate)
+      ? rawCoverCandidate
+      : cleanGallery[0] || null;
 
   const isFeatured =
     typeof formData.is_featured === 'boolean'

@@ -9,6 +9,26 @@ alter table public.projects
   add column if not exists thumbnail_mode text not null default 'cover_image'
   check (thumbnail_mode in ('cover_image', 'video_thumbnail'));
 
+-- 1b. Ensure public.portfolio_images stores storage_path, file_name, and file_size
+alter table if exists public.portfolio_images
+  add column if not exists storage_path text,
+  add column if not exists file_name text,
+  add column if not exists file_size bigint;
+
+-- Ensure portfolio-images bucket supports JPG, JPEG, PNG, WEBP, and sanitized SVG
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'portfolio-images',
+  'portfolio-images',
+  true,
+  10485760,
+  array['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/svg+xml']
+)
+on conflict (id) do update set
+  public = true,
+  file_size_limit = 10485760,
+  allowed_mime_types = array['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/svg+xml'];
+
 -- 2. Create public.project_videos table
 create table if not exists public.project_videos (
   id uuid primary key default gen_random_uuid(),

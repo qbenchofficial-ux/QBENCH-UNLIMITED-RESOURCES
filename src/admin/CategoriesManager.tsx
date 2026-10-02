@@ -5,7 +5,15 @@ import {
   updateCategory,
   deleteCategory,
 } from '../services/categoryService';
-import { uploadPortfolioImage } from '../services/mediaService';
+import {
+  uploadPortfolioImage,
+  validatePortfolioImage,
+  formatFileSize,
+  deleteSinglePortfolioImageAsset,
+  extractStoragePathFromUrl,
+  isLocalComputerPath,
+  MAX_PORTFOLIO_IMAGE_SIZE_MB,
+} from '../services/mediaService';
 import type { Category, Project } from '../types/project';
 import {
   Plus,
@@ -23,6 +31,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Minus,
+  RefreshCw,
 } from 'lucide-react';
 
 interface CategoriesManagerProps {
@@ -51,6 +60,13 @@ export default function CategoriesManager({
 
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [stagedCoverFile, setStagedCoverFile] = useState<{
+    file: File;
+    previewUrl: string;
+  } | null>(null);
+  const [coverFileName, setCoverFileName] = useState<string | null>(null);
+  const [coverFileSize, setCoverFileSize] = useState<number | null>(null);
+  const [isDraggingCover, setIsDraggingCover] = useState(false);
   const [saving, setSaving] = useState(false);
   const [updatingCardId, setUpdatingCardId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -66,6 +82,12 @@ export default function CategoriesManager({
     setSlugManuallyEdited(false);
     setDescription('');
     setCoverImageUrl(null);
+    if (stagedCoverFile?.previewUrl) {
+      URL.revokeObjectURL(stagedCoverFile.previewUrl);
+    }
+    setStagedCoverFile(null);
+    setCoverFileName(null);
+    setCoverFileSize(null);
     const maxOrder =
       categories.length > 0
         ? Math.max(...categories.map((c) => c.display_order || 0))
@@ -84,6 +106,16 @@ export default function CategoriesManager({
     setSlugManuallyEdited(true);
     setDescription(cat.description || '');
     setCoverImageUrl(cat.cover_image_url || null);
+    if (stagedCoverFile?.previewUrl) {
+      URL.revokeObjectURL(stagedCoverFile.previewUrl);
+    }
+    setStagedCoverFile(null);
+    setCoverFileName(
+      cat.cover_image_url
+        ? cat.cover_image_url.split('/').pop() || null
+        : null
+    );
+    setCoverFileSize(null);
     setDisplayOrder(cat.display_order || 1);
     setProjectsDisplayLimit(cat.projects_display_limit || 4);
     setShowViewAll(cat.show_view_all !== false);
@@ -91,24 +123,75 @@ export default function CategoriesManager({
     setShowForm(true);
   };
 
-  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const stageLocalCategoryCover = (file: File) => {
+    const validationErr = validatePortfolioImage(file);
+    if (validationErr) {
+      onNotify('error', validationErr);
+      return;
+    }
+    if (stagedCoverFile?.previewUrl) {
+      URL.revokeObjectURL(stagedCoverFile.previewUrl);
+    }
+    setStagedCoverFile({
+      file,
+      previewUrl: URL.createObjectURL(file),
+    });
+  };
+
+  const handleSelectCategoryCover = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
+    stageLocalCategoryCover(file);
+  };
+
+  const handleCategoryCoverDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingCover(false);
+    if (uploadingCover) return;
+    const dropped: File[] = Array.from(e.dataTransfer.files || []);
+    if (dropped.length > 0) {
+      stageLocalCategoryCover(dropped[0]);
+    }
+  };
+
+  const executeCategoryCoverUpload = async (
+    fileToUpload: File
+  ): Promise<string | null> => {
     setUploadingCover(true);
     setUploadProgress(15);
     try {
+      const oldUrl = coverImageUrl;
       const uploaded = await uploadPortfolioImage(
-        file,
+        fileToUpload,
         'categories',
         (pct) => setUploadProgress(pct),
         null,
         `${name || 'Category'} Cover`
       );
+      if (oldUrl && oldUrl !== uploaded.url) {
+        await deleteSinglePortfolioImageAsset(
+          extractStoragePathFromUrl(oldUrl),
+          oldUrl
+        );
+      }
       setCoverImageUrl(uploaded.url);
+      setCoverFileName(fileToUpload.name);
+      setCoverFileSize(fileToUpload.size);
+      if (stagedCoverFile?.previewUrl) {
+        URL.revokeObjectURL(stagedCoverFile.previewUrl);
+      }
+      setStagedCoverFile(null);
       onNotify(
         'success',
-        'Category cover image uploaded to portfolio-images/categories/.'
+        `Uploaded "${fileToUpload.name}" (${formatFileSize(
+          fileToUpload.size
+        )}) to portfolio-images/categories/.`
       );
+      return uploaded.url;
     } catch (err: unknown) {
       onNotify(
         'error',
@@ -116,22 +199,41 @@ export default function CategoriesManager({
           ? err.message
           : 'Failed to upload category cover image.'
       );
+      return null;
     } finally {
       setUploadingCover(false);
       setUploadProgress(0);
-      e.target.value = '';
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocalComputerPath(coverImageUrl)) {
+      onNotify(
+        'error',
+        'Do not enter local computer file paths manually. Please use "Upload from Computer" or "Browse Files".'
+      );
+      return;
+    }
     setSaving(true);
     try {
+      let resolvedCoverUrl = coverImageUrl;
+      if (stagedCoverFile?.file) {
+        const uploadedUrl = await executeCategoryCoverUpload(
+          stagedCoverFile.file
+        );
+        if (!uploadedUrl) {
+          setSaving(false);
+          return;
+        }
+        resolvedCoverUrl = uploadedUrl;
+      }
+
       const payload = {
         name,
         slug: slug || slugify(name),
         description,
-        cover_image_url: coverImageUrl,
+        cover_image_url: resolvedCoverUrl,
         display_order: Math.max(0, Number(displayOrder) || 1),
         projects_display_limit: Math.max(1, Number(projectsDisplayLimit) || 4),
         show_view_all: showViewAll,
@@ -424,7 +526,7 @@ export default function CategoriesManager({
             />
           </div>
 
-          {/* Optional Category Cover Image Upload */}
+          {/* Optional Category Cover Image Upload (Local Computer Selection + Drag & Drop + Preview) */}
           <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
@@ -434,9 +536,12 @@ export default function CategoriesManager({
                 <h4 className="font-display text-xs font-black text-slate-900">
                   Category Cover Image (Optional)
                 </h4>
+                <p className="font-sans text-[11px] text-slate-500">
+                  Select an image from your computer (Desktop, Downloads, Documents, C: or D: drive). Formats: JPG, PNG, WEBP, SVG (max {MAX_PORTFOLIO_IMAGE_SIZE_MB} MB).
+                </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <label className="inline-flex items-center gap-1.5 rounded-xl bg-[#00685b] hover:bg-[#005348] px-3 py-1.5 font-display text-xs font-bold text-white cursor-pointer">
                   {uploadingCover ? (
                     <>
@@ -446,24 +551,38 @@ export default function CategoriesManager({
                   ) : (
                     <>
                       <Upload className="h-3.5 w-3.5" />
-                      <span>
-                        {coverImageUrl ? 'Replace Cover' : 'Upload Cover Image'}
-                      </span>
+                      <span>Upload from Computer</span>
                     </>
                   )}
                   <input
                     type="file"
-                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                    onChange={handleCoverUpload}
+                    accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                    onChange={handleSelectCategoryCover}
                     disabled={uploadingCover}
                     className="hidden"
                   />
                 </label>
 
-                {coverImageUrl && (
+                <label className="inline-flex items-center gap-1.5 rounded-xl border border-[#00685b]/30 bg-white hover:bg-[#00685b]/5 px-3 py-1.5 font-display text-xs font-bold text-[#00685b] cursor-pointer">
+                  <ImageIcon className="h-3.5 w-3.5" />
+                  <span>Browse Files</span>
+                  <input
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                    onChange={handleSelectCategoryCover}
+                    disabled={uploadingCover}
+                    className="hidden"
+                  />
+                </label>
+
+                {coverImageUrl && !stagedCoverFile && (
                   <button
                     type="button"
-                    onClick={() => setCoverImageUrl(null)}
+                    onClick={() => {
+                      setCoverImageUrl(null);
+                      setCoverFileName(null);
+                      setCoverFileSize(null);
+                    }}
                     className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-2.5 py-1.5 font-display text-xs font-bold text-red-700 hover:bg-red-100 cursor-pointer"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -473,35 +592,113 @@ export default function CategoriesManager({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
-              <div className="sm:col-span-4">
-                {coverImageUrl ? (
-                  <img
-                    src={coverImageUrl}
-                    alt="Category cover preview"
-                    className="w-full aspect-[16/9] object-cover rounded-lg border border-slate-200 bg-white"
+            {/* Drag & Drop Zone */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!uploadingCover) setIsDraggingCover(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDraggingCover(false);
+              }}
+              onDrop={handleCategoryCoverDrop}
+              className={`rounded-xl border-2 border-dashed p-3.5 text-center transition-all ${
+                isDraggingCover
+                  ? 'border-[#00685b] bg-[#00685b]/10'
+                  : 'border-slate-300 bg-white hover:border-[#00685b]/50'
+              }`}
+            >
+              <p className="font-display text-xs font-bold text-slate-800">
+                Drag & drop a category cover image here from your computer, or{' '}
+                <label className="text-[#00685b] underline cursor-pointer">
+                  Browse Files
+                  <input
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                    onChange={handleSelectCategoryCover}
+                    disabled={uploadingCover}
+                    className="hidden"
                   />
-                ) : (
-                  <div className="w-full aspect-[16/9] rounded-lg border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 space-y-1">
-                    <ImageIcon className="h-5 w-5" />
-                    <span className="text-[11px]">No cover image</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="sm:col-span-8 space-y-1">
-                <label className="block font-tech text-[10px] font-bold uppercase text-slate-500">
-                  Or Paste Category Cover Image URL
                 </label>
-                <input
-                  type="url"
-                  value={coverImageUrl || ''}
-                  onChange={(e) => setCoverImageUrl(e.target.value || null)}
-                  placeholder="https://..."
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-800 focus:border-[#00685b] focus:outline-none"
-                />
-              </div>
+              </p>
             </div>
+
+            {stagedCoverFile && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50/75 p-3.5 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="font-tech text-[10px] font-bold uppercase text-amber-950 bg-amber-200/80 px-2 py-0.5 rounded-full">
+                    Selected Local Image Preview
+                  </span>
+                  <span className="font-mono font-bold text-amber-950">
+                    {stagedCoverFile.file.name} ({formatFileSize(stagedCoverFile.file.size)})
+                  </span>
+                </div>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  <img
+                    src={stagedCoverFile.previewUrl}
+                    alt={stagedCoverFile.file.name}
+                    className="h-20 w-36 object-cover rounded-lg border border-amber-300 bg-white shrink-0"
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={uploadingCover}
+                      onClick={() => executeCategoryCoverUpload(stagedCoverFile.file)}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-[#00685b] hover:bg-[#005348] px-3 py-1.5 font-display text-xs font-bold text-white cursor-pointer"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      <span>Upload to Supabase Storage</span>
+                    </button>
+                    <label className="inline-flex items-center gap-1 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 px-2.5 py-1.5 font-display text-xs font-bold text-slate-700 cursor-pointer">
+                      <RefreshCw className="h-3 w-3" />
+                      <span>Replace Selected</span>
+                      <input
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                        onChange={handleSelectCategoryCover}
+                        disabled={uploadingCover}
+                        className="hidden"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      disabled={uploadingCover}
+                      onClick={() => {
+                        URL.revokeObjectURL(stagedCoverFile.previewUrl);
+                        setStagedCoverFile(null);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-white hover:bg-red-50 px-2.5 py-1.5 font-display text-xs font-bold text-red-600 cursor-pointer"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      <span>Remove</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {coverImageUrl && !stagedCoverFile && (
+              <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl p-3">
+                <img
+                  src={coverImageUrl}
+                  alt="Category cover preview"
+                  className="h-16 w-28 object-cover rounded-lg border border-slate-200 bg-slate-100 shrink-0"
+                />
+                <div className="min-w-0 flex-1 text-xs font-mono text-slate-600">
+                  <p className="font-bold text-slate-800 truncate">
+                    {coverFileName || coverImageUrl.split('/').pop()}
+                  </p>
+                  {coverFileSize ? (
+                    <p className="text-[11px] text-slate-500">
+                      {formatFileSize(coverFileSize)}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-2.5 pt-2">

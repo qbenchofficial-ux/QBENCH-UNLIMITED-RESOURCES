@@ -6,6 +6,9 @@ export interface PortfolioImage {
   id: string;
   project_id: string | null;
   image_url: string;
+  storage_path?: string | null;
+  file_name?: string | null;
+  file_size?: number | null;
   alt_text: string | null;
   sort_order: number;
   display_order: number;
@@ -15,6 +18,9 @@ export interface PortfolioImage {
 export interface GalleryImageInput {
   id?: string;
   image_url: string;
+  storage_path?: string | null;
+  file_name?: string | null;
+  file_size?: number | null;
   alt_text: string;
   display_order: number;
 }

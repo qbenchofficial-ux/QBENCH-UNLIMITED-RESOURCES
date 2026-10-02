@@ -8,8 +8,13 @@ import {
   uploadPortfolioImage,
   uploadProjectVideo,
   deleteProjectVideoAsset,
+  deleteSinglePortfolioImageAsset,
+  validatePortfolioImage,
   validateProjectVideo,
   formatFileSize,
+  extractStoragePathFromUrl,
+  isLocalComputerPath,
+  MAX_PORTFOLIO_IMAGE_SIZE_MB,
 } from '../services/mediaService';
 import type {
   Project,
@@ -66,6 +71,13 @@ const SUGGESTED_TOOLS = [
   'Midjourney / AI',
 ];
 
+interface StagedLocalImage {
+  tempId: string;
+  file: File;
+  previewUrl: string;
+  altText: string;
+}
+
 function buildInitialGalleryItems(project?: Project | null): GalleryImageInput[] {
   if (!project) return [];
   if (project.portfolio_images && project.portfolio_images.length > 0) {
@@ -78,6 +90,14 @@ function buildInitialGalleryItems(project?: Project | null): GalleryImageInput[]
       .map((img, idx) => ({
         id: isValidUuid(img.id) ? img.id : undefined,
         image_url: img.image_url,
+        storage_path:
+          img.storage_path || extractStoragePathFromUrl(img.image_url),
+        file_name:
+          img.file_name ||
+          (img.storage_path
+            ? img.storage_path.split('/').pop() || null
+            : img.image_url.split('/').pop() || null),
+        file_size: img.file_size ?? null,
         alt_text:
           img.alt_text ||
           `${project.title} — Image ${String(idx + 1).padStart(2, '0')}`,
@@ -86,6 +106,8 @@ function buildInitialGalleryItems(project?: Project | null): GalleryImageInput[]
   }
   return (project.gallery || []).map((url, idx) => ({
     image_url: url,
+    storage_path: extractStoragePathFromUrl(url),
+    file_name: url.split('/').pop() || null,
     alt_text:
       idx === 0
         ? 'Main Cover Image'
@@ -234,8 +256,43 @@ export default function ProjectForm({
   // Image upload & preview states
   const [uploadingCover, setUploadingCover] = useState(false);
   const [coverProgress, setCoverProgress] = useState(0);
+  const [stagedCoverFile, setStagedCoverFile] =
+    useState<StagedLocalImage | null>(null);
+  const [coverMetaInfo, setCoverMetaInfo] = useState<{
+    fileName?: string | null;
+    fileSize?: number | null;
+    storagePath?: string | null;
+  }>(() => {
+    const initialUrl =
+      initialProject?.cover_image_url || initialProject?.cover_image || null;
+    const sp = initialUrl ? extractStoragePathFromUrl(initialUrl) : null;
+    return {
+      fileName: sp ? sp.split('/').pop() : initialUrl?.split('/').pop() || null,
+      fileSize: null,
+      storagePath: sp,
+    };
+  });
+  const [isCoverDropActive, setIsCoverDropActive] = useState(false);
+  const [coverStatusMessage, setCoverStatusMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+  const [failedCoverFile, setFailedCoverFile] = useState<File | null>(null);
+
   const [uploadingGallery, setUploadingGallery] = useState(false);
   const [galleryProgress, setGalleryProgress] = useState(0);
+  const [currentUploadingImageName, setCurrentUploadingImageName] = useState<
+    string | null
+  >(null);
+  const [stagedGalleryFiles, setStagedGalleryFiles] = useState<
+    StagedLocalImage[]
+  >([]);
+  const [isGalleryDropActive, setIsGalleryDropActive] = useState(false);
+  const [galleryStatusMessage, setGalleryStatusMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+  const [failedGalleryFiles, setFailedGalleryFiles] = useState<File[]>([]);
   const [replacingIndex, setReplacingIndex] = useState<number | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -353,78 +410,312 @@ export default function ProjectForm({
       ? initialProject.id
       : slugify(slug || title) || 'draft-project';
 
-  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // ============================================================================
+  // Cover Image Local Selection, Pre-Upload Preview, Upload, Replace & Remove
+  // ============================================================================
+  const stageCoverFileSelection = (file: File) => {
     setFormError(null);
+    setCoverStatusMessage(null);
+    setFailedCoverFile(null);
+
+    const validationError = validatePortfolioImage(file);
+    if (validationError) {
+      setCoverStatusMessage({ type: 'error', text: validationError });
+      return;
+    }
+
+    if (stagedCoverFile?.previewUrl) {
+      URL.revokeObjectURL(stagedCoverFile.previewUrl);
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+    setStagedCoverFile({
+      tempId: `cover-${Date.now()}`,
+      file,
+      previewUrl,
+      altText: `${title || 'Project'} — Main Cover Image`,
+    });
+  };
+
+  const handleSelectCoverFromComputer = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    stageCoverFileSelection(file);
+  };
+
+  const handleCoverDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsCoverDropActive(false);
+    if (uploadingCover) return;
+    const dropped = Array.from(e.dataTransfer.files || []) as File[];
+    if (dropped.length > 0) {
+      stageCoverFileSelection(dropped[0]);
+    }
+  };
+
+  const removeStagedCoverFile = () => {
+    if (stagedCoverFile?.previewUrl) {
+      URL.revokeObjectURL(stagedCoverFile.previewUrl);
+    }
+    setStagedCoverFile(null);
+  };
+
+  const uploadCoverFileToSupabase = async (
+    fileToUpload: File
+  ): Promise<string | null> => {
+    setFormError(null);
+    setCoverStatusMessage(null);
+    setFailedCoverFile(null);
     setUploadingCover(true);
     setCoverProgress(10);
+
     try {
+      const previousCoverUrl = coverImage;
+      const previousStoragePath = coverMetaInfo.storagePath;
+
       const uploaded = await uploadPortfolioImage(
-        file,
+        fileToUpload,
         'projects',
         (pct) => setCoverProgress(pct),
         projectStorageId,
         `${title || 'Project'} — Main Cover Image`,
         0
       );
+
+      // Clean up old cover image from Supabase Storage if replaced and not used in gallery
+      if (
+        previousCoverUrl &&
+        previousCoverUrl !== uploaded.url &&
+        !galleryItems.some((g) => g.image_url === previousCoverUrl)
+      ) {
+        await deleteSinglePortfolioImageAsset(
+          previousStoragePath,
+          previousCoverUrl
+        );
+      }
+
       setCoverImage(uploaded.url);
+      setCoverMetaInfo({
+        fileName: fileToUpload.name,
+        fileSize: fileToUpload.size,
+        storagePath: uploaded.path,
+      });
+
       if (galleryItems.length === 0) {
         setGalleryItems([
           {
             image_url: uploaded.url,
+            storage_path: uploaded.path,
+            file_name: fileToUpload.name,
+            file_size: fileToUpload.size,
             alt_text: 'Main Cover Image',
             display_order: 0,
           },
         ]);
       }
+
+      if (stagedCoverFile?.previewUrl) {
+        URL.revokeObjectURL(stagedCoverFile.previewUrl);
+      }
+      setStagedCoverFile(null);
+
+      setCoverStatusMessage({
+        type: 'success',
+        text: `Uploaded "${fileToUpload.name}" (${formatFileSize(
+          fileToUpload.size
+        )}) to Supabase Storage (portfolio-images/${uploaded.path}).`,
+      });
+      return uploaded.url;
     } catch (err: unknown) {
-      setFormError(
-        err instanceof Error ? err.message : 'Cover image upload failed.'
-      );
+      setFailedCoverFile(fileToUpload);
+      const msg =
+        err instanceof Error ? err.message : 'Cover image upload failed.';
+      setCoverStatusMessage({
+        type: 'error',
+        text: `${msg} Click "Retry Upload" to try again.`,
+      });
+      return null;
     } finally {
       setUploadingCover(false);
       setCoverProgress(0);
-      e.target.value = '';
     }
   };
 
-  const handleGalleryUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleRemoveUploadedCover = async () => {
+    const oldUrl = coverImage;
+    const oldPath = coverMetaInfo.storagePath;
+    setCoverImage(null);
+    setCoverMetaInfo({});
+    setCoverStatusMessage(null);
+
+    if (oldUrl && !galleryItems.some((g) => g.image_url === oldUrl)) {
+      await deleteSinglePortfolioImageAsset(oldPath, oldUrl);
+    }
+  };
+
+  // ============================================================================
+  // Gallery Images Local Selection, Pre-Upload Preview, Batch Upload & Reorder
+  // ============================================================================
+  const stageGalleryFilesSelection = (files: File[]) => {
+    if (!files || files.length === 0) return;
+    setFormError(null);
+    setGalleryStatusMessage(null);
+    setFailedGalleryFiles([]);
+
+    const validStaged: StagedLocalImage[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const err = validatePortfolioImage(file);
+      if (err) {
+        setGalleryStatusMessage({ type: 'error', text: err });
+        return;
+      }
+      const orderNum =
+        galleryItems.length + stagedGalleryFiles.length + validStaged.length + 1;
+      validStaged.push({
+        tempId: `staged-${Date.now()}-${i}-${Math.random()
+          .toString(36)
+          .slice(2, 6)}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        altText:
+          orderNum === 1 && !coverImage
+            ? 'Main Cover Image'
+            : `${title || 'Project'} — Image ${String(orderNum).padStart(
+                2,
+                '0'
+              )}`,
+      });
+    }
+
+    setStagedGalleryFiles((prev) => [...prev, ...validStaged]);
+  };
+
+  const handleGalleryInputSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
     const files: File[] = Array.from(fileList);
+    e.target.value = '';
+    stageGalleryFilesSelection(files);
+  };
+
+  const handleGalleryDropFiles = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsGalleryDropActive(false);
+    if (uploadingGallery) return;
+    const dropped: File[] = Array.from(e.dataTransfer.files || []);
+    if (dropped.length > 0) {
+      stageGalleryFilesSelection(dropped);
+    }
+  };
+
+  const handleReplaceStagedGalleryFile = (
+    idx: number,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const err = validatePortfolioImage(file);
+    if (err) {
+      setGalleryStatusMessage({ type: 'error', text: err });
+      return;
+    }
+    setStagedGalleryFiles((prev) =>
+      prev.map((item, i) => {
+        if (i !== idx) return item;
+        URL.revokeObjectURL(item.previewUrl);
+        return {
+          ...item,
+          file,
+          previewUrl: URL.createObjectURL(file),
+        };
+      })
+    );
+  };
+
+  const handleRemoveStagedGalleryFile = (idx: number) => {
+    setStagedGalleryFiles((prev) => {
+      const target = prev[idx];
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
+
+  const handleClearAllStagedGalleryFiles = () => {
+    stagedGalleryFiles.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+    setStagedGalleryFiles([]);
+  };
+
+  const uploadStagedGalleryToSupabase = async (
+    itemsToUpload: StagedLocalImage[] = stagedGalleryFiles
+  ): Promise<GalleryImageInput[]> => {
+    if (!itemsToUpload || itemsToUpload.length === 0) return galleryItems;
     setFormError(null);
+    setGalleryStatusMessage(null);
+    setFailedGalleryFiles([]);
     setUploadingGallery(true);
     setGalleryProgress(5);
 
-    try {
-      const uploadedItems: GalleryImageInput[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const orderIndex = galleryItems.length + i;
-        const defaultLabel =
-          orderIndex === 0 && !coverImage
-            ? 'Main Cover Image'
-            : `Project Image ${String(orderIndex + 1).padStart(2, '0')}`;
+    const uploadedItems: GalleryImageInput[] = [];
+    const failedBatch: File[] = [];
+    const succeededTempIds = new Set<string>();
+    let lastErr = '';
 
-        const uploaded = await uploadPortfolioImage(
-          files[i],
-          'projects',
-          (pct) => {
-            const overall = Math.round(((i + pct / 100) / files.length) * 100);
-            setGalleryProgress(overall);
-          },
-          projectStorageId,
-          defaultLabel,
-          orderIndex
+    try {
+      for (let i = 0; i < itemsToUpload.length; i++) {
+        const staged = itemsToUpload[i];
+        const orderIndex = galleryItems.length + uploadedItems.length;
+        const label =
+          staged.altText.trim() ||
+          (orderIndex === 0 && !coverImage
+            ? 'Main Cover Image'
+            : `Project Image ${String(orderIndex + 1).padStart(2, '0')}`);
+
+        setCurrentUploadingImageName(
+          `${staged.file.name} (${formatFileSize(staged.file.size)})`
         );
-        uploadedItems.push({
-          id: uploaded.id,
-          image_url: uploaded.url,
-          alt_text: defaultLabel,
-          display_order: orderIndex,
-        });
+
+        try {
+          const uploaded = await uploadPortfolioImage(
+            staged.file,
+            'projects',
+            (pct) => {
+              const overall = Math.round(
+                ((i + pct / 100) / itemsToUpload.length) * 100
+              );
+              setGalleryProgress(overall);
+            },
+            projectStorageId,
+            label,
+            orderIndex
+          );
+
+          uploadedItems.push({
+            id: uploaded.id,
+            image_url: uploaded.url,
+            storage_path: uploaded.path,
+            file_name: staged.file.name,
+            file_size: staged.file.size,
+            alt_text: label,
+            display_order: orderIndex,
+          });
+          succeededTempIds.add(staged.tempId);
+          URL.revokeObjectURL(staged.previewUrl);
+        } catch (err: unknown) {
+          failedBatch.push(staged.file);
+          lastErr =
+            err instanceof Error
+              ? err.message
+              : `Failed to upload ${staged.file.name}`;
+        }
       }
 
       const nextItems = [...galleryItems, ...uploadedItems].map((item, idx) => ({
@@ -432,18 +723,54 @@ export default function ProjectForm({
         display_order: idx,
       }));
       setGalleryItems(nextItems);
+
       if (!coverImage && uploadedItems.length > 0) {
         setCoverImage(uploadedItems[0].image_url);
+        setCoverMetaInfo({
+          fileName: uploadedItems[0].file_name,
+          fileSize: uploadedItems[0].file_size,
+          storagePath: uploadedItems[0].storage_path,
+        });
       }
-    } catch (err: unknown) {
-      setFormError(
-        err instanceof Error ? err.message : 'Gallery image upload failed.'
+
+      setStagedGalleryFiles((prev) =>
+        prev.filter((item) => !succeededTempIds.has(item.tempId))
       );
+
+      if (failedBatch.length > 0) {
+        setFailedGalleryFiles(failedBatch);
+        setGalleryStatusMessage({
+          type: 'error',
+          text: `${failedBatch.length} image upload(s) failed: ${lastErr}. Click "Retry Failed Uploads" to try again.`,
+        });
+      } else {
+        setGalleryStatusMessage({
+          type: 'success',
+          text: `Successfully uploaded ${uploadedItems.length} image${
+            uploadedItems.length === 1 ? '' : 's'
+          } to Supabase Storage (portfolio-images/projects/${projectStorageId}/).`,
+        });
+      }
+
+      return nextItems;
     } finally {
       setUploadingGallery(false);
       setGalleryProgress(0);
-      e.target.value = '';
+      setCurrentUploadingImageName(null);
     }
+  };
+
+  const handleRetryFailedGalleryUploads = async () => {
+    if (failedGalleryFiles.length === 0) return;
+    const retryItems: StagedLocalImage[] = failedGalleryFiles.map((file, i) => ({
+      tempId: `retry-${Date.now()}-${i}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      altText: `${title || 'Project'} — Image ${
+        galleryItems.length + i + 1
+      }`,
+    }));
+    await uploadStagedGalleryToSupabase(retryItems);
   };
 
   const handleReplaceSingleGalleryImage = async (
@@ -451,8 +778,17 @@ export default function ProjectForm({
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
     setFormError(null);
+    setGalleryStatusMessage(null);
+
+    const validationError = validatePortfolioImage(file);
+    if (validationError) {
+      setGalleryStatusMessage({ type: 'error', text: validationError });
+      return;
+    }
+
     setReplacingIndex(idx);
     try {
       const existingItem = galleryItems[idx];
@@ -464,12 +800,26 @@ export default function ProjectForm({
         existingItem?.alt_text || `Project Image ${idx + 1}`,
         idx
       );
+
+      if (
+        existingItem?.image_url &&
+        existingItem.image_url !== uploaded.url
+      ) {
+        await deleteSinglePortfolioImageAsset(
+          existingItem.storage_path,
+          existingItem.image_url
+        );
+      }
+
       const wasCover = coverImage === existingItem?.image_url;
       const next = galleryItems.map((item, i) =>
         i === idx
           ? {
               ...item,
               image_url: uploaded.url,
+              storage_path: uploaded.path,
+              file_name: file.name,
+              file_size: file.size,
               display_order: i,
             }
           : item
@@ -477,20 +827,38 @@ export default function ProjectForm({
       setGalleryItems(next);
       if (wasCover) {
         setCoverImage(uploaded.url);
+        setCoverMetaInfo({
+          fileName: file.name,
+          fileSize: file.size,
+          storagePath: uploaded.path,
+        });
       }
+      setGalleryStatusMessage({
+        type: 'success',
+        text: `Replaced gallery image #${idx + 1} with "${file.name}" (${formatFileSize(
+          file.size
+        )}).`,
+      });
     } catch (err: unknown) {
-      setFormError(
-        err instanceof Error ? err.message : 'Failed to replace image.'
-      );
+      setGalleryStatusMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to replace image.',
+      });
     } finally {
       setReplacingIndex(null);
-      e.target.value = '';
     }
   };
 
   const handleAddManualGalleryUrl = () => {
     const cleanUrl = manualImageUrl.trim();
     if (!cleanUrl) return;
+    if (isLocalComputerPath(cleanUrl)) {
+      setGalleryStatusMessage({
+        type: 'error',
+        text: 'Local computer file paths (such as C:\\ or file://) cannot be used as public URLs. Please click "Browse Files" or "Upload from Computer" to upload the image from your computer.',
+      });
+      return;
+    }
     const label =
       manualImageAlt.trim() ||
       (galleryItems.length === 0
@@ -501,6 +869,8 @@ export default function ProjectForm({
       ...galleryItems,
       {
         image_url: cleanUrl,
+        storage_path: extractStoragePathFromUrl(cleanUrl),
+        file_name: cleanUrl.split('/').pop() || null,
         alt_text: label,
         display_order: galleryItems.length,
       },
@@ -534,7 +904,7 @@ export default function ProjectForm({
     );
   };
 
-  const removeGalleryItem = (idx: number) => {
+  const removeGalleryItem = async (idx: number) => {
     const removed = galleryItems[idx];
     const next = galleryItems
       .filter((_, i) => i !== idx)
@@ -543,6 +913,16 @@ export default function ProjectForm({
     if (removed && coverImage === removed.image_url) {
       setCoverImage(next[0]?.image_url || null);
     }
+    if (removed?.image_url) {
+      await deleteSinglePortfolioImageAsset(
+        removed.storage_path,
+        removed.image_url
+      );
+    }
+    setGalleryStatusMessage({
+      type: 'success',
+      text: `Deleted gallery image "${removed?.file_name || removed?.alt_text || `#${idx + 1}`}".`,
+    });
   };
 
   // ============================================================================
@@ -841,29 +1221,63 @@ export default function ProjectForm({
       return;
     }
 
-    const orderedGalleryItems = galleryItems.map((item, idx) => ({
-      ...item,
-      display_order: idx,
-    }));
-    const galleryUrls = orderedGalleryItems.map((item) => item.image_url);
-    const resolvedCover = coverImage || galleryUrls[0] || null;
-
-    const orderedVideoItems = videoItems.map((vid, idx) => ({
-      ...vid,
-      display_order: idx,
-      is_featured:
-        videoItems.some((v) => v.is_featured)
-          ? Boolean(vid.is_featured)
-          : idx === 0,
-    }));
-
-    const primaryUploadedVideo =
-      orderedVideoItems.find((v) => v.is_featured) || orderedVideoItems[0];
-    const resolvedVideoUrl =
-      videoUrl.trim() || primaryUploadedVideo?.video_url || '';
+    if (isLocalComputerPath(coverImage)) {
+      setFormError(
+        'Do not enter local computer file paths manually. Please use "Upload from Computer" or "Browse Files" to select an image file.'
+      );
+      return;
+    }
 
     setSaving(true);
     try {
+      let activeCoverUrl = coverImage;
+      if (stagedCoverFile?.file) {
+        const uploadedCoverUrl = await uploadCoverFileToSupabase(
+          stagedCoverFile.file
+        );
+        if (!uploadedCoverUrl) {
+          setSaving(false);
+          return;
+        }
+        activeCoverUrl = uploadedCoverUrl;
+      }
+
+      let activeGalleryList = galleryItems;
+      if (stagedGalleryFiles.length > 0) {
+        activeGalleryList = await uploadStagedGalleryToSupabase(
+          stagedGalleryFiles
+        );
+      }
+
+      const orderedGalleryItems = activeGalleryList
+        .filter(
+          (item) =>
+            Boolean(item.image_url?.trim()) &&
+            !isLocalComputerPath(item.image_url)
+        )
+        .map((item, idx) => ({
+          ...item,
+          display_order: idx,
+        }));
+      const galleryUrls = orderedGalleryItems.map((item) => item.image_url);
+      const resolvedCover =
+        activeCoverUrl && !isLocalComputerPath(activeCoverUrl)
+          ? activeCoverUrl
+          : galleryUrls[0] || null;
+
+      const orderedVideoItems = videoItems.map((vid, idx) => ({
+        ...vid,
+        display_order: idx,
+        is_featured: videoItems.some((v) => v.is_featured)
+          ? Boolean(vid.is_featured)
+          : idx === 0,
+      }));
+
+      const primaryUploadedVideo =
+        orderedVideoItems.find((v) => v.is_featured) || orderedVideoItems[0];
+      const resolvedVideoUrl =
+        videoUrl.trim() || primaryUploadedVideo?.video_url || '';
+
       await onSubmit({
         title: cleanTitle,
         slug: cleanSlug,
@@ -1250,10 +1664,14 @@ export default function ProjectForm({
             <h3 className="font-display text-sm font-black text-slate-900">
               Main Cover Image & Portfolio Card Thumbnail Mode
             </h3>
+            <p className="font-sans text-[11px] text-slate-500">
+              Select a cover image directly from your computer (Desktop, Downloads, Documents, C: drive, D: drive). Formats: JPG, JPEG, PNG, WEBP, sanitized SVG (max {MAX_PORTFOLIO_IMAGE_SIZE_MB} MB).
+            </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <label className="inline-flex items-center gap-1.5 rounded-xl bg-[#00685b] hover:bg-[#005348] px-3.5 py-2 font-display text-xs font-bold text-white cursor-pointer">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Upload from Computer button */}
+            <label className="inline-flex items-center gap-1.5 rounded-xl bg-[#00685b] hover:bg-[#005348] px-3.5 py-2 font-display text-xs font-bold text-white cursor-pointer shadow-2xs">
               {uploadingCover ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1262,83 +1680,264 @@ export default function ProjectForm({
               ) : (
                 <>
                   <Upload className="h-3.5 w-3.5" />
-                  <span>
-                    {coverImage ? 'Replace Cover Image' : 'Upload Cover Image'}
-                  </span>
+                  <span>Upload from Computer</span>
                 </>
               )}
               <input
                 type="file"
-                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                onChange={handleCoverUpload}
+                accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                onChange={handleSelectCoverFromComputer}
                 disabled={uploadingCover}
                 className="hidden"
               />
             </label>
 
-            {coverImage && (
+            {/* Browse Files button */}
+            <label className="inline-flex items-center gap-1.5 rounded-xl border border-[#00685b]/30 bg-white hover:bg-[#00685b]/5 px-3.5 py-2 font-display text-xs font-bold text-[#00685b] cursor-pointer">
+              <ImageIcon className="h-3.5 w-3.5" />
+              <span>Browse Files</span>
+              <input
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                onChange={handleSelectCoverFromComputer}
+                disabled={uploadingCover}
+                className="hidden"
+              />
+            </label>
+
+            {coverImage && !stagedCoverFile && (
               <button
                 type="button"
-                onClick={() => setCoverImage(null)}
+                onClick={handleRemoveUploadedCover}
                 className="inline-flex items-center gap-1 rounded-xl border border-red-200 bg-red-50 px-3 py-2 font-display text-xs font-bold text-red-700 hover:bg-red-100 cursor-pointer"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                <span>Remove</span>
+                <span>Remove Cover</span>
               </button>
             )}
           </div>
         </div>
 
+        {/* Drag-and-Drop Cover Upload Area */}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!uploadingCover) setIsCoverDropActive(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsCoverDropActive(false);
+          }}
+          onDrop={handleCoverDrop}
+          className={`rounded-2xl border-2 border-dashed p-4 text-center transition-all ${
+            isCoverDropActive
+              ? 'border-[#00685b] bg-[#00685b]/10'
+              : 'border-slate-300 bg-white hover:border-[#00685b]/50'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-[#00685b]/10 text-[#00685b] flex items-center justify-center shrink-0">
+              <Upload className="h-4 w-4" />
+            </div>
+            <div className="text-center sm:text-left">
+              <p className="font-display text-xs font-bold text-slate-800">
+                Drag & drop a cover image file here from your computer, or{' '}
+                <label className="text-[#00685b] underline cursor-pointer">
+                  Browse Files
+                  <input
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                    onChange={handleSelectCoverFromComputer}
+                    disabled={uploadingCover}
+                    className="hidden"
+                  />
+                </label>
+              </p>
+              <p className="font-sans text-[11px] text-slate-500">
+                Select from Desktop, Downloads, Pictures, Documents, C: drive, D: drive • JPG, JPEG, PNG, WEBP, SVG (max {MAX_PORTFOLIO_IMAGE_SIZE_MB} MB)
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Cover Upload Progress Bar */}
         {uploadingCover && (
-          <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
-            <div
-              className="h-full bg-[#00685b] transition-all duration-300"
-              style={{ width: `${coverProgress}%` }}
-            />
+          <div className="rounded-xl border border-[#00685b]/25 bg-white p-3 space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="inline-flex items-center gap-2 font-display font-bold text-slate-800">
+                <Loader2 className="h-3.5 w-3.5 text-[#00685b] animate-spin" />
+                <span>Uploading cover image to Supabase Storage (`portfolio-images`)...</span>
+              </span>
+              <span className="font-mono text-xs font-bold text-[#00685b]">
+                {coverProgress}%
+              </span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className="h-full bg-[#00685b] transition-all duration-300"
+                style={{ width: `${coverProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Cover Upload Status / Error / Retry Banner */}
+        {coverStatusMessage && (
+          <div
+            className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border p-3 text-xs ${
+              coverStatusMessage.type === 'error'
+                ? 'border-red-200 bg-red-50 text-red-700'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            }`}
+          >
+            <div className="flex items-start gap-2">
+              {coverStatusMessage.type === 'error' ? (
+                <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+              )}
+              <span>{coverStatusMessage.text}</span>
+            </div>
+
+            {failedCoverFile && !uploadingCover && (
+              <button
+                type="button"
+                onClick={() => uploadCoverFileToSupabase(failedCoverFile)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 px-3 py-1.5 font-display text-[11px] font-bold text-white cursor-pointer shrink-0"
+              >
+                <RefreshCw className="h-3 w-3" />
+                <span>Retry Upload</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Pre-Upload Preview of Selected Local Cover Image */}
+        {stagedCoverFile && (
+          <div className="rounded-2xl border border-amber-300 bg-amber-50/75 p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-200/80 px-2.5 py-0.5 font-tech text-[10px] font-bold uppercase tracking-wider text-amber-950">
+                Selected Local Image Preview — Ready to Upload
+              </span>
+              <span className="font-mono text-xs font-bold text-amber-950">
+                {stagedCoverFile.file.name} ({formatFileSize(stagedCoverFile.file.size)})
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+              <div className="md:col-span-5">
+                <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-amber-300 bg-white">
+                  <img
+                    src={stagedCoverFile.previewUrl}
+                    alt={stagedCoverFile.file.name}
+                    className="w-full h-full object-cover"
+                  />
+                  <span className="absolute top-2 left-2 rounded-md bg-amber-600 px-2 py-0.5 font-tech text-[9px] font-bold uppercase text-white">
+                    Local File Preview
+                  </span>
+                </div>
+              </div>
+
+              <div className="md:col-span-7 space-y-2.5">
+                <div className="rounded-xl bg-white/90 border border-amber-200 p-3 space-y-1 text-xs">
+                  <p className="font-mono font-bold text-slate-900 truncate">
+                    Filename: {stagedCoverFile.file.name}
+                  </p>
+                  <p className="font-mono text-slate-600">
+                    File Size: {formatFileSize(stagedCoverFile.file.size)} • Type: {stagedCoverFile.file.type || 'image'}
+                  </p>
+                  <p className="font-mono text-[11px] text-[#00685b]">
+                    Destination: portfolio-images/projects/{projectStorageId}/
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={uploadingCover}
+                    onClick={() => uploadCoverFileToSupabase(stagedCoverFile.file)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#00685b] hover:bg-[#005348] disabled:opacity-60 px-4 py-2 font-display text-xs font-bold text-white cursor-pointer shadow-2xs"
+                  >
+                    {uploadingCover ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Upload className="h-3.5 w-3.5" />
+                    )}
+                    <span>Upload Cover to Supabase Storage</span>
+                  </button>
+
+                  <label className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 px-3 py-2 font-display text-xs font-bold text-slate-700 cursor-pointer">
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    <span>Replace Selected File</span>
+                    <input
+                      type="file"
+                      accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                      onChange={handleSelectCoverFromComputer}
+                      disabled={uploadingCover}
+                      className="hidden"
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    disabled={uploadingCover}
+                    onClick={removeStagedCoverFile}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-white hover:bg-red-50 px-3 py-2 font-display text-xs font-bold text-red-600 cursor-pointer"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Remove Selected File</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
           <div className="md:col-span-5">
             {coverImage ? (
-              <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-slate-200 bg-white">
-                <img
-                  src={coverImage}
-                  alt="Cover preview"
-                  className="w-full h-full object-cover"
-                />
-                {thumbnailMode === 'video_thumbnail' && (
-                  <div className="absolute inset-0 bg-slate-900/25 flex items-center justify-center">
-                    <span className="h-11 w-11 rounded-full bg-[#00685b]/90 text-white flex items-center justify-center shadow-lg">
-                      <Play className="h-5 w-5 fill-white ml-0.5" />
+              <div className="space-y-1.5">
+                <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-slate-200 bg-white">
+                  <img
+                    src={coverImage}
+                    alt="Cover preview"
+                    className="w-full h-full object-cover"
+                  />
+                  <span className="absolute top-2 left-2 rounded-md bg-[#00685b] px-2 py-0.5 font-tech text-[9px] font-bold uppercase text-white">
+                    Active Cover
+                  </span>
+                  {thumbnailMode === 'video_thumbnail' && (
+                    <div className="absolute inset-0 bg-slate-900/25 flex items-center justify-center">
+                      <span className="h-11 w-11 rounded-full bg-[#00685b]/90 text-white flex items-center justify-center shadow-lg">
+                        <Play className="h-5 w-5 fill-white ml-0.5" />
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between text-[11px] font-mono text-slate-500 px-1">
+                  <span className="truncate" title={coverMetaInfo.fileName || coverImage}>
+                    {coverMetaInfo.fileName || coverImage.split('/').pop()}
+                  </span>
+                  {coverMetaInfo.fileSize ? (
+                    <span className="shrink-0 font-bold text-slate-700">
+                      {formatFileSize(coverMetaInfo.fileSize)}
                     </span>
-                  </div>
-                )}
+                  ) : null}
+                </div>
               </div>
             ) : (
               <div className="w-full aspect-[16/10] rounded-xl border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 space-y-1">
                 <ImageIcon className="h-6 w-6" />
-                <span className="text-xs">No cover image selected</span>
+                <span className="text-xs">No cover image uploaded yet</span>
               </div>
             )}
           </div>
 
           <div className="md:col-span-7 space-y-4">
-            <div className="space-y-1.5">
-              <label className="block font-tech text-[10px] font-bold uppercase text-slate-500">
-                Or Paste Cover Image URL Directly
-              </label>
-              <input
-                type="url"
-                value={coverImage || ''}
-                onChange={(e) => setCoverImage(e.target.value || null)}
-                placeholder="https://..."
-                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-800 focus:border-[#00685b] focus:outline-none"
-              />
-            </div>
-
             {/* Portfolio Project Card Thumbnail Mode */}
-            <div className="space-y-2 pt-2 border-t border-slate-200/70">
+            <div className="space-y-2">
               <label className="block font-tech text-[10px] font-bold uppercase tracking-wider text-slate-700">
                 Portfolio Project Card Display Mode
               </label>
@@ -1384,6 +1983,12 @@ export default function ProjectForm({
                 </button>
               </div>
             </div>
+
+            {coverMetaInfo.storagePath && (
+              <p className="font-mono text-[11px] text-slate-500 truncate">
+                Storage Path: portfolio-images/{coverMetaInfo.storagePath}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -1709,204 +2314,431 @@ export default function ProjectForm({
         )}
       </div>
 
-      {/* Multi-Image Gallery Manager (Upload, Preview, Replace, Reorder, Caption, Delete) */}
+      {/* Multi-Image Gallery Manager (Local Computer Upload, Preview, Replace, Reorder, Caption, Delete) */}
       <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
             <span className="font-tech text-[10px] font-bold uppercase tracking-wider text-[#00685b]">
-              MULTI-IMAGE PROJECT GALLERY ({galleryItems.length} IMAGES)
+              MULTI-IMAGE PROJECT GALLERY ({galleryItems.length} UPLOADED{stagedGalleryFiles.length > 0 ? ` • ${stagedGalleryFiles.length} SELECTED FOR UPLOAD` : ''})
             </span>
             <h3 className="font-display text-sm font-black text-slate-900">
-              Project Images — Upload, Preview, Replace, Reorder & Label
+              Project Images — Local Computer Upload, Preview, Replace, Reorder & Label
             </h3>
             <p className="font-sans text-[11px] text-slate-500">
-              Drag cards or use arrows to reorder. Label each frame (e.g. Main Cover Image, Storyboard Image 01, Final Artwork).
+              Select multiple images from Desktop, Downloads, Documents, C: drive, or D: drive. Preview filenames & file sizes before uploading to Supabase Storage.
             </p>
           </div>
 
-          <label className="inline-flex items-center gap-1.5 rounded-xl bg-[#00685b] hover:bg-[#005348] px-3.5 py-2 font-display text-xs font-bold text-white cursor-pointer self-start">
-            {uploadingGallery ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>Uploading ({galleryProgress}%)</span>
-              </>
-            ) : (
-              <>
-                <Upload className="h-3.5 w-3.5" />
-                <span>Upload Multiple Images</span>
-              </>
-            )}
-            <input
-              type="file"
-              multiple
-              accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-              onChange={handleGalleryUpload}
-              disabled={uploadingGallery}
-              className="hidden"
-            />
-          </label>
+          <div className="flex flex-wrap items-center gap-2 self-start">
+            {/* Upload from Computer button */}
+            <label className="inline-flex items-center gap-1.5 rounded-xl bg-[#00685b] hover:bg-[#005348] px-3.5 py-2 font-display text-xs font-bold text-white cursor-pointer shadow-2xs">
+              {uploadingGallery ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Uploading ({galleryProgress}%)</span>
+                </>
+              ) : (
+                <>
+                  <Upload className="h-3.5 w-3.5" />
+                  <span>Upload from Computer</span>
+                </>
+              )}
+              <input
+                type="file"
+                multiple
+                accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                onChange={handleGalleryInputSelect}
+                disabled={uploadingGallery}
+                className="hidden"
+              />
+            </label>
+
+            {/* Browse Files button */}
+            <label className="inline-flex items-center gap-1.5 rounded-xl border border-[#00685b]/30 bg-white hover:bg-[#00685b]/5 px-3.5 py-2 font-display text-xs font-bold text-[#00685b] cursor-pointer">
+              <ImageIcon className="h-3.5 w-3.5" />
+              <span>Browse Files</span>
+              <input
+                type="file"
+                multiple
+                accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                onChange={handleGalleryInputSelect}
+                disabled={uploadingGallery}
+                className="hidden"
+              />
+            </label>
+          </div>
         </div>
 
-        {/* Add Image by URL Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 pt-1">
-          <input
-            type="url"
-            value={manualImageUrl}
-            onChange={(e) => setManualImageUrl(e.target.value)}
-            placeholder="Or paste an image URL (https://...)"
-            className="sm:col-span-6 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-800 focus:border-[#00685b] focus:outline-none"
-          />
-          <input
-            type="text"
-            value={manualImageAlt}
-            onChange={(e) => setManualImageAlt(e.target.value)}
-            placeholder="Image label (e.g. Storyboard Image 01)"
-            className="sm:col-span-4 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-800 focus:border-[#00685b] focus:outline-none"
-          />
-          <button
-            type="button"
-            onClick={handleAddManualGalleryUrl}
-            className="sm:col-span-2 inline-flex items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 px-3 py-2 font-display text-xs font-bold text-slate-800 cursor-pointer"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Add Image</span>
-          </button>
+        {/* Drag-and-Drop Multi-Image Local Upload Zone */}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!uploadingGallery) setIsGalleryDropActive(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsGalleryDropActive(false);
+          }}
+          onDrop={handleGalleryDropFiles}
+          className={`rounded-2xl border-2 border-dashed p-5 text-center transition-all ${
+            isGalleryDropActive
+              ? 'border-[#00685b] bg-[#00685b]/10'
+              : 'border-slate-300 bg-white hover:border-[#00685b]/50'
+          }`}
+        >
+          <div className="max-w-lg mx-auto space-y-1.5">
+            <div className="mx-auto h-9 w-9 rounded-xl bg-[#00685b]/10 text-[#00685b] flex items-center justify-center">
+              <Upload className="h-4 w-4" />
+            </div>
+            <p className="font-display text-xs font-bold text-slate-800">
+              Drag & drop multiple project images here from your computer, or{' '}
+              <label className="text-[#00685b] underline cursor-pointer">
+                Browse Files
+                <input
+                  type="file"
+                  multiple
+                  accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                  onChange={handleGalleryInputSelect}
+                  disabled={uploadingGallery}
+                  className="hidden"
+                />
+              </label>
+            </p>
+            <p className="font-sans text-[11px] text-slate-500">
+              Supported formats: <strong>JPG / JPEG</strong>, <strong>PNG</strong>, <strong>WEBP</strong>, <strong>Sanitized SVG</strong> • Max {MAX_PORTFOLIO_IMAGE_SIZE_MB} MB per image • Target: <code className="font-mono text-[#00685b]">portfolio-images/projects/{projectStorageId}/</code>
+            </p>
+          </div>
         </div>
 
+        {/* Active Gallery Upload Progress Bar */}
         {uploadingGallery && (
-          <div className="h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
-            <div
-              className="h-full bg-[#00685b] transition-all duration-300"
-              style={{ width: `${galleryProgress}%` }}
-            />
+          <div className="rounded-xl border border-[#00685b]/25 bg-white p-3.5 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="inline-flex items-center gap-2 font-display font-bold text-slate-800 truncate">
+                <Loader2 className="h-3.5 w-3.5 text-[#00685b] animate-spin shrink-0" />
+                <span className="truncate">
+                  Uploading {currentUploadingImageName || 'gallery images'} to Supabase Storage...
+                </span>
+              </span>
+              <span className="font-mono text-xs font-bold text-[#00685b]">
+                {galleryProgress}%
+              </span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className="h-full bg-[#00685b] transition-all duration-300"
+                style={{ width: `${galleryProgress}%` }}
+              />
+            </div>
           </div>
         )}
 
-        {galleryItems.length === 0 ? (
+        {/* Gallery Upload Confirmation / Error / Retry Banner */}
+        {galleryStatusMessage && (
+          <div
+            className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border p-3 text-xs ${
+              galleryStatusMessage.type === 'error'
+                ? 'border-red-200 bg-red-50 text-red-700'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            }`}
+          >
+            <div className="flex items-start gap-2">
+              {galleryStatusMessage.type === 'error' ? (
+                <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+              )}
+              <span>{galleryStatusMessage.text}</span>
+            </div>
+
+            {failedGalleryFiles.length > 0 && !uploadingGallery && (
+              <button
+                type="button"
+                onClick={handleRetryFailedGalleryUploads}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 px-3 py-1.5 font-display text-[11px] font-bold text-white cursor-pointer shrink-0"
+              >
+                <RefreshCw className="h-3 w-3" />
+                <span>Retry Failed Uploads ({failedGalleryFiles.length})</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Staged Local Files Pre-Upload Preview Queue */}
+        {stagedGalleryFiles.length > 0 && (
+          <div className="rounded-2xl border border-amber-300 bg-amber-50/75 p-4 space-y-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-200/80 px-2.5 py-0.5 font-tech text-[10px] font-bold uppercase tracking-wider text-amber-950">
+                  {stagedGalleryFiles.length} Local Image{stagedGalleryFiles.length === 1 ? '' : 's'} Selected — Preview Before Uploading
+                </span>
+                <p className="text-xs text-amber-900 mt-0.5">
+                  Review image previews, filenames, and file sizes below. Click &ldquo;Upload Selected Images&rdquo; to store them in Supabase Storage.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={uploadingGallery}
+                  onClick={() => uploadStagedGalleryToSupabase(stagedGalleryFiles)}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#00685b] hover:bg-[#005348] disabled:opacity-60 px-4 py-2 font-display text-xs font-bold text-white cursor-pointer shadow-2xs"
+                >
+                  {uploadingGallery ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="h-3.5 w-3.5" />
+                  )}
+                  <span>
+                    Upload {stagedGalleryFiles.length} Selected Image{stagedGalleryFiles.length === 1 ? '' : 's'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={uploadingGallery}
+                  onClick={handleClearAllStagedGalleryFiles}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-white hover:bg-red-50 px-3 py-2 font-display text-xs font-bold text-red-700 cursor-pointer"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span>Remove All Selected</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {stagedGalleryFiles.map((staged, sIdx) => (
+                <div
+                  key={staged.tempId}
+                  className="rounded-xl border border-amber-300 bg-white p-3 space-y-2.5 shadow-2xs"
+                >
+                  <div className="relative aspect-[16/10] rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
+                    <img
+                      src={staged.previewUrl}
+                      alt={staged.file.name}
+                      className="w-full h-full object-cover"
+                    />
+                    <span className="absolute top-2 left-2 rounded-md bg-amber-600 px-2 py-0.5 font-tech text-[9px] font-bold uppercase text-white">
+                      Local Preview #{sIdx + 1}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 text-[11px] font-mono bg-slate-50 rounded-lg px-2.5 py-1">
+                    <span
+                      className="font-bold text-slate-800 truncate"
+                      title={staged.file.name}
+                    >
+                      {staged.file.name}
+                    </span>
+                    <span className="shrink-0 text-slate-500">
+                      {formatFileSize(staged.file.size)}
+                    </span>
+                  </div>
+
+                  <input
+                    type="text"
+                    value={staged.altText}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setStagedGalleryFiles((prev) =>
+                        prev.map((item, i) =>
+                          i === sIdx ? { ...item, altText: val } : item
+                        )
+                      );
+                    }}
+                    placeholder="Image caption / alt text"
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-xs text-slate-800 focus:border-[#00685b] focus:bg-white focus:outline-none"
+                  />
+
+                  <div className="flex items-center justify-between gap-1.5 pt-0.5">
+                    <label className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-[10px] font-bold text-[#00685b] hover:bg-slate-50 cursor-pointer">
+                      <RefreshCw className="h-3 w-3" />
+                      <span>Replace Selected</span>
+                      <input
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                        onChange={(e) => handleReplaceStagedGalleryFile(sIdx, e)}
+                        disabled={uploadingGallery}
+                        className="hidden"
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      disabled={uploadingGallery}
+                      onClick={() => handleRemoveStagedGalleryFile(sIdx)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-[10px] font-bold text-red-600 hover:bg-red-100 cursor-pointer"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      <span>Remove</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {galleryItems.length === 0 && stagedGalleryFiles.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white py-10 text-center space-y-1">
             <p className="font-display text-xs font-bold text-slate-600">
-              No project gallery images added yet
+              No project gallery images uploaded yet
             </p>
             <p className="font-sans text-[11px] text-slate-400">
-              Upload multiple JPG, PNG, or WEBP files to build a multi-image showcase (e.g. Main Cover, Storyboards, Final Artwork).
+              Click &ldquo;Upload from Computer&rdquo; or &ldquo;Browse Files&rdquo; above to select multiple JPG, PNG, WEBP, or SVG files from your computer.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {galleryItems.map((item, idx) => {
-              const isCurrentCover = coverImage === item.image_url;
-              const isReplacing = replacingIndex === idx;
-              return (
-                <div
-                  key={`${item.image_url}-${idx}`}
-                  draggable
-                  onDragStart={() => setDragIndex(idx)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => {
-                    if (dragIndex !== null && dragIndex !== idx) {
-                      moveGalleryItem(dragIndex, idx);
-                    }
-                    setDragIndex(null);
-                  }}
-                  className="bg-white border border-slate-200 rounded-xl p-3 space-y-2.5 shadow-2xs"
-                >
-                  <div className="relative aspect-[16/10] rounded-lg overflow-hidden bg-slate-100">
-                    <img
-                      src={item.image_url}
-                      alt={item.alt_text || `Gallery item ${idx + 1}`}
-                      loading="lazy"
-                      className="w-full h-full object-cover"
-                    />
-                    <span className="absolute top-2 left-2 rounded-md bg-slate-900/80 px-2 py-0.5 font-mono text-[10px] font-bold text-white">
-                      #{idx + 1}
-                    </span>
-                    {isCurrentCover && (
-                      <span className="absolute top-2 right-2 rounded-md bg-[#00685b] px-2 py-0.5 font-tech text-[9px] font-bold uppercase text-white">
-                        Cover
+          galleryItems.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {galleryItems.map((item, idx) => {
+                const isCurrentCover = coverImage === item.image_url;
+                const isReplacing = replacingIndex === idx;
+                const displayFileName =
+                  item.file_name ||
+                  (item.storage_path
+                    ? item.storage_path.split('/').pop()
+                    : item.image_url.split('/').pop()) ||
+                  `image-${idx + 1}`;
+
+                return (
+                  <div
+                    key={`${item.image_url}-${idx}`}
+                    draggable
+                    onDragStart={() => setDragIndex(idx)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => {
+                      if (dragIndex !== null && dragIndex !== idx) {
+                        moveGalleryItem(dragIndex, idx);
+                      }
+                      setDragIndex(null);
+                    }}
+                    className="bg-white border border-slate-200 rounded-xl p-3 space-y-2.5 shadow-2xs"
+                  >
+                    <div className="relative aspect-[16/10] rounded-lg overflow-hidden bg-slate-100">
+                      <img
+                        src={item.image_url}
+                        alt={item.alt_text || `Gallery item ${idx + 1}`}
+                        loading="lazy"
+                        className="w-full h-full object-cover"
+                      />
+                      <span className="absolute top-2 left-2 rounded-md bg-slate-900/80 px-2 py-0.5 font-mono text-[10px] font-bold text-white">
+                        #{idx + 1}
                       </span>
-                    )}
-                  </div>
-
-                  {/* Image Label / Alt Text Input */}
-                  <input
-                    type="text"
-                    value={item.alt_text}
-                    onChange={(e) => updateGalleryItemAlt(idx, e.target.value)}
-                    placeholder="Image caption (e.g. Storyboard Image 01)"
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-[#00685b] focus:bg-white focus:outline-none"
-                  />
-
-                  {/* Controls: Reorder, Replace, Set Cover, Delete */}
-                  <div className="flex items-center justify-between gap-1 pt-0.5">
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        disabled={idx === 0}
-                        onClick={() => moveGalleryItem(idx, idx - 1)}
-                        className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30 cursor-pointer"
-                        title="Move Earlier"
-                      >
-                        <ArrowLeft className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={idx === galleryItems.length - 1}
-                        onClick={() => moveGalleryItem(idx, idx + 1)}
-                        className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30 cursor-pointer"
-                        title="Move Later"
-                      >
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </button>
+                      {isCurrentCover && (
+                        <span className="absolute top-2 right-2 rounded-md bg-[#00685b] px-2 py-0.5 font-tech text-[9px] font-bold uppercase text-white">
+                          Cover
+                        </span>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      <label
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-bold text-[#00685b] hover:bg-slate-50 cursor-pointer"
-                        title="Replace this image"
+                    {/* Filename & File Size metadata */}
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500 font-mono bg-slate-50 rounded-lg px-2.5 py-1">
+                      <span
+                        className="truncate font-semibold text-slate-700"
+                        title={item.storage_path || displayFileName}
                       >
-                        {isReplacing ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-3 w-3" />
-                        )}
-                        <span>Replace</span>
-                        <input
-                          type="file"
-                          accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                          onChange={(e) =>
-                            handleReplaceSingleGalleryImage(idx, e)
-                          }
-                          disabled={isReplacing}
-                          className="hidden"
-                        />
-                      </label>
+                        {displayFileName}
+                      </span>
+                      {item.file_size ? (
+                        <span className="shrink-0 font-bold text-slate-600">
+                          {formatFileSize(item.file_size)}
+                        </span>
+                      ) : null}
+                    </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setCoverImage(item.image_url)}
-                        className={`rounded-lg border px-2 py-1 text-[10px] font-bold cursor-pointer ${
-                          isCurrentCover
-                            ? 'border-[#00685b] bg-[#00685b]/10 text-[#00685b]'
-                            : 'border-slate-200 text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        {isCurrentCover ? 'Cover' : 'Set Cover'}
-                      </button>
+                    {/* Image Label / Alt Text Input */}
+                    <input
+                      type="text"
+                      value={item.alt_text}
+                      onChange={(e) => updateGalleryItemAlt(idx, e.target.value)}
+                      placeholder="Image caption (e.g. Storyboard Image 01)"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:border-[#00685b] focus:bg-white focus:outline-none"
+                    />
 
-                      <button
-                        type="button"
-                        onClick={() => removeGalleryItem(idx)}
-                        className="rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-600 hover:bg-red-100 cursor-pointer"
-                        title="Delete Image"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                    {/* Controls: Reorder, Replace, Set Cover, Delete */}
+                    <div className="flex items-center justify-between gap-1 pt-0.5">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={() => moveGalleryItem(idx, idx - 1)}
+                          className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30 cursor-pointer"
+                          title="Move Earlier"
+                        >
+                          <ArrowLeft className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === galleryItems.length - 1}
+                          onClick={() => moveGalleryItem(idx, idx + 1)}
+                          className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30 cursor-pointer"
+                          title="Move Later"
+                        >
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <label
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-bold text-[#00685b] hover:bg-slate-50 cursor-pointer"
+                          title="Replace this image from your computer"
+                        >
+                          {isReplacing ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3 w-3" />
+                          )}
+                          <span>Replace</span>
+                          <input
+                            type="file"
+                            accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                            onChange={(e) =>
+                              handleReplaceSingleGalleryImage(idx, e)
+                            }
+                            disabled={isReplacing}
+                            className="hidden"
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCoverImage(item.image_url);
+                            setCoverMetaInfo({
+                              fileName: item.file_name || displayFileName,
+                              fileSize: item.file_size,
+                              storagePath:
+                                item.storage_path ||
+                                extractStoragePathFromUrl(item.image_url),
+                            });
+                          }}
+                          className={`rounded-lg border px-2 py-1 text-[10px] font-bold cursor-pointer ${
+                            isCurrentCover
+                              ? 'border-[#00685b] bg-[#00685b]/10 text-[#00685b]'
+                              : 'border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          {isCurrentCover ? 'Cover' : 'Set Cover'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => removeGalleryItem(idx)}
+                          className="rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-600 hover:bg-red-100 cursor-pointer"
+                          title="Delete Image"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )
         )}
       </div>
 
