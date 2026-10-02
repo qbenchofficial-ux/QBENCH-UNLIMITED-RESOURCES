@@ -10,6 +10,9 @@ import {
   getProjectPortfolioImages,
   getAllPortfolioImagesByProject,
   syncProjectPortfolioImages,
+  getProjectVideos,
+  getAllProjectVideosByProject,
+  syncProjectVideos,
 } from './mediaService';
 import {
   getCategories,
@@ -38,6 +41,9 @@ import type {
   Category,
   PortfolioImage,
   GalleryImageInput,
+  ProjectVideo,
+  ProjectVideoInput,
+  ProjectThumbnailMode,
 } from '../types/project';
 
 export {
@@ -71,7 +77,9 @@ interface ProjectExtendedMeta {
   client_name?: string | null;
   instagram_url?: string | null;
   website_url?: string | null;
+  thumbnail_mode?: ProjectThumbnailMode;
   gallery_items?: GalleryImageInput[];
+  video_items?: ProjectVideoInput[];
 }
 
 type ProjectMetaMap = Record<string, ProjectExtendedMeta>;
@@ -487,7 +495,8 @@ function normalizeProject(
   raw: Record<string, unknown>,
   categoriesById: Map<string, Category>,
   portfolioImages?: PortfolioImage[],
-  metaMap?: ProjectMetaMap
+  metaMap?: ProjectMetaMap,
+  projectVideos?: ProjectVideo[]
 ): Project {
   const id = String(raw.id || '').trim();
   const slug = String(raw.slug || '').trim();
@@ -546,6 +555,31 @@ function normalizeProject(
     }));
   }
 
+  // Build project_videos from DB rows or meta.video_items
+  let resolvedProjectVideos: ProjectVideo[] = [];
+  if (projectVideos && projectVideos.length > 0) {
+    resolvedProjectVideos = [...projectVideos].sort(
+      (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)
+    );
+  } else if (meta.video_items && meta.video_items.length > 0) {
+    resolvedProjectVideos = meta.video_items
+      .filter((v) => Boolean(v.video_url?.trim()))
+      .map((v, idx) => ({
+        id: isValidUuid(v.id) ? v.id : `${id}-vid-${idx}`,
+        project_id: isValidUuid(id) ? id : null,
+        video_url: v.video_url.trim(),
+        storage_path: v.storage_path || null,
+        video_title: v.video_title || null,
+        video_description: v.video_description || null,
+        display_order:
+          typeof v.display_order === 'number' ? v.display_order : idx,
+        is_featured: Boolean(v.is_featured),
+        file_size: v.file_size ?? null,
+        created_at: String(raw.created_at || new Date().toISOString()),
+      }))
+      .sort((a, b) => a.display_order - b.display_order);
+  }
+
   const extraImages = resolvedPortfolioImages
     .map((img) => img.image_url)
     .filter(Boolean);
@@ -554,13 +588,17 @@ function normalizeProject(
       ? extraImages
       : Array.from(new Set([...rawGallery, ...extraImages]));
 
+  const primaryUploadedVideo =
+    resolvedProjectVideos.find((v) => v.is_featured) ||
+    resolvedProjectVideos[0];
+
   const videoUrl = raw.video_url
     ? String(raw.video_url)
     : raw.youtube_url
     ? String(raw.youtube_url)
     : meta.video_url
     ? String(meta.video_url)
-    : null;
+    : primaryUploadedVideo?.video_url || null;
 
   const clientVal = raw.client_name
     ? String(raw.client_name)
@@ -624,6 +662,12 @@ function normalizeProject(
       ? meta.display_order
       : 0;
 
+  const thumbnailMode: ProjectThumbnailMode =
+    raw.thumbnail_mode === 'video_thumbnail' ||
+    meta.thumbnail_mode === 'video_thumbnail'
+      ? 'video_thumbnail'
+      : 'cover_image';
+
   return {
     id,
     title: String(raw.title || ''),
@@ -641,6 +685,7 @@ function normalizeProject(
     software_tools: softwareTools,
     cover_image: coverImg,
     cover_image_url: coverImg,
+    thumbnail_mode: thumbnailMode,
     gallery: mergedGallery,
     behance_url: raw.behance_url ? String(raw.behance_url) : null,
     youtube_url: videoUrl,
@@ -657,6 +702,7 @@ function normalizeProject(
     sort_order: displayOrder,
     display_order: displayOrder,
     portfolio_images: resolvedPortfolioImages,
+    project_videos: resolvedProjectVideos,
     is_seed: !isValidUuid(id),
     created_at: raw.created_at
       ? String(raw.created_at)
@@ -794,11 +840,13 @@ export async function getAllProjects(): Promise<Project[]> {
 
   await ensureSeedProjectsMigratedIfEmpty();
 
-  const [{ byId }, imagesByProject, metaMap] = await Promise.all([
-    buildCategoryMaps(),
-    getAllPortfolioImagesByProject(),
-    loadProjectMetaMap(),
-  ]);
+  const [{ byId }, imagesByProject, videosByProject, metaMap] =
+    await Promise.all([
+      buildCategoryMaps(),
+      getAllPortfolioImagesByProject(),
+      getAllProjectVideosByProject(),
+      loadProjectMetaMap(),
+    ]);
 
   const { data, error } = await supabase
     .from('projects')
@@ -812,7 +860,13 @@ export async function getAllProjects(): Promise<Project[]> {
   const rows = (data || []).map((row) => {
     const raw = row as Record<string, unknown>;
     const pid = String(raw.id || '').trim();
-    return normalizeProject(raw, byId, imagesByProject.get(pid), metaMap);
+    return normalizeProject(
+      raw,
+      byId,
+      imagesByProject.get(pid),
+      metaMap,
+      videosByProject.get(pid)
+    );
   });
 
   if (rows.length === 0) {
@@ -831,11 +885,13 @@ export async function getPublishedProjects(): Promise<Project[]> {
     return sortProjects(activeSeeds.filter((p) => p.status === 'published'));
   }
 
-  const [{ byId }, imagesByProject, metaMap] = await Promise.all([
-    buildCategoryMaps(),
-    getAllPortfolioImagesByProject(),
-    loadProjectMetaMap(),
-  ]);
+  const [{ byId }, imagesByProject, videosByProject, metaMap] =
+    await Promise.all([
+      buildCategoryMaps(),
+      getAllPortfolioImagesByProject(),
+      getAllProjectVideosByProject(),
+      loadProjectMetaMap(),
+    ]);
 
   const { data, error } = await supabase
     .from('projects')
@@ -850,7 +906,13 @@ export async function getPublishedProjects(): Promise<Project[]> {
   const publishedRows = (data || []).map((row) => {
     const raw = row as Record<string, unknown>;
     const pid = String(raw.id || '').trim();
-    return normalizeProject(raw, byId, imagesByProject.get(pid), metaMap);
+    return normalizeProject(
+      raw,
+      byId,
+      imagesByProject.get(pid),
+      metaMap,
+      videosByProject.get(pid)
+    );
   });
 
   if (publishedRows.length > 0) {
@@ -871,7 +933,7 @@ export async function getPublishedProjects(): Promise<Project[]> {
 }
 
 /**
- * Fetch a single project by its URL slug (`slug`), including its `portfolio_images` rows.
+ * Fetch a single project by its URL slug (`slug`), including its `portfolio_images` and `project_videos` rows.
  */
 export async function getProjectBySlug(
   slug: string,
@@ -924,15 +986,19 @@ export async function getProjectBySlug(
   }
 
   const projectId = String((data as Record<string, unknown>).id || '').trim();
-  const portfolioImages = isValidUuid(projectId)
-    ? await getProjectPortfolioImages(projectId)
-    : [];
+  const [portfolioImages, projectVideos] = isValidUuid(projectId)
+    ? await Promise.all([
+        getProjectPortfolioImages(projectId),
+        getProjectVideos(projectId),
+      ])
+    : [[], []];
 
   return normalizeProject(
     data as Record<string, unknown>,
     byId,
     portfolioImages,
-    metaMap
+    metaMap,
+    projectVideos
   );
 }
 
@@ -1023,6 +1089,11 @@ export async function createProject(
     .map((t) => t.trim())
     .filter(Boolean);
 
+  const thumbnailMode: ProjectThumbnailMode =
+    formData.thumbnail_mode === 'video_thumbnail'
+      ? 'video_thumbnail'
+      : 'cover_image';
+
   const fullPayload = {
     title: formData.title.trim(),
     slug: cleanSlug,
@@ -1040,6 +1111,7 @@ export async function createProject(
     software_tools: softwareTools,
     cover_image: coverImage,
     cover_image_url: coverImage,
+    thumbnail_mode: thumbnailMode,
     gallery: cleanGallery,
     behance_url: formData.behance_url.trim() || null,
     youtube_url: videoUrl,
@@ -1064,29 +1136,43 @@ export async function createProject(
     (error.message.includes('column') ||
       error.message.includes('schema cache'))
   ) {
-    const basicPayload = {
-      title: formData.title.trim(),
-      slug: cleanSlug,
-      description: fullDescription,
-      category_id: safeCategoryId,
-      client: clientVal,
-      year: Number(formData.year) || new Date().getFullYear(),
-      services: formData.services.map((s) => s.trim()).filter(Boolean),
-      cover_image: coverImage,
-      gallery: cleanGallery,
-      behance_url: formData.behance_url.trim() || null,
-      youtube_url: videoUrl,
-      featured: isFeatured,
-      status: formData.status,
-      updated_at: now,
-    };
-    const retry = await supabase
+    // Try without thumbnail_mode first if only thumbnail_mode is missing
+    const { thumbnail_mode: _omitted, ...payloadWithoutThumbMode } =
+      fullPayload;
+    const retryMid = await supabase
       .from('projects')
-      .insert([basicPayload])
+      .insert([payloadWithoutThumbMode])
       .select('*')
       .single();
-    data = retry.data;
-    error = retry.error;
+
+    if (!retryMid.error) {
+      data = retryMid.data;
+      error = null;
+    } else {
+      const basicPayload = {
+        title: formData.title.trim(),
+        slug: cleanSlug,
+        description: fullDescription,
+        category_id: safeCategoryId,
+        client: clientVal,
+        year: Number(formData.year) || new Date().getFullYear(),
+        services: formData.services.map((s) => s.trim()).filter(Boolean),
+        cover_image: coverImage,
+        gallery: cleanGallery,
+        behance_url: formData.behance_url.trim() || null,
+        youtube_url: videoUrl,
+        featured: isFeatured,
+        status: formData.status,
+        updated_at: now,
+      };
+      const retry = await supabase
+        .from('projects')
+        .insert([basicPayload])
+        .select('*')
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
   }
 
   if (error) {
@@ -1099,14 +1185,17 @@ export async function createProject(
   const createdRow = data as Record<string, unknown>;
   const createdId = String(createdRow.id || '').trim();
 
-  // Sync gallery records into public.portfolio_images using the newly generated UUID
+  // Sync gallery records into public.portfolio_images and videos into public.project_videos using the newly generated UUID
   if (isValidUuid(createdId)) {
-    await syncProjectPortfolioImages(
-      createdId,
-      cleanGallery,
-      fullPayload.title,
-      formData.gallery_items
-    );
+    await Promise.all([
+      syncProjectPortfolioImages(
+        createdId,
+        cleanGallery,
+        fullPayload.title,
+        formData.gallery_items
+      ),
+      syncProjectVideos(createdId, formData.video_items),
+    ]);
   }
 
   // Persist extended project metadata in site_settings so it survives even before DDL migration
@@ -1121,7 +1210,9 @@ export async function createProject(
     client_name: clientVal,
     instagram_url: formData.instagram_url?.trim() || null,
     website_url: formData.website_url?.trim() || null,
+    thumbnail_mode: thumbnailMode,
     gallery_items: formData.gallery_items,
+    video_items: formData.video_items,
   };
   if (createdId) {
     metaMap[createdId] = metaEntry;
@@ -1130,12 +1221,21 @@ export async function createProject(
   await saveProjectMetaMap(metaMap);
 
   const { byId } = await buildCategoryMaps();
-  const portfolioImages = isValidUuid(createdId)
-    ? await getProjectPortfolioImages(createdId)
-    : [];
+  const [portfolioImages, projectVideos] = isValidUuid(createdId)
+    ? await Promise.all([
+        getProjectPortfolioImages(createdId),
+        getProjectVideos(createdId),
+      ])
+    : [[], []];
 
   window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
-  return normalizeProject(createdRow, byId, portfolioImages, metaMap);
+  return normalizeProject(
+    createdRow,
+    byId,
+    portfolioImages,
+    metaMap,
+    projectVideos
+  );
 }
 
 /**
@@ -1255,6 +1355,11 @@ export async function updateProject(
     .map((t) => t.trim())
     .filter(Boolean);
 
+  const thumbnailMode: ProjectThumbnailMode =
+    formData.thumbnail_mode === 'video_thumbnail'
+      ? 'video_thumbnail'
+      : 'cover_image';
+
   const fullPayload = {
     title: formData.title.trim(),
     slug: cleanSlug,
@@ -1272,6 +1377,7 @@ export async function updateProject(
     software_tools: softwareTools,
     cover_image: coverImage,
     cover_image_url: coverImage,
+    thumbnail_mode: thumbnailMode,
     gallery: cleanGallery,
     behance_url: formData.behance_url.trim() || null,
     youtube_url: videoUrl,
@@ -1297,30 +1403,44 @@ export async function updateProject(
     (error.message.includes('column') ||
       error.message.includes('schema cache'))
   ) {
-    const basicPayload = {
-      title: formData.title.trim(),
-      slug: cleanSlug,
-      description: fullDescription,
-      category_id: safeCategoryId,
-      client: clientVal,
-      year: Number(formData.year) || new Date().getFullYear(),
-      services: formData.services.map((s) => s.trim()).filter(Boolean),
-      cover_image: coverImage,
-      gallery: cleanGallery,
-      behance_url: formData.behance_url.trim() || null,
-      youtube_url: videoUrl,
-      featured: isFeatured,
-      status: formData.status,
-      updated_at: now,
-    };
-    const retry = await supabase
+    const { thumbnail_mode: _omitted, ...payloadWithoutThumbMode } =
+      fullPayload;
+    const retryMid = await supabase
       .from('projects')
-      .update(basicPayload)
+      .update(payloadWithoutThumbMode)
       .eq('id', cleanId)
       .select('*')
       .single();
-    data = retry.data;
-    error = retry.error;
+
+    if (!retryMid.error) {
+      data = retryMid.data;
+      error = null;
+    } else {
+      const basicPayload = {
+        title: formData.title.trim(),
+        slug: cleanSlug,
+        description: fullDescription,
+        category_id: safeCategoryId,
+        client: clientVal,
+        year: Number(formData.year) || new Date().getFullYear(),
+        services: formData.services.map((s) => s.trim()).filter(Boolean),
+        cover_image: coverImage,
+        gallery: cleanGallery,
+        behance_url: formData.behance_url.trim() || null,
+        youtube_url: videoUrl,
+        featured: isFeatured,
+        status: formData.status,
+        updated_at: now,
+      };
+      const retry = await supabase
+        .from('projects')
+        .update(basicPayload)
+        .eq('id', cleanId)
+        .select('*')
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
   }
 
   if (error) {
@@ -1330,12 +1450,15 @@ export async function updateProject(
     throw new Error(error.message);
   }
 
-  await syncProjectPortfolioImages(
-    cleanId,
-    cleanGallery,
-    fullPayload.title,
-    formData.gallery_items
-  );
+  await Promise.all([
+    syncProjectPortfolioImages(
+      cleanId,
+      cleanGallery,
+      fullPayload.title,
+      formData.gallery_items
+    ),
+    syncProjectVideos(cleanId, formData.video_items),
+  ]);
 
   const metaMap = await loadProjectMetaMap();
   const metaEntry: ProjectExtendedMeta = {
@@ -1348,21 +1471,27 @@ export async function updateProject(
     client_name: clientVal,
     instagram_url: formData.instagram_url?.trim() || null,
     website_url: formData.website_url?.trim() || null,
+    thumbnail_mode: thumbnailMode,
     gallery_items: formData.gallery_items,
+    video_items: formData.video_items,
   };
   metaMap[cleanId] = metaEntry;
   metaMap[cleanSlug] = metaEntry;
   await saveProjectMetaMap(metaMap);
 
   const { byId } = await buildCategoryMaps();
-  const portfolioImages = await getProjectPortfolioImages(cleanId);
+  const [portfolioImages, projectVideos] = await Promise.all([
+    getProjectPortfolioImages(cleanId),
+    getProjectVideos(cleanId),
+  ]);
 
   window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
   return normalizeProject(
     data as Record<string, unknown>,
     byId,
     portfolioImages,
-    metaMap
+    metaMap,
+    projectVideos
   );
 }
 
@@ -1525,13 +1654,17 @@ export async function getProjectById(id: string): Promise<Project | null> {
     return null;
   }
 
-  const portfolioImages = await getProjectPortfolioImages(cleanId);
+  const [portfolioImages, projectVideos] = await Promise.all([
+    getProjectPortfolioImages(cleanId),
+    getProjectVideos(cleanId),
+  ]);
 
   return normalizeProject(
     data as Record<string, unknown>,
     byId,
     portfolioImages,
-    metaMap
+    metaMap,
+    projectVideos
   );
 }
 

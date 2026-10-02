@@ -22,7 +22,9 @@ import {
   Linkedin,
   MessageSquare,
   Award,
-  ChevronRight
+  ChevronRight,
+  Play,
+  Film,
 } from 'lucide-react';
 
 interface HomeViewProps {
@@ -697,6 +699,26 @@ export default function HomeView({
                               referrerPolicy="no-referrer"
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                            {proj.thumbnail_mode === 'video_thumbnail' && (
+                              <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors flex items-center justify-center pointer-events-none">
+                                <span className="h-10 w-10 rounded-full bg-[#00685b]/90 text-white flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-300">
+                                  <Play className="h-4 w-4 fill-white ml-0.5" />
+                                </span>
+                              </div>
+                            )}
+                            {(proj.thumbnail_mode === 'video_thumbnail' ||
+                              (proj.project_videos &&
+                                proj.project_videos.length > 0)) && (
+                              <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md bg-[#00685b]/90 backdrop-blur-xs px-2 py-0.5 font-mono text-[9px] font-bold text-white pointer-events-none">
+                                <Film className="h-2.5 w-2.5" />
+                                <span>
+                                  {proj.project_videos &&
+                                  proj.project_videos.length > 1
+                                    ? `${proj.project_videos.length} Videos`
+                                    : 'Video'}
+                                </span>
+                              </span>
+                            )}
                           </div>
 
                           <div className="p-4 space-y-1.5 border-t border-brand-outline/10">

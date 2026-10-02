@@ -3,7 +3,7 @@ import { Helmet } from 'react-helmet-async';
 import { getProjectBySlug } from '../services/projectService';
 import { useAuth } from '../hooks/useAuth';
 import { slugify } from '../lib/supabase';
-import type { Project } from '../types/project';
+import type { Project, ProjectVideo } from '../types/project';
 import type { NavSection } from '../types';
 import {
   ArrowLeft,
@@ -13,6 +13,9 @@ import {
   Layers,
   ExternalLink,
   Video,
+  Film,
+  Play,
+  Star,
   MessageSquare,
   Loader2,
   AlertCircle,
@@ -39,6 +42,17 @@ function extractYouTubeEmbedUrl(url?: string | null): string | null {
     : null;
 }
 
+function isDirectVideoFileUrl(url?: string | null): boolean {
+  if (!url) return false;
+  const clean = url.split('?')[0].toLowerCase();
+  return (
+    clean.endsWith('.mp4') ||
+    clean.endsWith('.webm') ||
+    clean.endsWith('.mov') ||
+    url.includes('/portfolio-videos/')
+  );
+}
+
 export default function ProjectDetailPage({
   slug,
   onNavigate,
@@ -50,6 +64,7 @@ export default function ProjectDetailPage({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState<string | null>(null);
+  const [activeVideoIndex, setActiveVideoIndex] = useState<number>(0);
   const [lightboxImage, setLightboxImage] = useState<{
     url: string;
     label: string;
@@ -71,6 +86,14 @@ export default function ProjectDetailPage({
               found?.gallery?.[0] ||
               null
           );
+          if (found?.project_videos && found.project_videos.length > 0) {
+            const featuredIdx = found.project_videos.findIndex(
+              (v) => v.is_featured
+            );
+            setActiveVideoIndex(featuredIdx >= 0 ? featuredIdx : 0);
+          } else {
+            setActiveVideoIndex(0);
+          }
         }
       } catch (err: unknown) {
         if (mounted) {
@@ -134,6 +157,46 @@ export default function ProjectDetailPage({
     });
 
     return frames;
+  }, [project]);
+
+  const uploadedVideos = useMemo<ProjectVideo[]>(() => {
+    if (!project) return [];
+    const list: ProjectVideo[] = [];
+    const seenUrls = new Set<string>();
+
+    if (project.project_videos && project.project_videos.length > 0) {
+      const sorted = [...project.project_videos].sort(
+        (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)
+      );
+      for (const v of sorted) {
+        if (!v.video_url || seenUrls.has(v.video_url)) continue;
+        seenUrls.add(v.video_url);
+        list.push(v);
+      }
+    }
+
+    // If a direct video URL was set on video_url and isn't already in project_videos, include it
+    const directCandidate = project.video_url || project.youtube_url;
+    if (
+      directCandidate &&
+      isDirectVideoFileUrl(directCandidate) &&
+      !seenUrls.has(directCandidate)
+    ) {
+      seenUrls.add(directCandidate);
+      list.push({
+        id: `${project.id}-direct-video`,
+        project_id: project.id,
+        video_url: directCandidate,
+        storage_path: null,
+        video_title: `${project.title} — Project Video`,
+        video_description: project.short_description || null,
+        display_order: list.length,
+        is_featured: list.length === 0,
+        created_at: project.created_at,
+      });
+    }
+
+    return list;
   }, [project]);
 
   if (loading || authLoading) {
@@ -218,6 +281,18 @@ export default function ProjectDetailPage({
   const youtubeEmbedUrl = extractYouTubeEmbedUrl(videoLink);
   const activeFrameLabel =
     galleryFrames.find((f) => f.url === activeImage)?.label || project.title;
+
+  const activeUploadedVideo =
+    uploadedVideos[activeVideoIndex] ||
+    uploadedVideos.find((v) => v.is_featured) ||
+    uploadedVideos[0] ||
+    null;
+
+  const posterImage =
+    project.cover_image_url ||
+    project.cover_image ||
+    galleryFrames[0]?.url ||
+    ogImage;
 
   return (
     <article className="mx-auto max-w-7xl px-6 py-12 lg:px-12 lg:py-16 space-y-14">
@@ -476,7 +551,135 @@ export default function ProjectDetailPage({
         </div>
       )}
 
-      {/* Optional Embedded Video Showcase */}
+      {/* ==================================================================== */}
+      {/* Uploaded Project Videos Showcase (Supabase Storage HTML5 Player)     */}
+      {/* ==================================================================== */}
+      {uploadedVideos.length > 0 && activeUploadedVideo && (
+        <section id="project-videos-showcase" className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <div className="space-y-1">
+              <span className="inline-flex items-center gap-1.5 font-tech text-xs tracking-widest text-brand-primary font-bold uppercase">
+                <Film className="h-3.5 w-3.5" />
+                <span>
+                  PROJECT VIDEO SHOWCASE ({uploadedVideos.length}{' '}
+                  {uploadedVideos.length === 1 ? 'VIDEO' : 'VIDEOS'})
+                </span>
+              </span>
+              <h2 className="font-display text-2xl sm:text-3xl font-black text-brand-text">
+                {activeUploadedVideo.video_title ||
+                  `${project.title} — Motion & Video`}
+              </h2>
+              {activeUploadedVideo.video_description && (
+                <p className="font-sans text-xs sm:text-sm text-brand-text-muted max-w-3xl leading-relaxed">
+                  {activeUploadedVideo.video_description}
+                </p>
+              )}
+            </div>
+
+            {activeUploadedVideo.is_featured && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-primary/10 border border-brand-primary/25 px-3.5 py-1 font-tech text-[10px] font-extrabold uppercase tracking-wider text-brand-primary self-start sm:self-auto">
+                <Star className="h-3 w-3 fill-current" />
+                <span>Featured Reel</span>
+              </span>
+            )}
+          </div>
+
+          {/* Primary Responsive HTML5 Video Player (Play/Pause, Volume, Fullscreen, Poster, No Autoplay with Sound) */}
+          <div className="rounded-3xl overflow-hidden border border-brand-outline/25 bg-slate-950 shadow-md">
+            <div className="aspect-video w-full relative bg-slate-950">
+              <video
+                key={activeUploadedVideo.video_url}
+                src={activeUploadedVideo.video_url}
+                poster={posterImage}
+                controls
+                playsInline
+                preload="metadata"
+                className="w-full h-full object-contain bg-slate-950"
+              >
+                Your browser does not support HTML5 video playback.
+              </video>
+            </div>
+
+            <div className="px-6 py-4 bg-white border-t border-brand-outline/15 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <p className="font-display text-sm font-bold text-brand-text">
+                  {activeUploadedVideo.video_title ||
+                    `${project.title} — Video ${String(
+                      activeVideoIndex + 1
+                    ).padStart(2, '0')}`}
+                </p>
+                {activeUploadedVideo.video_description && (
+                  <p className="font-sans text-xs text-brand-text-muted mt-0.5">
+                    {activeUploadedVideo.video_description}
+                  </p>
+                )}
+              </div>
+              <span className="font-mono text-[11px] font-bold text-brand-text-muted shrink-0">
+                Video {String(activeVideoIndex + 1).padStart(2, '0')} of{' '}
+                {String(uploadedVideos.length).padStart(2, '0')}
+              </span>
+            </div>
+          </div>
+
+          {/* Multiple Videos Playlist / Selector Grid */}
+          {uploadedVideos.length > 1 && (
+            <div className="space-y-3">
+              <span className="font-tech text-[11px] font-bold uppercase tracking-wider text-brand-text-muted block">
+                More Videos in This Project ({uploadedVideos.length})
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {uploadedVideos.map((vid, idx) => {
+                  const isCurrent = idx === activeVideoIndex;
+                  return (
+                    <button
+                      key={`${vid.id}-${idx}`}
+                      type="button"
+                      onClick={() => setActiveVideoIndex(idx)}
+                      className={`text-left rounded-2xl border p-4 transition-all cursor-pointer flex items-start gap-3.5 ${
+                        isCurrent
+                          ? 'border-brand-primary bg-brand-primary/5 shadow-xs'
+                          : 'border-brand-outline/20 bg-white hover:border-brand-primary/40'
+                      }`}
+                    >
+                      <div className="h-11 w-11 rounded-xl bg-brand-primary/10 text-brand-primary flex items-center justify-center shrink-0 mt-0.5">
+                        <Play
+                          className={`h-4 w-4 ${
+                            isCurrent ? 'fill-brand-primary' : ''
+                          }`}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center justify-between gap-1.5">
+                          <span className="font-mono text-[10px] font-bold text-brand-primary">
+                            #{String(idx + 1).padStart(2, '0')}
+                          </span>
+                          {vid.is_featured && (
+                            <span className="inline-flex items-center gap-1 rounded bg-brand-primary text-white px-1.5 py-0.5 font-tech text-[9px] font-bold uppercase">
+                              <Star className="h-2.5 w-2.5 fill-white" />
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-display text-xs font-bold text-brand-text truncate">
+                          {vid.video_title ||
+                            `${project.title} — Video ${idx + 1}`}
+                        </p>
+                        {vid.video_description && (
+                          <p className="font-sans text-[11px] text-brand-text-muted line-clamp-2">
+                            {vid.video_description}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Optional External Embedded YouTube Video Showcase */}
       {youtubeEmbedUrl && (
         <section className="space-y-4">
           <div className="space-y-1">
@@ -492,7 +695,8 @@ export default function ProjectDetailPage({
               src={youtubeEmbedUrl}
               title={`${project.title} Video`}
               className="w-full h-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              loading="lazy"
+              allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
             />
           </div>

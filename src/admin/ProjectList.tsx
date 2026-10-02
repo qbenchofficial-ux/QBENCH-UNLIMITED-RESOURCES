@@ -11,6 +11,8 @@ import {
   FileEdit,
   ExternalLink,
   Image as ImageIcon,
+  Film,
+  Play,
   AlertTriangle,
   Loader2,
   Database,
@@ -315,7 +317,22 @@ export default function ProjectList({
                       </span>
                     </div>
 
+                    {project.thumbnail_mode === 'video_thumbnail' && (
+                      <div className="absolute inset-0 bg-slate-900/20 flex items-center justify-center pointer-events-none">
+                        <span className="h-9 w-9 rounded-full bg-[#00685b]/90 text-white flex items-center justify-center shadow-md">
+                          <Play className="h-4 w-4 fill-white ml-0.5" />
+                        </span>
+                      </div>
+                    )}
+
                     <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                      {project.project_videos &&
+                        project.project_videos.length > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-[#00685b]/90 px-2 py-0.5 font-mono text-[10px] font-bold text-white">
+                            <Film className="h-3 w-3" />
+                            <span>{project.project_videos.length}</span>
+                          </span>
+                        )}
                       <span className="inline-flex items-center gap-1 rounded-md bg-slate-900/75 px-2 py-0.5 font-mono text-[10px] font-bold text-white">
                         <ImageIcon className="h-3 w-3" />
                         <span>{imageCount}</span>

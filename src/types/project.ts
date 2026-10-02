@@ -1,5 +1,7 @@
 export type ProjectStatus = 'draft' | 'published';
 
+export type ProjectThumbnailMode = 'cover_image' | 'video_thumbnail';
+
 export interface PortfolioImage {
   id: string;
   project_id: string | null;
@@ -15,6 +17,31 @@ export interface GalleryImageInput {
   image_url: string;
   alt_text: string;
   display_order: number;
+}
+
+export interface ProjectVideo {
+  id: string;
+  project_id: string | null;
+  video_url: string;
+  storage_path: string | null;
+  video_title: string | null;
+  video_description: string | null;
+  display_order: number;
+  is_featured: boolean;
+  created_at: string;
+  file_size?: number | null;
+}
+
+export interface ProjectVideoInput {
+  id?: string;
+  video_url: string;
+  storage_path?: string | null;
+  video_title: string;
+  video_description: string;
+  display_order: number;
+  is_featured: boolean;
+  file_size?: number | null;
+  file_name?: string | null;
 }
 
 export interface Project {
@@ -34,6 +61,7 @@ export interface Project {
   software_tools: string[];
   cover_image: string | null;
   cover_image_url: string | null;
+  thumbnail_mode?: ProjectThumbnailMode;
   gallery: string[];
   behance_url: string | null;
   youtube_url: string | null;
@@ -46,6 +74,7 @@ export interface Project {
   sort_order: number;
   display_order: number;
   portfolio_images?: PortfolioImage[];
+  project_videos?: ProjectVideo[];
   is_seed?: boolean;
   created_at: string;
   updated_at: string;
@@ -67,8 +96,10 @@ export interface ProjectFormData {
   software_tools?: string[];
   cover_image: string | null;
   cover_image_url?: string | null;
+  thumbnail_mode?: ProjectThumbnailMode;
   gallery: string[];
   gallery_items?: GalleryImageInput[];
+  video_items?: ProjectVideoInput[];
   behance_url: string;
   youtube_url: string;
   video_url?: string;

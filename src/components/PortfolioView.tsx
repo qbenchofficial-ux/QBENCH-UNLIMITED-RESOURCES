@@ -13,6 +13,8 @@ import {
   Loader2,
   Layers,
   Image as ImageIcon,
+  Film,
+  Play,
 } from 'lucide-react';
 
 interface PortfolioViewProps {
@@ -231,6 +233,8 @@ export default function PortfolioView({
       project.gallery?.length || 0,
       1
     );
+    const videoCount = project.project_videos?.length || 0;
+    const isVideoThumbnail = project.thumbnail_mode === 'video_thumbnail';
 
     return (
       <motion.div
@@ -244,7 +248,7 @@ export default function PortfolioView({
         className="group flex flex-col justify-between space-y-4 bg-white border border-brand-outline/25 hover:border-brand-outline rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300"
       >
         <div className="space-y-4">
-          {/* Image panel with zoom scale on hover */}
+          {/* Image/Poster panel with zoom scale on hover (no full video loaded on listing page) */}
           <div
             onClick={() => handleOpenDetail(project.slug)}
             className="aspect-[16/10] w-full rounded-xl overflow-hidden relative border border-brand-outline/10 bg-brand-surface-low cursor-pointer"
@@ -257,12 +261,31 @@ export default function PortfolioView({
               referrerPolicy="no-referrer"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-brand-primary/15 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-            {imageCount > 1 && (
-              <span className="absolute bottom-2.5 right-2.5 inline-flex items-center gap-1 rounded-lg bg-black/70 backdrop-blur-xs px-2 py-0.5 font-mono text-[10px] font-bold text-white">
-                <ImageIcon className="h-3 w-3" />
-                <span>{imageCount} Frames</span>
-              </span>
+
+            {isVideoThumbnail && (
+              <div className="absolute inset-0 bg-black/25 group-hover:bg-black/15 transition-colors flex items-center justify-center pointer-events-none">
+                <span className="h-12 w-12 rounded-full bg-brand-primary/90 group-hover:bg-brand-primary text-white flex items-center justify-center shadow-lg group-hover:scale-110 transition-all duration-300">
+                  <Play className="h-5 w-5 fill-white ml-0.5" />
+                </span>
+              </div>
             )}
+
+            <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 pointer-events-none">
+              {(isVideoThumbnail || videoCount > 0) && (
+                <span className="inline-flex items-center gap-1 rounded-lg bg-brand-primary/90 backdrop-blur-xs px-2 py-0.5 font-mono text-[10px] font-bold text-white">
+                  <Film className="h-3 w-3" />
+                  <span>
+                    {videoCount > 1 ? `${videoCount} Videos` : 'Video'}
+                  </span>
+                </span>
+              )}
+              {imageCount > 1 && (
+                <span className="inline-flex items-center gap-1 rounded-lg bg-black/70 backdrop-blur-xs px-2 py-0.5 font-mono text-[10px] font-bold text-white">
+                  <ImageIcon className="h-3 w-3" />
+                  <span>{imageCount} Frames</span>
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center justify-between pt-1 gap-2">

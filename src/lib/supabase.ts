@@ -149,6 +149,10 @@ export async function ensureSupabaseConfig(): Promise<boolean> {
 }
 
 export const PORTFOLIO_BUCKET = 'portfolio-images';
+export const PORTFOLIO_VIDEOS_BUCKET = 'portfolio-videos';
+export const MAX_PORTFOLIO_VIDEO_SIZE_MB = 50;
+export const MAX_PORTFOLIO_VIDEO_SIZE_BYTES =
+  MAX_PORTFOLIO_VIDEO_SIZE_MB * 1024 * 1024;
 export const STORAGE_BUCKET = 'qbench-resources';
 
 export const AUTHORIZED_ADMIN_EMAIL = 'qbench.official@gmail.com';
@@ -172,7 +176,9 @@ const UUID_REGEX =
  * Prevents seed IDs ("seed-1", "seed-2", "cat-*"), slugs, or temporary strings
  * from ever being passed into Supabase UUID columns.
  */
-export function isValidUuid(value: unknown): value is string {
+export function isValidUuid(
+  value: unknown
+): value is `${string}-${string}-${string}-${string}-${string}` {
   if (typeof value !== 'string') return false;
   const trimmed = value.trim();
   if (!trimmed || trimmed.startsWith('seed-') || trimmed.startsWith('cat-')) {

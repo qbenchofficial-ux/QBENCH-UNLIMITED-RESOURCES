@@ -1,12 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { slugify, isValidUuid } from '../lib/supabase';
-import { uploadPortfolioImage } from '../services/mediaService';
+import {
+  slugify,
+  isValidUuid,
+  MAX_PORTFOLIO_VIDEO_SIZE_MB,
+} from '../lib/supabase';
+import {
+  uploadPortfolioImage,
+  uploadProjectVideo,
+  deleteProjectVideoAsset,
+  validateProjectVideo,
+  formatFileSize,
+} from '../services/mediaService';
 import type {
   Project,
   ProjectFormData,
   Category,
   ProjectStatus,
   GalleryImageInput,
+  ProjectVideoInput,
+  ProjectThumbnailMode,
 } from '../types/project';
 import {
   Upload,
@@ -16,6 +28,7 @@ import {
   ArrowRight,
   Loader2,
   AlertCircle,
+  CheckCircle2,
   Plus,
   X,
   Image as ImageIcon,
@@ -28,6 +41,8 @@ import {
   User,
   Layers,
   Video,
+  Film,
+  Play,
   ExternalLink,
 } from 'lucide-react';
 
@@ -77,6 +92,32 @@ function buildInitialGalleryItems(project?: Project | null): GalleryImageInput[]
         : `${project.title} — Image ${String(idx + 1).padStart(2, '0')}`,
     display_order: idx,
   }));
+}
+
+function buildInitialVideoItems(project?: Project | null): ProjectVideoInput[] {
+  if (!project || !project.project_videos || project.project_videos.length === 0) {
+    return [];
+  }
+  return [...project.project_videos]
+    .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
+    .map((vid, idx) => ({
+      id: isValidUuid(vid.id) ? vid.id : undefined,
+      video_url: vid.video_url,
+      storage_path: vid.storage_path || null,
+      video_title:
+        vid.video_title ||
+        `${project.title || 'Project'} — Video ${String(idx + 1).padStart(
+          2,
+          '0'
+        )}`,
+      video_description: vid.video_description || '',
+      display_order: idx,
+      is_featured: Boolean(vid.is_featured),
+      file_size: vid.file_size ?? null,
+      file_name: vid.storage_path
+        ? vid.storage_path.split('/').pop() || null
+        : null,
+    }));
 }
 
 export default function ProjectForm({
@@ -142,11 +183,37 @@ export default function ProjectForm({
   const [coverImage, setCoverImage] = useState<string | null>(
     initialProject?.cover_image_url || initialProject?.cover_image || null
   );
+  const [thumbnailMode, setThumbnailMode] = useState<ProjectThumbnailMode>(
+    initialProject?.thumbnail_mode === 'video_thumbnail'
+      ? 'video_thumbnail'
+      : 'cover_image'
+  );
+
   const [galleryItems, setGalleryItems] = useState<GalleryImageInput[]>(() =>
     buildInitialGalleryItems(initialProject)
   );
   const [manualImageUrl, setManualImageUrl] = useState('');
   const [manualImageAlt, setManualImageAlt] = useState('');
+
+  // Project Videos state
+  const [videoItems, setVideoItems] = useState<ProjectVideoInput[]>(() =>
+    buildInitialVideoItems(initialProject)
+  );
+  const [uploadingVideos, setUploadingVideos] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [currentUploadingVideoName, setCurrentUploadingVideoName] = useState<
+    string | null
+  >(null);
+  const [replacingVideoIndex, setReplacingVideoIndex] = useState<number | null>(
+    null
+  );
+  const [videoDragIndex, setVideoDragIndex] = useState<number | null>(null);
+  const [isVideoDropActive, setIsVideoDropActive] = useState(false);
+  const [videoStatusMessage, setVideoStatusMessage] = useState<{
+    type: 'success' | 'warning' | 'error';
+    text: string;
+  } | null>(null);
+  const [failedVideoFiles, setFailedVideoFiles] = useState<File[]>([]);
 
   const [behanceUrl, setBehanceUrl] = useState(
     initialProject?.behance_url || ''
@@ -164,7 +231,7 @@ export default function ProjectForm({
     initialProject?.status || 'published'
   );
 
-  // Upload & preview states
+  // Image upload & preview states
   const [uploadingCover, setUploadingCover] = useState(false);
   const [coverProgress, setCoverProgress] = useState(0);
   const [uploadingGallery, setUploadingGallery] = useState(false);
@@ -213,7 +280,13 @@ export default function ProjectForm({
       setCoverImage(
         initialProject.cover_image_url || initialProject.cover_image || null
       );
+      setThumbnailMode(
+        initialProject.thumbnail_mode === 'video_thumbnail'
+          ? 'video_thumbnail'
+          : 'cover_image'
+      );
       setGalleryItems(buildInitialGalleryItems(initialProject));
+      setVideoItems(buildInitialVideoItems(initialProject));
       setBehanceUrl(initialProject.behance_url || '');
       setVideoUrl(
         initialProject.video_url || initialProject.youtube_url || ''
@@ -472,6 +545,276 @@ export default function ProjectForm({
     }
   };
 
+  // ============================================================================
+  // Project Videos Upload, Replace, Reorder, Featured & Delete Handlers
+  // ============================================================================
+  const processVideoFilesUpload = async (files: File[]) => {
+    if (!files || files.length === 0) return;
+    setFormError(null);
+    setVideoStatusMessage(null);
+    setFailedVideoFiles([]);
+
+    // Pre-validate all selected files before uploading
+    let hasMovWarning: string | null = null;
+    for (const file of files) {
+      const check = validateProjectVideo(file);
+      if (!check.valid) {
+        setVideoStatusMessage({
+          type: 'error',
+          text: check.error || `Invalid video file: ${file.name}`,
+        });
+        return;
+      }
+      if (check.warning) {
+        hasMovWarning = check.warning;
+      }
+    }
+
+    setUploadingVideos(true);
+    setVideoProgress(5);
+
+    const newlyUploaded: ProjectVideoInput[] = [];
+    const failedBatch: File[] = [];
+    let lastErrorText = '';
+
+    try {
+      const hasExistingFeatured = videoItems.some((v) => v.is_featured);
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const orderIndex = videoItems.length + newlyUploaded.length;
+        const rawBase = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]+/g, ' ').trim();
+        const defaultTitle =
+          rawBase ||
+          `${title || 'Project'} — Video ${String(orderIndex + 1).padStart(
+            2,
+            '0'
+          )}`;
+        const shouldBeFeatured = !hasExistingFeatured && i === 0;
+
+        setCurrentUploadingVideoName(
+          `${file.name} (${formatFileSize(file.size)})`
+        );
+
+        try {
+          const uploaded = await uploadProjectVideo(
+            file,
+            projectStorageId,
+            (pct) => {
+              const overall = Math.round(
+                ((i + pct / 100) / files.length) * 100
+              );
+              setVideoProgress(overall);
+            },
+            {
+              videoTitle: defaultTitle,
+              videoDescription: '',
+              displayOrder: orderIndex,
+              isFeatured: shouldBeFeatured,
+            }
+          );
+          newlyUploaded.push(uploaded);
+        } catch (err: unknown) {
+          failedBatch.push(file);
+          lastErrorText =
+            err instanceof Error ? err.message : `Failed to upload ${file.name}`;
+        }
+      }
+
+      if (newlyUploaded.length > 0) {
+        const merged = [...videoItems, ...newlyUploaded].map((v, idx) => ({
+          ...v,
+          display_order: idx,
+        }));
+        setVideoItems(merged);
+      }
+
+      if (failedBatch.length > 0) {
+        setFailedVideoFiles(failedBatch);
+        setVideoStatusMessage({
+          type: 'error',
+          text: `${failedBatch.length} video upload(s) failed: ${lastErrorText}. Click "Retry Failed Upload" to try again.`,
+        });
+      } else if (hasMovWarning) {
+        setVideoStatusMessage({
+          type: 'warning',
+          text: `Uploaded ${newlyUploaded.length} video(s) to Supabase Storage. Note: ${hasMovWarning}`,
+        });
+      } else {
+        setVideoStatusMessage({
+          type: 'success',
+          text: `Successfully uploaded ${newlyUploaded.length} video${
+            newlyUploaded.length === 1 ? '' : 's'
+          } to Supabase Storage (portfolio-videos/projects/${projectStorageId}/).`,
+        });
+      }
+    } finally {
+      setUploadingVideos(false);
+      setVideoProgress(0);
+      setCurrentUploadingVideoName(null);
+    }
+  };
+
+  const handleVideoInputChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const files: File[] = Array.from(fileList);
+    e.target.value = '';
+    await processVideoFilesUpload(files);
+  };
+
+  const handleVideoDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsVideoDropActive(false);
+    if (uploadingVideos) return;
+    const droppedFiles: File[] = Array.from(e.dataTransfer.files || []);
+    if (droppedFiles.length > 0) {
+      await processVideoFilesUpload(droppedFiles);
+    }
+  };
+
+  const handleRetryFailedVideoUploads = async () => {
+    if (failedVideoFiles.length === 0) return;
+    const toRetry = [...failedVideoFiles];
+    await processVideoFilesUpload(toRetry);
+  };
+
+  const handleReplaceSingleVideo = async (
+    idx: number,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setFormError(null);
+    setVideoStatusMessage(null);
+
+    const check = validateProjectVideo(file);
+    if (!check.valid) {
+      setVideoStatusMessage({
+        type: 'error',
+        text: check.error || 'Invalid replacement video file.',
+      });
+      return;
+    }
+
+    setReplacingVideoIndex(idx);
+    try {
+      const existing = videoItems[idx];
+      const uploaded = await uploadProjectVideo(
+        file,
+        projectStorageId,
+        undefined,
+        {
+          videoTitle: existing?.video_title || file.name.replace(/\.[^/.]+$/, ''),
+          videoDescription: existing?.video_description || '',
+          displayOrder: idx,
+          isFeatured: existing?.is_featured ?? idx === 0,
+        }
+      );
+
+      // Clean up the replaced video file in Supabase Storage
+      if (existing?.video_url && existing.video_url !== uploaded.video_url) {
+        await deleteProjectVideoAsset(
+          existing.storage_path,
+          existing.video_url,
+          existing.id
+        );
+      }
+
+      const next = videoItems.map((item, i) =>
+        i === idx
+          ? {
+              ...uploaded,
+              video_title: existing.video_title || uploaded.video_title,
+              video_description: existing.video_description || '',
+              display_order: i,
+              is_featured: existing.is_featured,
+            }
+          : item
+      );
+      setVideoItems(next);
+      setVideoStatusMessage({
+        type: 'success',
+        text: `Replaced video #${idx + 1} with "${file.name}".`,
+      });
+    } catch (err: unknown) {
+      setVideoStatusMessage({
+        type: 'error',
+        text:
+          err instanceof Error ? err.message : 'Failed to replace video file.',
+      });
+    } finally {
+      setReplacingVideoIndex(null);
+    }
+  };
+
+  const moveVideoItem = (fromIdx: number, toIdx: number) => {
+    if (toIdx < 0 || toIdx >= videoItems.length) return;
+    const next = [...videoItems];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    setVideoItems(
+      next.map((item, idx) => ({
+        ...item,
+        display_order: idx,
+      }))
+    );
+  };
+
+  const updateVideoField = (
+    idx: number,
+    patch: Partial<Pick<ProjectVideoInput, 'video_title' | 'video_description'>>
+  ) => {
+    setVideoItems(
+      videoItems.map((item, i) => (i === idx ? { ...item, ...patch } : item))
+    );
+  };
+
+  const setFeaturedVideoIndex = (targetIdx: number) => {
+    setVideoItems(
+      videoItems.map((item, i) => ({
+        ...item,
+        is_featured: i === targetIdx,
+      }))
+    );
+  };
+
+  const removeVideoItem = async (idx: number) => {
+    const removed = videoItems[idx];
+    const remaining = videoItems
+      .filter((_, i) => i !== idx)
+      .map((item, i) => ({
+        ...item,
+        display_order: i,
+      }));
+
+    if (
+      remaining.length > 0 &&
+      !remaining.some((item) => item.is_featured)
+    ) {
+      remaining[0].is_featured = true;
+    }
+
+    setVideoItems(remaining);
+
+    if (removed?.video_url) {
+      await deleteProjectVideoAsset(
+        removed.storage_path,
+        removed.video_url,
+        removed.id
+      );
+    }
+
+    setVideoStatusMessage({
+      type: 'success',
+      text: `Removed video "${removed?.video_title || `#${idx + 1}`}".`,
+    });
+  };
+
   const openLivePreview = () => {
     setPreviewActiveImage(
       coverImage || galleryItems[0]?.image_url || null
@@ -505,6 +848,20 @@ export default function ProjectForm({
     const galleryUrls = orderedGalleryItems.map((item) => item.image_url);
     const resolvedCover = coverImage || galleryUrls[0] || null;
 
+    const orderedVideoItems = videoItems.map((vid, idx) => ({
+      ...vid,
+      display_order: idx,
+      is_featured:
+        videoItems.some((v) => v.is_featured)
+          ? Boolean(vid.is_featured)
+          : idx === 0,
+    }));
+
+    const primaryUploadedVideo =
+      orderedVideoItems.find((v) => v.is_featured) || orderedVideoItems[0];
+    const resolvedVideoUrl =
+      videoUrl.trim() || primaryUploadedVideo?.video_url || '';
+
     setSaving(true);
     try {
       await onSubmit({
@@ -526,11 +883,13 @@ export default function ProjectForm({
         software_tools: softwareTools,
         cover_image: resolvedCover,
         cover_image_url: resolvedCover,
+        thumbnail_mode: thumbnailMode,
         gallery: galleryUrls,
         gallery_items: orderedGalleryItems,
+        video_items: orderedVideoItems,
         behance_url: behanceUrl.trim(),
-        youtube_url: videoUrl.trim(),
-        video_url: videoUrl.trim(),
+        youtube_url: resolvedVideoUrl,
+        video_url: resolvedVideoUrl,
         website_url: websiteUrl.trim(),
         featured,
         is_featured: featured,
@@ -605,48 +964,52 @@ export default function ProjectForm({
             value={title}
             onChange={(e) => handleTitleChange(e.target.value)}
             placeholder="e.g. The Journey of a Ring"
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm font-medium text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
           />
         </div>
 
         <div className="space-y-1.5">
           <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
-            Slug (URL Path) *
+            Project URL Slug *
           </label>
-          <input
-            type="text"
-            required
-            value={slug}
-            onChange={(e) => {
-              setSlugManuallyEdited(true);
-              setSlug(slugify(e.target.value));
-            }}
-            placeholder="the-journey-of-a-ring"
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 font-mono text-xs text-slate-800 focus:border-[#00685b] focus:bg-white focus:outline-none"
-          />
+          <div className="flex items-center rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 focus-within:border-[#00685b] focus-within:bg-white">
+            <span className="font-mono text-xs text-slate-400 select-none">
+              /portfolio/
+            </span>
+            <input
+              type="text"
+              required
+              value={slug}
+              onChange={(e) => {
+                setSlugManuallyEdited(true);
+                setSlug(slugify(e.target.value));
+              }}
+              placeholder="the-journey-of-a-ring"
+              className="w-full bg-transparent font-mono text-xs font-semibold text-slate-900 focus:outline-none"
+            />
+          </div>
         </div>
 
+        {/* Dynamic Category Dropdown from Supabase */}
         <div className="space-y-1.5">
           <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
-            Category Assignment (Supabase) *
+            Portfolio Category *
           </label>
           <select
             value={categoryId || categoryName}
             onChange={(e) => handleCategoryChange(e.target.value)}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm font-medium text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
           >
             {categories.map((cat) => (
               <option key={cat.id} value={cat.id}>
                 {cat.name}
+                {cat.is_active === false ? ' (Hidden)' : ''}
               </option>
             ))}
-            {categoryName &&
-              !categories.some(
-                (c) => c.id === categoryId || c.name === categoryName
-              ) && <option value={categoryName}>{categoryName}</option>}
           </select>
         </div>
 
+        {/* Project Type */}
         <div className="space-y-1.5">
           <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
             Project Type
@@ -655,11 +1018,12 @@ export default function ProjectForm({
             type="text"
             value={projectType}
             onChange={(e) => setProjectType(e.target.value)}
-            placeholder="e.g. 3D Luxury Motion Design, Brand Identity"
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
+            placeholder="e.g. 3D Luxury Motion Design / Brand Identity"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
           />
         </div>
 
+        {/* Client Name */}
         <div className="space-y-1.5">
           <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
             Client Name (Optional)
@@ -669,10 +1033,11 @@ export default function ProjectForm({
             value={client}
             onChange={(e) => setClient(e.target.value)}
             placeholder="e.g. Luxury Jewellery Collective"
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
           />
         </div>
 
+        {/* Project Date */}
         <div className="space-y-1.5">
           <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
             Project Date
@@ -680,18 +1045,13 @@ export default function ProjectForm({
           <input
             type="text"
             value={projectDate}
-            onChange={(e) => {
-              setProjectDate(e.target.value);
-              const matchedYear = e.target.value.match(/\b(20\d{2})\b/);
-              if (matchedYear) {
-                setYear(Number(matchedYear[1]));
-              }
-            }}
-            placeholder="e.g. February 2026 or 2026-02-15"
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
+            onChange={(e) => setProjectDate(e.target.value)}
+            placeholder="e.g. February 2026"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
           />
         </div>
 
+        {/* Project Year */}
         <div className="space-y-1.5">
           <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
             Year
@@ -702,21 +1062,24 @@ export default function ProjectForm({
             max={2100}
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
           />
         </div>
 
+        {/* Display Order */}
         <div className="space-y-1.5">
           <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
-            Display Order (Lower = First)
+            Display Order (1 = First in Category)
           </label>
           <input
             type="number"
-            min={0}
-            max={9999}
+            min={1}
+            max={999}
             value={displayOrder}
-            onChange={(e) => setDisplayOrder(Number(e.target.value))}
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
+            onChange={(e) =>
+              setDisplayOrder(Math.max(1, Number(e.target.value) || 1))
+            }
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
           />
         </div>
       </div>
@@ -725,27 +1088,27 @@ export default function ProjectForm({
       <div className="space-y-5">
         <div className="space-y-1.5">
           <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
-            Short Description (Card Summary)
+            Short Description (Card Summary & Subtitle)
           </label>
-          <textarea
-            rows={2}
+          <input
+            type="text"
             value={shortDescription}
             onChange={(e) => setShortDescription(e.target.value)}
-            placeholder="Concise 1-2 sentence summary displayed on portfolio cards..."
+            placeholder="Concise 1–2 sentence summary displayed on portfolio cards and project header..."
             className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
           />
         </div>
 
         <div className="space-y-1.5">
           <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
-            Full Project Description (Case Study Narrative)
+            Full Project Description / Case Study Narrative
           </label>
           <textarea
             rows={5}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Detailed project story, creative direction, process, storyboarding, and outcomes..."
-            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
+            placeholder="Describe the creative brief, concept development, visual execution, and final results..."
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 p-4 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none leading-relaxed"
           />
         </div>
       </div>
@@ -777,10 +1140,11 @@ export default function ProjectForm({
               className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 px-3.5 py-2 font-display text-xs font-bold text-slate-800 cursor-pointer"
             >
               <Plus className="h-3.5 w-3.5" />
-              <span>Add</span>
+              <span>Add Tool</span>
             </button>
           </div>
 
+          {/* Quick-add tool chips */}
           <div className="flex flex-wrap gap-1.5 pt-1">
             {SUGGESTED_TOOLS.map((preset) => {
               const active = softwareTools.includes(preset);
@@ -791,10 +1155,10 @@ export default function ProjectForm({
                   onClick={() =>
                     active ? handleRemoveTool(preset) : handleAddTool(preset)
                   }
-                  className={`rounded-lg px-2 py-1 text-[10px] font-bold border transition-colors cursor-pointer ${
+                  className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
                     active
-                      ? 'bg-[#00685b] text-white border-[#00685b]'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-[#00685b]/40'
+                      ? 'bg-[#00685b] text-white'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:border-[#00685b]/40'
                   }`}
                 >
                   + {preset}
@@ -876,7 +1240,7 @@ export default function ProjectForm({
         </div>
       </div>
 
-      {/* Cover Image / Thumbnail Upload */}
+      {/* Cover Image / Thumbnail Upload + Card Thumbnail Mode Selector */}
       <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
@@ -884,7 +1248,7 @@ export default function ProjectForm({
               SUPABASE STORAGE: PORTFOLIO-IMAGES/PROJECTS/{projectStorageId.toUpperCase()}/
             </span>
             <h3 className="font-display text-sm font-black text-slate-900">
-              Main Cover Image / Thumbnail
+              Main Cover Image & Portfolio Card Thumbnail Mode
             </h3>
           </div>
 
@@ -937,11 +1301,20 @@ export default function ProjectForm({
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
           <div className="md:col-span-5">
             {coverImage ? (
-              <img
-                src={coverImage}
-                alt="Cover preview"
-                className="w-full aspect-[16/10] object-cover rounded-xl border border-slate-200 bg-white"
-              />
+              <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-slate-200 bg-white">
+                <img
+                  src={coverImage}
+                  alt="Cover preview"
+                  className="w-full h-full object-cover"
+                />
+                {thumbnailMode === 'video_thumbnail' && (
+                  <div className="absolute inset-0 bg-slate-900/25 flex items-center justify-center">
+                    <span className="h-11 w-11 rounded-full bg-[#00685b]/90 text-white flex items-center justify-center shadow-lg">
+                      <Play className="h-5 w-5 fill-white ml-0.5" />
+                    </span>
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="w-full aspect-[16/10] rounded-xl border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 space-y-1">
                 <ImageIcon className="h-6 w-6" />
@@ -950,19 +1323,390 @@ export default function ProjectForm({
             )}
           </div>
 
-          <div className="md:col-span-7 space-y-2">
-            <label className="block font-tech text-[10px] font-bold uppercase text-slate-500">
-              Or Paste Cover Image URL Directly
-            </label>
-            <input
-              type="url"
-              value={coverImage || ''}
-              onChange={(e) => setCoverImage(e.target.value || null)}
-              placeholder="https://..."
-              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-800 focus:border-[#00685b] focus:outline-none"
-            />
+          <div className="md:col-span-7 space-y-4">
+            <div className="space-y-1.5">
+              <label className="block font-tech text-[10px] font-bold uppercase text-slate-500">
+                Or Paste Cover Image URL Directly
+              </label>
+              <input
+                type="url"
+                value={coverImage || ''}
+                onChange={(e) => setCoverImage(e.target.value || null)}
+                placeholder="https://..."
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-800 focus:border-[#00685b] focus:outline-none"
+              />
+            </div>
+
+            {/* Portfolio Project Card Thumbnail Mode */}
+            <div className="space-y-2 pt-2 border-t border-slate-200/70">
+              <label className="block font-tech text-[10px] font-bold uppercase tracking-wider text-slate-700">
+                Portfolio Project Card Display Mode
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setThumbnailMode('cover_image')}
+                  className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all cursor-pointer ${
+                    thumbnailMode === 'cover_image'
+                      ? 'border-[#00685b] bg-[#00685b]/10 text-[#00685b]'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  <ImageIcon className="h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="font-display text-xs font-bold">
+                      Cover Image
+                    </p>
+                    <p className="font-sans text-[10px] text-slate-500">
+                      Standard static thumbnail on project cards
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setThumbnailMode('video_thumbnail')}
+                  className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all cursor-pointer ${
+                    thumbnailMode === 'video_thumbnail'
+                      ? 'border-[#00685b] bg-[#00685b]/10 text-[#00685b]'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                  }`}
+                >
+                  <Film className="h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="font-display text-xs font-bold">
+                      Video Thumbnail
+                    </p>
+                    <p className="font-sans text-[10px] text-slate-500">
+                      Displays play icon overlay & video badge on cards
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
+      </div>
+
+      {/* ====================================================================== */}
+      {/* 1. PROJECT VIDEOS SECTION (Direct Upload, Preview, Reorder, Replace)   */}
+      {/* ====================================================================== */}
+      <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <span className="font-tech text-[10px] font-bold uppercase tracking-wider text-[#00685b]">
+              SUPABASE STORAGE: PORTFOLIO-VIDEOS/PROJECTS/{projectStorageId.toUpperCase()}/ ({videoItems.length} VIDEOS)
+            </span>
+            <h3 className="font-display text-base font-black text-slate-900">
+              Project Videos
+            </h3>
+            <p className="font-sans text-[11px] text-slate-500">
+              Upload MP4, WebM, or MOV video files directly. Preview, reorder, add titles/descriptions, replace, or mark a primary featured video.
+            </p>
+          </div>
+
+          <label className="inline-flex items-center gap-1.5 rounded-xl bg-[#00685b] hover:bg-[#005348] px-4 py-2.5 font-display text-xs font-bold text-white cursor-pointer self-start shrink-0">
+            {uploadingVideos ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>Uploading ({videoProgress}%)</span>
+              </>
+            ) : (
+              <>
+                <Film className="h-3.5 w-3.5" />
+                <span>Browse Video Files</span>
+              </>
+            )}
+            <input
+              type="file"
+              multiple
+              accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+              onChange={handleVideoInputChange}
+              disabled={uploadingVideos}
+              className="hidden"
+            />
+          </label>
+        </div>
+
+        {/* Drag-and-Drop Video Upload Zone */}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!uploadingVideos) setIsVideoDropActive(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsVideoDropActive(false);
+          }}
+          onDrop={handleVideoDrop}
+          className={`rounded-2xl border-2 border-dashed p-6 text-center transition-all ${
+            isVideoDropActive
+              ? 'border-[#00685b] bg-[#00685b]/10'
+              : 'border-slate-300 bg-white hover:border-[#00685b]/50'
+          }`}
+        >
+          <div className="max-w-lg mx-auto space-y-2">
+            <div className="mx-auto h-10 w-10 rounded-xl bg-[#00685b]/10 text-[#00685b] flex items-center justify-center">
+              <Video className="h-5 w-5" />
+            </div>
+            <p className="font-display text-xs font-bold text-slate-800">
+              Drag & drop project video files here, or{' '}
+              <label className="text-[#00685b] underline cursor-pointer">
+                browse from your computer
+                <input
+                  type="file"
+                  multiple
+                  accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+                  onChange={handleVideoInputChange}
+                  disabled={uploadingVideos}
+                  className="hidden"
+                />
+              </label>
+            </p>
+            <p className="font-sans text-[11px] text-slate-500">
+              Supported formats: <strong>MP4 (H.264)</strong>, <strong>WebM</strong>, <strong>MOV</strong> • Maximum configured upload size: <strong>{MAX_PORTFOLIO_VIDEO_SIZE_MB} MB per video</strong>
+            </p>
+            <p className="font-sans text-[10px] text-slate-400">
+              Compression tip: Export 1080p MP4 (H.264) or WebM at 5–12 Mbps with web fast-start enabled for instant streaming on desktop and mobile.
+            </p>
+          </div>
+        </div>
+
+        {/* Active Video Upload Progress Bar */}
+        {uploadingVideos && (
+          <div className="rounded-xl border border-[#00685b]/25 bg-white p-3.5 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="inline-flex items-center gap-2 font-display font-bold text-slate-800 truncate">
+                <Loader2 className="h-3.5 w-3.5 text-[#00685b] animate-spin shrink-0" />
+                <span className="truncate">
+                  Uploading {currentUploadingVideoName || 'video'}...
+                </span>
+              </span>
+              <span className="font-mono text-xs font-bold text-[#00685b]">
+                {videoProgress}%
+              </span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className="h-full bg-[#00685b] transition-all duration-300"
+                style={{ width: `${videoProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Video Upload Feedback & Retry Banner */}
+        {videoStatusMessage && (
+          <div
+            className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 rounded-xl border p-3.5 text-xs ${
+              videoStatusMessage.type === 'error'
+                ? 'border-red-200 bg-red-50 text-red-700'
+                : videoStatusMessage.type === 'warning'
+                ? 'border-amber-200 bg-amber-50 text-amber-800'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            }`}
+          >
+            <div className="flex items-start gap-2">
+              {videoStatusMessage.type === 'error' ? (
+                <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+              )}
+              <span>{videoStatusMessage.text}</span>
+            </div>
+
+            {failedVideoFiles.length > 0 && (
+              <button
+                type="button"
+                onClick={handleRetryFailedVideoUploads}
+                disabled={uploadingVideos}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 px-3 py-1.5 font-display text-[11px] font-bold text-white cursor-pointer shrink-0"
+              >
+                <RefreshCw className="h-3 w-3" />
+                <span>Retry Failed Upload</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Uploaded Project Videos List */}
+        {videoItems.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-white/70 py-6 text-center">
+            <p className="font-display text-xs font-bold text-slate-600">
+              No direct project videos uploaded yet
+            </p>
+            <p className="font-sans text-[11px] text-slate-400 mt-0.5">
+              Upload one or more MP4/WebM videos above to display an interactive video showcase on this project's detail page.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {videoItems.map((vid, idx) => {
+              const isReplacingThisVideo = replacingVideoIndex === idx;
+              const displayFileName =
+                vid.file_name ||
+                (vid.storage_path
+                  ? vid.storage_path.split('/').pop()
+                  : vid.video_url.split('/').pop()) ||
+                `video-${idx + 1}.mp4`;
+
+              return (
+                <div
+                  key={`${vid.video_url}-${idx}`}
+                  draggable
+                  onDragStart={() => setVideoDragIndex(idx)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => {
+                    if (videoDragIndex !== null && videoDragIndex !== idx) {
+                      moveVideoItem(videoDragIndex, idx);
+                    }
+                    setVideoDragIndex(null);
+                  }}
+                  className={`bg-white border rounded-2xl p-4 space-y-3 shadow-2xs transition-all ${
+                    vid.is_featured
+                      ? 'border-[#00685b] ring-1 ring-[#00685b]/20'
+                      : 'border-slate-200'
+                  }`}
+                >
+                  {/* Video Player Preview (No Autoplay with Sound) */}
+                  <div className="relative aspect-video rounded-xl overflow-hidden bg-slate-950 border border-slate-200">
+                    <video
+                      key={vid.video_url}
+                      src={vid.video_url}
+                      poster={coverImage || undefined}
+                      controls
+                      playsInline
+                      preload="metadata"
+                      className="w-full h-full object-contain bg-slate-950"
+                    />
+                    <span className="absolute top-2.5 left-2.5 rounded-md bg-slate-900/85 px-2 py-0.5 font-mono text-[10px] font-bold text-white pointer-events-none">
+                      Video #{idx + 1}
+                    </span>
+                    {vid.is_featured && (
+                      <span className="absolute top-2.5 right-2.5 inline-flex items-center gap-1 rounded-md bg-[#00685b] px-2.5 py-0.5 font-tech text-[9px] font-bold uppercase text-white pointer-events-none">
+                        <Star className="h-2.5 w-2.5 fill-white" />
+                        Featured Video
+                      </span>
+                    )}
+                  </div>
+
+                  {/* File Metadata Row */}
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500 font-mono bg-slate-50 rounded-lg px-2.5 py-1.5">
+                    <span className="truncate" title={vid.storage_path || vid.video_url}>
+                      {displayFileName}
+                    </span>
+                    {vid.file_size ? (
+                      <span className="shrink-0 font-bold text-slate-600">
+                        {formatFileSize(vid.file_size)}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {/* Video Title & Description Inputs */}
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={vid.video_title}
+                      onChange={(e) =>
+                        updateVideoField(idx, { video_title: e.target.value })
+                      }
+                      placeholder="Video title (e.g. Main Reel / Director's Cut)"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-1.5 text-xs font-bold text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={vid.video_description}
+                      onChange={(e) =>
+                        updateVideoField(idx, {
+                          video_description: e.target.value,
+                        })
+                      }
+                      placeholder="Optional video description or scene notes..."
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-1.5 text-xs text-slate-700 focus:border-[#00685b] focus:bg-white focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Video Action Controls: Reorder, Featured Toggle, Replace, Delete */}
+                  <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-slate-100">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={idx === 0}
+                        onClick={() => moveVideoItem(idx, idx - 1)}
+                        className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30 cursor-pointer"
+                        title="Move Video Earlier"
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={idx === videoItems.length - 1}
+                        onClick={() => moveVideoItem(idx, idx + 1)}
+                        className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-30 cursor-pointer"
+                        title="Move Video Later"
+                      >
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setFeaturedVideoIndex(idx)}
+                        className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[10px] font-bold cursor-pointer ${
+                          vid.is_featured
+                            ? 'border-[#00685b] bg-[#00685b]/10 text-[#00685b]'
+                            : 'border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <Star
+                          className={`h-3 w-3 ${
+                            vid.is_featured
+                              ? 'fill-[#00685b] text-[#00685b]'
+                              : 'text-slate-400'
+                          }`}
+                        />
+                        <span>
+                          {vid.is_featured ? 'Primary Video' : 'Set Primary'}
+                        </span>
+                      </button>
+
+                      <label
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-[10px] font-bold text-[#00685b] hover:bg-slate-50 cursor-pointer"
+                        title="Replace this video file"
+                      >
+                        {isReplacingThisVideo ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3 w-3" />
+                        )}
+                        <span>Replace</span>
+                        <input
+                          type="file"
+                          accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+                          onChange={(e) => handleReplaceSingleVideo(idx, e)}
+                          disabled={isReplacingThisVideo}
+                          className="hidden"
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => removeVideoItem(idx)}
+                        className="rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-600 hover:bg-red-100 cursor-pointer"
+                        title="Delete Video"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Multi-Image Gallery Manager (Upload, Preview, Replace, Reorder, Caption, Delete) */}
@@ -1166,11 +1910,11 @@ export default function ProjectForm({
         )}
       </div>
 
-      {/* Optional Video URL, Behance URL & Live Website URL */}
+      {/* Optional External Video URL, Behance URL & Live Website URL */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
         <div className="space-y-1.5">
           <label className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700">
-            Optional Project Video URL (YouTube / Vimeo / MP4)
+            External Embed Video URL (YouTube / Vimeo Optional)
           </label>
           <input
             type="url"
@@ -1401,7 +2145,7 @@ export default function ProjectForm({
                     </div>
                   )}
 
-                  {(behanceUrl || videoUrl || websiteUrl) && (
+                  {(behanceUrl || videoUrl || videoItems.length > 0 || websiteUrl) && (
                     <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-2">
                       {behanceUrl && (
                         <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#00685b]">
@@ -1409,16 +2153,56 @@ export default function ProjectForm({
                           Behance
                         </span>
                       )}
-                      {videoUrl && (
+                      {(videoUrl || videoItems.length > 0) && (
                         <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#00685b]">
                           <Video className="h-3 w-3" />
-                          Video Attached
+                          {videoItems.length > 0
+                            ? `${videoItems.length} Video(s)`
+                            : 'Video Attached'}
                         </span>
                       )}
                     </div>
                   )}
                 </div>
               </div>
+
+              {/* Preview Uploaded Project Videos */}
+              {videoItems.length > 0 && (
+                <div className="space-y-4">
+                  <span className="font-tech text-[10px] font-bold uppercase tracking-widest text-[#00685b] block">
+                    PROJECT VIDEOS ({videoItems.length})
+                  </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {videoItems.map((vid, idx) => (
+                      <div
+                        key={`prev-vid-${idx}`}
+                        className="bg-white border border-slate-200 rounded-2xl p-3 space-y-2"
+                      >
+                        <div className="aspect-video rounded-xl overflow-hidden bg-slate-950">
+                          <video
+                            src={vid.video_url}
+                            poster={coverImage || undefined}
+                            controls
+                            playsInline
+                            preload="metadata"
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                        {vid.video_title && (
+                          <p className="font-display text-xs font-bold text-slate-900 px-1">
+                            {vid.video_title}
+                          </p>
+                        )}
+                        {vid.video_description && (
+                          <p className="font-sans text-[11px] text-slate-500 px-1">
+                            {vid.video_description}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {(previewActiveImage || coverImage) && (
                 <div className="space-y-3">
