@@ -141,16 +141,15 @@ export default function AdminLayout({
       <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 bg-white border-r border-slate-200 z-30 justify-between overflow-y-auto">
         <div className="p-6 space-y-6">
           {/* Brand Header */}
-          <div className="flex items-center gap-3 border-b border-slate-100 pb-5">
-            <QBenchLogo variant="symbol" iconSize={38} />
-            <div className="min-w-0">
-              <span className="font-display text-base font-black tracking-tight text-slate-900 block leading-none">
-                QBENCH
-              </span>
-              <span className="font-tech text-[10px] font-bold uppercase tracking-wider text-[#00685b] block mt-1">
-                Creative Management System
-              </span>
-            </div>
+          <div className="border-b border-slate-100 pb-5">
+            <button
+              type="button"
+              onClick={() => handleNavClick('/admin')}
+              className="text-left cursor-pointer group block focus:outline-none transition-opacity hover:opacity-90"
+              title="QBENCH — Unlimited Resources"
+            >
+              <QBenchLogo variant="horizontal" />
+            </button>
           </div>
 
           {/* Navigation Links */}
@@ -225,14 +224,14 @@ export default function AdminLayout({
             >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-            <div>
-              <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#00685b] block">
-                QBENCH CMS
-              </span>
-              <h1 className="font-display text-base sm:text-lg font-black text-slate-900">
-                Creative Management System
-              </h1>
-            </div>
+            <button
+              type="button"
+              onClick={() => handleNavClick('/admin')}
+              className="text-left cursor-pointer focus:outline-none transition-opacity hover:opacity-90"
+              title="QBENCH — Unlimited Resources"
+            >
+              <QBenchLogo variant="horizontal" />
+            </button>
           </div>
 
           <div className="flex items-center gap-2">

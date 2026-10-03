@@ -34,14 +34,11 @@ export default function AdminLogin({
 
       <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
         <div className="flex flex-col items-center text-center space-y-3">
-          <QBenchLogo variant="symbol" iconSize={52} />
-          <div className="space-y-1">
+          <QBenchLogo variant="stacked" />
+          <div className="space-y-1 pt-1">
             <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#00685b] block">
-              QBENCH CMS
+              Admin Portal
             </span>
-            <h1 className="font-display text-2xl font-black text-slate-900">
-              Creative Management System
-            </h1>
             <p className="font-sans text-xs text-slate-500">
               Sign in with your authorized administrator credentials
             </p>
