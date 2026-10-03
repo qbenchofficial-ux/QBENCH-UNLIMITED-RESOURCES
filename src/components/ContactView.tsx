@@ -34,7 +34,6 @@ import { NavSection, ServiceTab } from '../types';
 import { sendEmailJS, formatSupabaseError } from '../lib/emailService';
 import { useProjects } from '../hooks/useProjects';
 import { useAuth } from '../hooks/useAuth';
-import LeadsDashboard from './LeadsDashboard';
 
 interface ContactViewProps {
   onNavigate?: (section: NavSection, tab?: ServiceTab) => void;
@@ -206,9 +205,6 @@ export default function ContactView({ onNavigate }: ContactViewProps) {
     }, 8000);
     return () => clearTimeout(timer);
   }, [showSuccessToast]);
-
-  // Lead Automation & CRM Tab (Authorized Admins Only)
-  const [activeTab, setActiveTab] = useState<'form' | 'dashboard'>('form');
 
   // Anti-spam honeypot protection field & double-click submission lock
   const [honeypot, setHoneypot] = useState('');
@@ -676,40 +672,7 @@ ${message}`;
             
             {/* Right Column: Interaction form panel */}
             <div id="message-form-segment" className="lg:col-span-7">
-              {/* Tab Selector Section (Only displayed for authenticated admins) */}
-              {isAdmin && (
-                <div id="crm-tab-header" className="flex border-b border-[#00685b]/10 mb-6 bg-slate-50 p-1 rounded-xl gap-2 select-none">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('form')}
-                    className={`flex-1 rounded-lg py-2.5 px-3 font-display text-xs font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer text-center flex items-center justify-center gap-1.5 ${
-                      activeTab === 'form' 
-                        ? 'bg-[#00685b] text-white shadow-xs' 
-                        : 'text-brand-text-muted hover:text-[#00685b] bg-transparent'
-                    }`}
-                  >
-                    <span className="text-xs">✉</span>
-                    <span>Send a Message</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('dashboard')}
-                    className={`flex-1 rounded-lg py-2.5 px-3 font-display text-xs font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer text-center flex items-center justify-center gap-1.5 ${
-                      activeTab === 'dashboard' 
-                        ? 'bg-[#00685b] text-white shadow-xs' 
-                        : 'text-brand-text-muted hover:text-[#00685b] bg-transparent'
-                    }`}
-                  >
-                    <span className="text-xs">📊</span>
-                    <span>Admin Leads CRM Portal</span>
-                  </button>
-                </div>
-              )}
-
-              {isAdmin && activeTab === 'dashboard' ? (
-                <LeadsDashboard />
-              ) : (
-                <div className="space-y-6">
+              <div className="space-y-6">
                 
                 <div className="space-y-2.5">
                   {selectedPackage ? (
@@ -1353,8 +1316,7 @@ ${message}`;
                   )}
                 </AnimatePresence>
               </div>
-            )}
-          </div>
+            </div>
             
           </div>
         </div>
