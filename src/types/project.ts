@@ -196,6 +196,7 @@ export interface ProjectInquiry {
   phone: string;
   company: string | null;
   service: string;
+  package?: string | null;
   budget: string | null;
   message: string | null;
   status: InquiryStatus;
@@ -209,6 +210,7 @@ export interface ProjectInquiryInput {
   phone: string;
   company?: string;
   service: string;
+  package?: string;
   budget?: string;
   timeline?: string;
   project_description?: string;

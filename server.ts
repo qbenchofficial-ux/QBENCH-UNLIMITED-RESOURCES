@@ -104,6 +104,23 @@ app.get('/api/integration-config', (_req, res) => {
           process.env.SUPABASE_URL
       ) || 'https://zsbpxqzmkhcvxdvjoabp.supabase.co',
     VITE_SUPABASE_ANON_KEY: safeAnonKey,
+    VITE_EMAILJS_PUBLIC_KEY: clean(
+      process.env.VITE_EMAILJS_PUBLIC_KEY || process.env.EMAILJS_PUBLIC_KEY
+    ),
+    VITE_EMAILJS_SERVICE_ID: clean(
+      process.env.VITE_EMAILJS_SERVICE_ID || process.env.EMAILJS_SERVICE_ID
+    ),
+    VITE_EMAILJS_ADMIN_TEMPLATE_ID: clean(
+      process.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
+        process.env.EMAILJS_ADMIN_TEMPLATE_ID ||
+        process.env.VITE_EMAILJS_TEMPLATE_ID
+    ),
+    VITE_EMAILJS_CUSTOMER_TEMPLATE_ID: clean(
+      process.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+        process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+        process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+        process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID
+    ),
     EMAILJS_PUBLIC_KEY: clean(process.env.EMAILJS_PUBLIC_KEY || process.env.VITE_EMAILJS_PUBLIC_KEY),
     EMAILJS_SERVICE_ID: clean(process.env.EMAILJS_SERVICE_ID || process.env.VITE_EMAILJS_SERVICE_ID),
     EMAILJS_ADMIN_TEMPLATE_ID: clean(
@@ -169,6 +186,19 @@ app.post('/api/emailjs-send', async (req, res) => {
     'https://ais-dev-somwyso2xv5jhu4pxvfzyv-572791785868.asia-east1.run.app';
 
   try {
+    const payload: Record<string, any> = {
+      lib_version: '4.4.1',
+      user_id: resolvedPublicKey,
+      service_id: resolvedServiceId,
+      template_id: resolvedTemplateId,
+      template_params: templateParams || {}
+    };
+
+    const privateKey = clean(process.env.EMAILJS_PRIVATE_KEY);
+    if (privateKey) {
+      payload.accessToken = privateKey;
+    }
+
     const resp = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method: 'POST',
       headers: {
@@ -177,13 +207,7 @@ app.post('/api/emailjs-send', async (req, res) => {
         'User-Agent':
           'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
       },
-      body: JSON.stringify({
-        lib_version: '4.4.1',
-        user_id: resolvedPublicKey,
-        service_id: resolvedServiceId,
-        template_id: resolvedTemplateId,
-        template_params: templateParams || {}
-      })
+      body: JSON.stringify(payload)
     });
 
     const text = await resp.text().catch(() => '');

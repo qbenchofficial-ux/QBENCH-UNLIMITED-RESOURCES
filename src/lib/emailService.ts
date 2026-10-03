@@ -118,54 +118,60 @@ function cleanWebhookUrl(val: unknown): string {
 let emailJsInitializedKey = '';
 
 async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
-  const metaEnv = ((import.meta as any).env || {}) as Record<string, string | undefined>;
-
   let EMAILJS_PUBLIC_KEY = cleanEnvValue(
-    process.env.EMAILJS_PUBLIC_KEY || metaEnv.VITE_EMAILJS_PUBLIC_KEY || metaEnv.EMAILJS_PUBLIC_KEY
+    import.meta.env.VITE_EMAILJS_PUBLIC_KEY || process.env.EMAILJS_PUBLIC_KEY || ''
   );
   let EMAILJS_SERVICE_ID = cleanEnvValue(
-    process.env.EMAILJS_SERVICE_ID || metaEnv.VITE_EMAILJS_SERVICE_ID || metaEnv.EMAILJS_SERVICE_ID
+    import.meta.env.VITE_EMAILJS_SERVICE_ID || process.env.EMAILJS_SERVICE_ID || ''
   );
   let EMAILJS_ADMIN_TEMPLATE_ID = cleanEnvValue(
-    process.env.EMAILJS_ADMIN_TEMPLATE_ID ||
-      metaEnv.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
-      metaEnv.EMAILJS_ADMIN_TEMPLATE_ID ||
-      metaEnv.VITE_EMAILJS_TEMPLATE_ID
+    import.meta.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
+      process.env.EMAILJS_ADMIN_TEMPLATE_ID ||
+      import.meta.env.VITE_EMAILJS_TEMPLATE_ID ||
+      ''
   );
   let EMAILJS_CUSTOMER_TEMPLATE_ID = cleanEnvValue(
-    process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
-      metaEnv.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+    import.meta.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+      import.meta.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+      process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
       process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
-      metaEnv.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
-      metaEnv.EMAILJS_CUSTOMER_TEMPLATE_ID ||
-      metaEnv.EMAILJS_AUTO_REPLY_TEMPLATE_ID
+      ''
   );
   let EMAILJS_AUTO_REPLY_TEMPLATE_ID = EMAILJS_CUSTOMER_TEMPLATE_ID;
   let GOOGLE_SHEETS_WEBHOOK_URL = cleanWebhookUrl(
-    process.env.GOOGLE_SHEETS_WEBHOOK_URL ||
-      metaEnv.VITE_GOOGLE_SHEETS_WEBHOOK_URL ||
-      metaEnv.GOOGLE_SHEETS_WEBHOOK_URL
+    import.meta.env.VITE_GOOGLE_SHEETS_WEBHOOK_URL ||
+      process.env.GOOGLE_SHEETS_WEBHOOK_URL ||
+      ''
   );
 
   if (
     !EMAILJS_PUBLIC_KEY ||
     !EMAILJS_SERVICE_ID ||
     !EMAILJS_ADMIN_TEMPLATE_ID ||
-    !EMAILJS_CUSTOMER_TEMPLATE_ID ||
-    !GOOGLE_SHEETS_WEBHOOK_URL
+    !EMAILJS_CUSTOMER_TEMPLATE_ID
   ) {
     try {
       const resp = await fetch('/api/integration-config');
       const contentType = resp.headers.get('content-type') || '';
       if (resp.ok && contentType.includes('application/json')) {
         const data = await resp.json();
-        EMAILJS_PUBLIC_KEY = EMAILJS_PUBLIC_KEY || cleanEnvValue(data.EMAILJS_PUBLIC_KEY);
-        EMAILJS_SERVICE_ID = EMAILJS_SERVICE_ID || cleanEnvValue(data.EMAILJS_SERVICE_ID);
+        EMAILJS_PUBLIC_KEY =
+          EMAILJS_PUBLIC_KEY ||
+          cleanEnvValue(data.VITE_EMAILJS_PUBLIC_KEY) ||
+          cleanEnvValue(data.EMAILJS_PUBLIC_KEY);
+        EMAILJS_SERVICE_ID =
+          EMAILJS_SERVICE_ID ||
+          cleanEnvValue(data.VITE_EMAILJS_SERVICE_ID) ||
+          cleanEnvValue(data.EMAILJS_SERVICE_ID);
         EMAILJS_ADMIN_TEMPLATE_ID =
-          EMAILJS_ADMIN_TEMPLATE_ID || cleanEnvValue(data.EMAILJS_ADMIN_TEMPLATE_ID);
+          EMAILJS_ADMIN_TEMPLATE_ID ||
+          cleanEnvValue(data.VITE_EMAILJS_ADMIN_TEMPLATE_ID) ||
+          cleanEnvValue(data.EMAILJS_ADMIN_TEMPLATE_ID);
         EMAILJS_CUSTOMER_TEMPLATE_ID =
           EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          cleanEnvValue(data.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID) ||
           cleanEnvValue(data.EMAILJS_CUSTOMER_TEMPLATE_ID) ||
+          cleanEnvValue(data.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID) ||
           cleanEnvValue(data.EMAILJS_AUTO_REPLY_TEMPLATE_ID);
         EMAILJS_AUTO_REPLY_TEMPLATE_ID = EMAILJS_CUSTOMER_TEMPLATE_ID;
         GOOGLE_SHEETS_WEBHOOK_URL =
@@ -401,6 +407,7 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
     email,
     phone,
     service: pkgFields.service,
+    package: pkgFields.package,
     budget: params.budget || pkgFields.budget,
     timeline: params.timeline || pkgFields.timeline,
     project_description: params.project_description || message,
@@ -522,9 +529,10 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
         });
         adminEmailSuccess = true;
         channelsUsed.push('Admin Notification');
+        console.info('[QBENCH] Admin Email: SUCCESS');
       } catch (adminErr: any) {
         adminEmailError = adminErr?.message || 'Admin notification failed';
-        console.warn('QBENCH: Admin EmailJS notification failed (enquiry preserved in Supabase):', adminErr?.message || adminErr);
+        console.warn('[QBENCH] Admin Email: FAILED', adminErr?.message || adminErr);
       }
     }
 
@@ -570,9 +578,10 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
         });
         customerEmailSuccess = true;
         channelsUsed.push('Customer Confirmation');
+        console.info('[QBENCH] Customer Email: SUCCESS');
       } catch (customerErr: any) {
         customerEmailError = customerErr?.message || 'Customer confirmation failed';
-        console.warn('QBENCH: Customer EmailJS confirmation failed (enquiry preserved in Supabase):', customerErr?.message || customerErr);
+        console.warn('[QBENCH] Customer Email: FAILED', customerErr?.message || customerErr);
       }
     }
   }
@@ -603,18 +612,18 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
   }
 
   let emailDelivery: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'SKIPPED' = 'SKIPPED';
-  let outcomeMessage = 'Thank you! Your enquiry has been submitted successfully. We’ll get back to you shortly.';
+  let outcomeMessage = 'Your enquiry has been received successfully. We will get back to you shortly.';
 
   if (EMAILJS_PUBLIC_KEY && EMAILJS_SERVICE_ID && (EMAILJS_ADMIN_TEMPLATE_ID || customerTemplateId)) {
     if (adminEmailSuccess && customerEmailSuccess) {
       emailDelivery = 'SUCCESS';
-      outcomeMessage = 'Thank you! Your enquiry has been submitted and notifications sent. We’ll get back to you shortly.';
+      outcomeMessage = 'Thank you! Your enquiry has been received and confirmed. We’ll get back to you shortly.';
     } else if (adminEmailSuccess || customerEmailSuccess) {
       emailDelivery = 'PARTIAL';
-      outcomeMessage = 'Thank you! Your enquiry has been safely received and stored. Automated notification delivery is in progress.';
+      outcomeMessage = 'Your enquiry has been received successfully. We will get back to you shortly.';
     } else {
       emailDelivery = 'FAILED';
-      outcomeMessage = 'Thank you! Your enquiry has been safely recorded in our database. Our team will review your requirements.';
+      outcomeMessage = 'Your enquiry has been received successfully. We will get back to you shortly.';
     }
   }
 

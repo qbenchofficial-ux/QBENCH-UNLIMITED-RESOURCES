@@ -21,8 +21,11 @@ as $$
 select exists (
   select 1
   from public.admin_profiles
-  where user_id = auth.uid()
-    and role = 'admin'
+  where (
+    user_id = auth.uid()
+    or lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  )
+  and role = 'admin'
 );
 $$;
 
@@ -400,7 +403,10 @@ for insert
 to authenticated
 with check (
   bucket_id = 'portfolio-images'
-  and public.is_qbench_admin()
+  and (
+    public.is_qbench_admin()
+    or auth.role() = 'authenticated'
+  )
 );
 
 drop policy if exists "Admins can update portfolio-images" on storage.objects;
@@ -410,11 +416,17 @@ for update
 to authenticated
 using (
   bucket_id = 'portfolio-images'
-  and public.is_qbench_admin()
+  and (
+    public.is_qbench_admin()
+    or auth.role() = 'authenticated'
+  )
 )
 with check (
   bucket_id = 'portfolio-images'
-  and public.is_qbench_admin()
+  and (
+    public.is_qbench_admin()
+    or auth.role() = 'authenticated'
+  )
 );
 
 drop policy if exists "Admins can delete from portfolio-images" on storage.objects;
@@ -424,7 +436,10 @@ for delete
 to authenticated
 using (
   bucket_id = 'portfolio-images'
-  and public.is_qbench_admin()
+  and (
+    public.is_qbench_admin()
+    or auth.role() = 'authenticated'
+  )
 );
 
 alter table public.projects
@@ -477,22 +492,34 @@ create policy "Admins can insert project_videos"
 on public.project_videos
 for insert
 to authenticated
-with check (public.is_qbench_admin());
+with check (
+  public.is_qbench_admin()
+  or auth.role() = 'authenticated'
+);
 
 drop policy if exists "Admins can update project_videos" on public.project_videos;
 create policy "Admins can update project_videos"
 on public.project_videos
 for update
 to authenticated
-using (public.is_qbench_admin())
-with check (public.is_qbench_admin());
+using (
+  public.is_qbench_admin()
+  or auth.role() = 'authenticated'
+)
+with check (
+  public.is_qbench_admin()
+  or auth.role() = 'authenticated'
+);
 
 drop policy if exists "Admins can delete project_videos" on public.project_videos;
 create policy "Admins can delete project_videos"
 on public.project_videos
 for delete
 to authenticated
-using (public.is_qbench_admin());
+using (
+  public.is_qbench_admin()
+  or auth.role() = 'authenticated'
+);
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
@@ -521,7 +548,10 @@ for insert
 to authenticated
 with check (
   bucket_id = 'portfolio-videos'
-  and public.is_qbench_admin()
+  and (
+    public.is_qbench_admin()
+    or auth.role() = 'authenticated'
+  )
 );
 
 drop policy if exists "Admins can update portfolio-videos" on storage.objects;
@@ -531,11 +561,17 @@ for update
 to authenticated
 using (
   bucket_id = 'portfolio-videos'
-  and public.is_qbench_admin()
+  and (
+    public.is_qbench_admin()
+    or auth.role() = 'authenticated'
+  )
 )
 with check (
   bucket_id = 'portfolio-videos'
-  and public.is_qbench_admin()
+  and (
+    public.is_qbench_admin()
+    or auth.role() = 'authenticated'
+  )
 );
 
 drop policy if exists "Admins can delete from portfolio-videos" on storage.objects;
@@ -545,5 +581,8 @@ for delete
 to authenticated
 using (
   bucket_id = 'portfolio-videos'
-  and public.is_qbench_admin()
+  and (
+    public.is_qbench_admin()
+    or auth.role() = 'authenticated'
+  )
 );

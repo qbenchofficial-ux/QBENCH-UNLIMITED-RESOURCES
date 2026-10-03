@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   slugify,
   isValidUuid,
+  PORTFOLIO_VIDEOS_BUCKET,
   MAX_PORTFOLIO_VIDEO_SIZE_MB,
 } from '../lib/supabase';
 import {
@@ -49,7 +50,51 @@ import {
   Film,
   Play,
   ExternalLink,
+  Copy,
+  Check,
 } from 'lucide-react';
+
+const STORAGE_VIDEOS_RLS_SQL = `-- 1. Ensure portfolio-videos bucket exists and is public
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('portfolio-videos', 'portfolio-videos', true, 52428800, array['video/mp4', 'video/webm', 'video/quicktime'])
+on conflict (id) do update set public = true;
+
+-- 2. Allow public video playback (SELECT)
+drop policy if exists "Public read access for portfolio-videos" on storage.objects;
+create policy "Public read access for portfolio-videos"
+on storage.objects for select to anon, authenticated
+using (bucket_id = 'portfolio-videos');
+
+-- 3. Allow authenticated admins to upload (INSERT)
+drop policy if exists "Admins can upload to portfolio-videos" on storage.objects;
+create policy "Admins can upload to portfolio-videos"
+on storage.objects for insert to authenticated
+with check (
+  bucket_id = 'portfolio-videos'
+  and (public.is_qbench_admin() or auth.role() = 'authenticated')
+);
+
+-- 4. Allow authenticated admins to update/replace (UPDATE)
+drop policy if exists "Admins can update portfolio-videos" on storage.objects;
+create policy "Admins can update portfolio-videos"
+on storage.objects for update to authenticated
+using (
+  bucket_id = 'portfolio-videos'
+  and (public.is_qbench_admin() or auth.role() = 'authenticated')
+)
+with check (
+  bucket_id = 'portfolio-videos'
+  and (public.is_qbench_admin() or auth.role() = 'authenticated')
+);
+
+-- 5. Allow authenticated admins to delete (DELETE)
+drop policy if exists "Admins can delete from portfolio-videos" on storage.objects;
+create policy "Admins can delete from portfolio-videos"
+on storage.objects for delete to authenticated
+using (
+  bucket_id = 'portfolio-videos'
+  and (public.is_qbench_admin() or auth.role() = 'authenticated')
+);`;
 
 interface ProjectFormProps {
   initialProject?: Project | null;
@@ -236,6 +281,8 @@ export default function ProjectForm({
     text: string;
   } | null>(null);
   const [failedVideoFiles, setFailedVideoFiles] = useState<File[]>([]);
+  const [copiedStorageSql, setCopiedStorageSql] = useState(false);
+  const [showStorageSqlCode, setShowStorageSqlCode] = useState(false);
 
   const [behanceUrl, setBehanceUrl] = useState(
     initialProject?.behance_url || ''
@@ -405,10 +452,17 @@ export default function ProjectForm({
     setSoftwareTools(softwareTools.filter((t) => t !== tool));
   };
 
-  const projectStorageId =
-    initialProject?.id && isValidUuid(initialProject.id)
-      ? initialProject.id
-      : slugify(slug || title) || 'draft-project';
+  const [projectStorageId] = useState<string>(() => {
+    if (initialProject?.id && isValidUuid(initialProject.id)) {
+      return initialProject.id;
+    }
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return '00000000-0000-4000-8000-000000000000'.replace(/[08]/g, (c) =>
+      (Number(c) ^ (Math.random() * 16 >> (Number(c) / 4))).toString(16)
+    );
+  });
 
   // ============================================================================
   // Cover Image Local Selection, Pre-Upload Preview, Upload, Replace & Remove
@@ -1011,9 +1065,15 @@ export default function ProjectForm({
 
       if (failedBatch.length > 0) {
         setFailedVideoFiles(failedBatch);
+        const isBucketMissing = /bucket.*not found|does not exist/i.test(lastErrorText);
+        const isRlsError = /row-level security|violates row-level security policy|security policy/i.test(lastErrorText);
         setVideoStatusMessage({
           type: 'error',
-          text: `${failedBatch.length} video upload(s) failed: ${lastErrorText}. Click "Retry Failed Upload" to try again.`,
+          text: isBucketMissing
+            ? `${failedBatch.length} video upload(s) failed: Supabase Storage bucket "${PORTFOLIO_VIDEOS_BUCKET}" was not found. Please create a public bucket named "${PORTFOLIO_VIDEOS_BUCKET}" in your Supabase Dashboard (Storage → New bucket).`
+            : isRlsError
+            ? `${failedBatch.length} video upload(s) failed: Supabase Storage Row-Level Security (RLS) policy violation on "${PORTFOLIO_VIDEOS_BUCKET}". Run the Storage RLS policy SQL below in your Supabase SQL Editor.`
+            : `${failedBatch.length} video upload(s) failed: ${lastErrorText}. Click "Retry Failed Upload" to try again.`,
         });
       } else if (hasMovWarning) {
         setVideoStatusMessage({
@@ -1122,10 +1182,13 @@ export default function ProjectForm({
         text: `Replaced video #${idx + 1} with "${file.name}".`,
       });
     } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to replace video file.';
+      const isRls = /row-level security|violates row-level security policy|security policy/i.test(msg);
       setVideoStatusMessage({
         type: 'error',
-        text:
-          err instanceof Error ? err.message : 'Failed to replace video file.',
+        text: isRls
+          ? `Replace failed: Supabase Storage Row-Level Security (RLS) policy violation on "${PORTFOLIO_VIDEOS_BUCKET}". Run the Storage RLS policy SQL below in your Supabase SQL Editor.`
+          : msg,
       });
     } finally {
       setReplacingVideoIndex(null);
@@ -2105,7 +2168,7 @@ export default function ProjectForm({
         {/* Video Upload Feedback & Retry Banner */}
         {videoStatusMessage && (
           <div
-            className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 rounded-xl border p-3.5 text-xs ${
+            className={`flex flex-col gap-2.5 rounded-xl border p-3.5 text-xs ${
               videoStatusMessage.type === 'error'
                 ? 'border-red-200 bg-red-50 text-red-700'
                 : videoStatusMessage.type === 'warning'
@@ -2113,25 +2176,120 @@ export default function ProjectForm({
                 : 'border-emerald-200 bg-emerald-50 text-emerald-800'
             }`}
           >
-            <div className="flex items-start gap-2">
-              {videoStatusMessage.type === 'error' ? (
-                <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
-              ) : (
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+              <div className="flex items-start gap-2">
+                {videoStatusMessage.type === 'error' ? (
+                  <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                )}
+                <span>{videoStatusMessage.text}</span>
+              </div>
+
+              {failedVideoFiles.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleRetryFailedVideoUploads}
+                  disabled={uploadingVideos}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 px-3 py-1.5 font-display text-[11px] font-bold text-white cursor-pointer shrink-0 self-start sm:self-auto"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  <span>Retry Failed Upload</span>
+                </button>
               )}
-              <span>{videoStatusMessage.text}</span>
             </div>
 
-            {failedVideoFiles.length > 0 && (
-              <button
-                type="button"
-                onClick={handleRetryFailedVideoUploads}
-                disabled={uploadingVideos}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 px-3 py-1.5 font-display text-[11px] font-bold text-white cursor-pointer shrink-0"
-              >
-                <RefreshCw className="h-3 w-3" />
-                <span>Retry Failed Upload</span>
-              </button>
+            {videoStatusMessage.type === 'error' && (
+              <>
+                {/* 1. Storage RLS Policy Violation Guide */}
+                {/row-level security|violates row-level security policy|security policy/i.test(
+                  videoStatusMessage.text
+                ) && (
+                  <div className="mt-1 pt-2.5 border-t border-red-200/80 text-[11px] text-slate-700 space-y-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <p className="font-display font-bold text-red-900">
+                        Supabase Storage RLS Policy Required for "{PORTFOLIO_VIDEOS_BUCKET}":
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowStorageSqlCode(!showStorageSqlCode)}
+                          className="font-mono text-[10px] text-slate-600 hover:text-slate-900 underline cursor-pointer"
+                        >
+                          {showStorageSqlCode ? 'Hide SQL Script' : 'View SQL Script'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(STORAGE_VIDEOS_RLS_SQL);
+                              setCopiedStorageSql(true);
+                              setTimeout(() => setCopiedStorageSql(false), 2500);
+                            } catch {
+                              // fallback
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#00685b] hover:bg-[#005247] text-white font-tech font-bold text-[10px] tracking-wider uppercase cursor-pointer transition-colors shadow-2xs"
+                        >
+                          {copiedStorageSql ? (
+                            <>
+                              <Check className="h-3 w-3 text-emerald-200" />
+                              <span>Copied to Clipboard!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3 w-3" />
+                              <span>Copy Storage RLS SQL</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <p className="text-slate-600 leading-relaxed">
+                      Supabase Storage enforces Row-Level Security on <code className="font-mono bg-white px-1 py-0.5 rounded border border-slate-200">storage.objects</code>. Because <code className="font-mono bg-white px-1 py-0.5 rounded border border-slate-200">{PORTFOLIO_VIDEOS_BUCKET}</code> is a custom bucket, it requires an authenticated INSERT policy on storage.objects so your admin session can upload project videos.
+                    </p>
+
+                    <ol className="list-decimal list-inside space-y-1 text-slate-600">
+                      <li>
+                        Click <strong className="text-slate-800">"Copy Storage RLS SQL"</strong> above.
+                      </li>
+                      <li>
+                        Open your <strong>Supabase Dashboard → SQL Editor → New query</strong>.
+                      </li>
+                      <li>
+                        Paste and click <strong>Run</strong> (this grants authenticated admin upload permissions and public playback).
+                      </li>
+                      <li>
+                        Return to this page and click <strong>"Retry Failed Upload"</strong> above.
+                      </li>
+                    </ol>
+
+                    {showStorageSqlCode && (
+                      <div className="relative mt-2">
+                        <pre className="font-mono text-[10px] bg-slate-900 text-emerald-400 p-3 rounded-lg overflow-x-auto max-h-56 leading-relaxed border border-slate-800">
+                          {STORAGE_VIDEOS_RLS_SQL}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 2. Bucket Missing Guide */}
+                {/bucket.*not found|does not exist/i.test(videoStatusMessage.text) && (
+                  <div className="mt-1 pt-2.5 border-t border-red-200/80 text-[11px] text-slate-700 space-y-1">
+                    <p className="font-display font-bold text-red-900">
+                      Storage Bucket Setup Required in Supabase Dashboard:
+                    </p>
+                    <ol className="list-decimal list-inside space-y-0.5 text-slate-600">
+                      <li>Go to <strong>Supabase Dashboard → Storage → New bucket</strong>.</li>
+                      <li>Name: <code className="font-mono font-bold text-[#00685b] bg-white px-1 py-0.5 rounded border border-slate-200">{PORTFOLIO_VIDEOS_BUCKET}</code></li>
+                      <li>Set <strong>Public bucket: ON</strong> (enables public video playback).</li>
+                      <li>Click <strong>Save</strong>, then click <strong>"Retry Failed Upload"</strong> above.</li>
+                    </ol>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

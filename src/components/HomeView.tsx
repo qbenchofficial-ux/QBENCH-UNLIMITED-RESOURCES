@@ -139,17 +139,7 @@ export default function HomeView({
     setFormError(null);
 
     try {
-      await createProjectInquiry({
-        name: trimmedName,
-        email: trimmedEmail,
-        phone: trimmedPhone,
-        company: trimmedCompany,
-        service: 'Free Brand Visibility Audit',
-        budget: 'Free Audit',
-        message: auditMessage,
-      });
-
-      sendEmailJS({
+      await sendEmailJS({
         name: trimmedName,
         email: trimmedEmail,
         phone: trimmedPhone,
@@ -157,12 +147,10 @@ export default function HomeView({
         service: 'Free Brand Visibility Audit',
         package: 'Free Brand Visibility Audit',
         price: 'Free',
-        budget: 'Not specified',
+        budget: 'Free Audit',
         start_date: 'Immediate / Flexible',
         message: auditMessage,
         lead_source: 'QBENCH Website'
-      }).catch((emailErr) => {
-        console.warn('[Audit Form] Background email notification warning:', emailErr);
       });
 
       setFormState('success');

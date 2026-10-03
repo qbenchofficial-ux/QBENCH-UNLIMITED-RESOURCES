@@ -107,6 +107,7 @@ function normalizeInquiry(row: Record<string, unknown>): ProjectInquiry {
     phone: String(row.phone || ''),
     company: row.company ? String(row.company) : null,
     service: String(row.service || ''),
+    package: row.package ? String(row.package) : null,
     budget: row.budget ? String(row.budget) : null,
     message: row.message
       ? String(row.message)
@@ -134,6 +135,7 @@ export async function createProjectInquiry(
   const service = (input.service || 'Branding').trim();
   const company = (input.company || '').trim();
   const budget = (input.budget || '').trim();
+  const pkg = (input.package || '').trim();
 
   if (!name || !email || !phone || !service) {
     throw new SupabaseInquiryError({
@@ -148,9 +150,9 @@ export async function createProjectInquiry(
   const diag = getSupabaseClientDiagnostics();
 
   if (!isSupabaseConfigured) {
-    console.error('[QBENCH Supabase Inquiry Error] Client not configured:', diag);
+    console.error('[QBENCH] Supabase INSERT: FAILED - Client not configured');
     throw new SupabaseInquiryError({
-      message: SUPABASE_CONFIG_WARNING,
+      message: SUPABASE_CONFIG_WARNING || 'Supabase configuration is missing or incomplete.',
       code: 'SUPABASE_ENV_MISSING',
       details: `Project URL: ${diag.projectUrl}, Anon Key Present: ${diag.anonKeyPresent} (${diag.anonKeyFormat})`,
       hint: 'In Vercel > Project Settings > Environment Variables, set VITE_SUPABASE_URL=https://zsbpxqzmkhcvxdvjoabp.supabase.co and VITE_SUPABASE_ANON_KEY=<your_supabase_anon_key>, then redeploy.',
@@ -158,6 +160,9 @@ export async function createProjectInquiry(
   }
 
   const messageParts: string[] = [];
+  if (pkg) {
+    messageParts.push(`Selected Package: ${pkg}`);
+  }
   if (input.message?.trim()) {
     messageParts.push(input.message.trim());
   } else if (input.project_description?.trim()) {
@@ -180,11 +185,11 @@ export async function createProjectInquiry(
   // Ensure message is always a non-empty string so NOT NULL constraints on `message` never fail
   const combinedMessage =
     messageParts.join('\n\n').trim() ||
-    `Project enquiry for ${service}${budget ? ` (Budget: ${budget})` : ''}.`;
+    `Project enquiry for ${service}${pkg ? ` (${pkg})` : ''}${budget ? ` (Budget: ${budget})` : ''}.`;
 
-  // Exact columns in public.project_inquiries:
+  // Standard payload matching public.project_inquiries schema:
   // name, email, phone, company, service, budget, message, status
-  const payload = {
+  const basePayload: Record<string, any> = {
     name,
     email,
     phone,
@@ -195,51 +200,42 @@ export async function createProjectInquiry(
     status: 'new' as InquiryStatus,
   };
 
-  console.info('[QBENCH Supabase Inquiry] Submitting to public.project_inquiries', {
-    projectUrl: diag.projectUrl,
-    anonKeyFormat: diag.anonKeyFormat,
-    fields: Object.keys(payload),
-  });
+  // If package is present, try inserting with package first if table schema supports it
+  let payload: Record<string, any> = pkg
+    ? { ...basePayload, package: pkg }
+    : basePayload;
 
   // Note: Do not chain .select() on anonymous insert because public visitors only have
   // INSERT permission (not SELECT permission) under RLS on public.project_inquiries.
   let { error } = await supabase.from('project_inquiries').insert([payload]);
 
-  // If a NOT NULL constraint exists on company or budget (code 23502), retry with empty strings instead of null
+  // If package column does not exist in public.project_inquiries (PGRST204 or 42703),
+  // adapt dynamically to the existing database schema by removing the column
+  if (error && (error.code === 'PGRST204' || error.code === '42703') && 'package' in payload) {
+    console.info('[QBENCH Supabase Inquiry] Adapting to existing schema without package column');
+    payload = basePayload;
+    const retry = await supabase.from('project_inquiries').insert([payload]);
+    error = retry.error;
+  }
+
+  // If a NOT NULL constraint exists on company, budget, or other columns (code 23502),
+  // retry with non-null string defaults
   if (error && error.code === '23502') {
-    console.warn(
-      '[QBENCH Supabase Inquiry] Retrying insert with non-null string defaults due to 23502:',
-      {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-      }
-    );
-    const nonNullPayload = {
-      name,
-      email,
-      phone,
-      company: company || 'Not specified',
-      service,
-      budget: budget || 'Not specified',
+    console.warn('[QBENCH Supabase Inquiry] Retrying insert with non-null string defaults due to 23502');
+    const nonNullPayload: Record<string, any> = {
+      ...payload,
+      company: payload.company || 'Not specified',
+      budget: payload.budget || 'Not specified',
       message: combinedMessage,
       status: 'new' as InquiryStatus,
     };
-    const retry = await supabase
-      .from('project_inquiries')
-      .insert([nonNullPayload]);
+    const retry = await supabase.from('project_inquiries').insert([nonNullPayload]);
     error = retry.error;
   }
 
   if (error) {
     const formatted = formatSupabaseError(error);
-    console.error('[QBENCH Supabase Inquiry INSERT Failed]:', {
-      message: formatted.message,
-      code: formatted.code,
-      details: formatted.details,
-      hint: formatted.hint,
-      diagnostics: diag,
-    });
+    console.error('[QBENCH] Supabase INSERT: FAILED', formatted.message);
 
     throw new SupabaseInquiryError({
       message: formatted.message,
@@ -249,14 +245,20 @@ export async function createProjectInquiry(
     });
   }
 
-  console.info(
-    '[QBENCH Supabase Inquiry] Successfully inserted into public.project_inquiries'
-  );
+  console.info('[QBENCH] Supabase INSERT: SUCCESS');
   window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
 
   return {
     id: `inq-${Date.now()}`,
-    ...payload,
+    name,
+    email,
+    phone,
+    company: company || null,
+    service,
+    package: pkg || null,
+    budget: budget || null,
+    message: combinedMessage,
+    status: 'new' as InquiryStatus,
     created_at: new Date().toISOString(),
   };
 }

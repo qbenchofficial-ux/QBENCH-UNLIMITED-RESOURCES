@@ -351,6 +351,20 @@ export async function uploadPortfolioImage(
     });
 
   if (uploadError) {
+    if (/bucket.*not found|does not exist/i.test(uploadError.message)) {
+      throw new Error(
+        `Bucket not found: Supabase Storage bucket "${PORTFOLIO_BUCKET}" does not exist. Please create a public bucket named "${PORTFOLIO_BUCKET}" in your Supabase Dashboard.`
+      );
+    }
+    if (
+      /row-level security|violates row-level security policy|security policy/i.test(
+        uploadError.message
+      )
+    ) {
+      throw new Error(
+        `Row-level security policy violation: Supabase Storage bucket "${PORTFOLIO_BUCKET}" requires Storage RLS insert policies on storage.objects for authenticated uploads.`
+      );
+    }
     throw new Error(uploadError.message);
   }
 
@@ -412,14 +426,20 @@ export async function uploadProjectVideo(
   const fileName = `${Date.now()}-${uniqueSuffix}-${baseName}.${ext}`;
 
   const rawPid = typeof projectId === 'string' ? projectId.trim() : '';
-  const cleanProjectFolder = isValidUuid(rawPid)
-    ? rawPid
-    : rawPid && !rawPid.startsWith('seed-')
-    ? slugify(rawPid) || 'unassigned'
-    : 'unassigned';
+  // Ensure we ALWAYS use a valid PostgreSQL UUID for storage paths, never seed IDs ("seed-2") or slug strings
+  let cleanProjectFolder = isValidUuid(rawPid) ? rawPid : '';
+  if (!cleanProjectFolder) {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      cleanProjectFolder = crypto.randomUUID();
+    } else {
+      cleanProjectFolder = '00000000-0000-4000-8000-000000000000'.replace(/[08]/g, (c) =>
+        (Number(c) ^ (Math.random() * 16 >> (Number(c) / 4))).toString(16)
+      );
+    }
+  }
 
-  // Path inside `portfolio-videos` bucket: `projects/{project_id}/{filename}`
-  // Full logical path: `portfolio-videos/projects/{project_id}/{filename}`
+  // Path inside `portfolio-videos` bucket: `projects/{project_uuid}/{filename}`
+  // Full logical path: `portfolio-videos/projects/{project_uuid}/{filename}`
   const relativePath = `projects/${cleanProjectFolder}/${fileName}`;
   const mimeType =
     file.type ||
@@ -431,10 +451,7 @@ export async function uploadProjectVideo(
 
   onProgress?.(35);
 
-  let targetBucket = PORTFOLIO_VIDEOS_BUCKET;
-  let finalStoragePath = relativePath;
-
-  let { error: uploadError } = await supabase.storage
+  const { error: uploadError } = await supabase.storage
     .from(PORTFOLIO_VIDEOS_BUCKET)
     .upload(relativePath, file, {
       cacheControl: '3600',
@@ -442,43 +459,32 @@ export async function uploadProjectVideo(
       contentType: mimeType,
     });
 
-  // If the `portfolio-videos` bucket has not been created via migration yet,
-  // attempt fallback to `qbench-resources` under `portfolio-videos/projects/{project_id}/{filename}`
-  if (
-    uploadError &&
-    /bucket.*not found|does not exist/i.test(uploadError.message)
-  ) {
-    const fallbackPath = `${PORTFOLIO_VIDEOS_BUCKET}/${relativePath}`;
-    const fallbackUpload = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .upload(fallbackPath, file, {
-        cacheControl: '3600',
-        upsert: false,
-        contentType: mimeType,
-      });
-
-    if (!fallbackUpload.error) {
-      targetBucket = STORAGE_BUCKET;
-      finalStoragePath = fallbackPath;
-      uploadError = null;
-    }
-  }
-
   if (uploadError) {
+    if (/bucket.*not found|does not exist/i.test(uploadError.message)) {
+      throw new Error(
+        `Bucket not found: Supabase Storage bucket "${PORTFOLIO_VIDEOS_BUCKET}" does not exist. Please create a public bucket named "${PORTFOLIO_VIDEOS_BUCKET}" in your Supabase Dashboard (Storage → New bucket → Name: "portfolio-videos", Public: ON).`
+      );
+    }
+    if (
+      /row-level security|violates row-level security policy|security policy/i.test(
+        uploadError.message
+      )
+    ) {
+      throw new Error(
+        `Row-level security policy violation: Supabase Storage bucket "${PORTFOLIO_VIDEOS_BUCKET}" requires Storage RLS insert policies on storage.objects for authenticated uploads. Please run the Storage RLS policy SQL in your Supabase SQL Editor.`
+      );
+    }
     throw new Error(uploadError.message);
   }
 
   onProgress?.(85);
 
   const { data } = supabase.storage
-    .from(targetBucket)
-    .getPublicUrl(finalStoragePath);
+    .from(PORTFOLIO_VIDEOS_BUCKET)
+    .getPublicUrl(relativePath);
   const publicUrl = data.publicUrl;
 
-  const fullLogicalStoragePath =
-    targetBucket === PORTFOLIO_VIDEOS_BUCKET
-      ? `${PORTFOLIO_VIDEOS_BUCKET}/${finalStoragePath}`
-      : finalStoragePath;
+  const fullLogicalStoragePath = `${PORTFOLIO_VIDEOS_BUCKET}/${relativePath}`;
 
   const defaultTitle =
     options?.videoTitle?.trim() ||

@@ -232,6 +232,16 @@ export async function verifyAdminProfile(
     if (byEmail.data) {
       data = byEmail.data;
       error = null;
+      if (data && (!data.user_id || data.user_id !== userId)) {
+        try {
+          await supabase
+            .from('admin_profiles')
+            .update({ user_id: userId })
+            .eq('id', data.id);
+        } catch {
+          // Ignore if RLS blocks direct client update
+        }
+      }
     }
   }
 
