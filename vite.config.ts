@@ -152,8 +152,18 @@ export default defineConfig(({ mode }) => {
           ''
       ),
 
+      'process.env.EMAILJS_CUSTOMER_TEMPLATE_ID': JSON.stringify(
+        env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+          env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+          ''
+      ),
+
       'process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID': JSON.stringify(
-        env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+        env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
           env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
           ''
       ),

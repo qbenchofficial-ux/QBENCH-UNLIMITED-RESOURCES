@@ -52,8 +52,10 @@ export interface ContactSubmissionResult {
   message: string;
   smtpConfigured: boolean;
   smtpSuccess: boolean;
+  adminEmailSuccess?: boolean;
+  customerEmailSuccess?: boolean;
   authentication?: 'SUCCESS' | 'FAILED';
-  emailDelivery?: 'SUCCESS' | 'FAILED';
+  emailDelivery?: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'SKIPPED';
   deliveryChannel?: string | null;
   error?: string;
   advice?: string;
@@ -63,6 +65,7 @@ interface IntegrationSecrets {
   EMAILJS_PUBLIC_KEY: string;
   EMAILJS_SERVICE_ID: string;
   EMAILJS_ADMIN_TEMPLATE_ID: string;
+  EMAILJS_CUSTOMER_TEMPLATE_ID: string;
   EMAILJS_AUTO_REPLY_TEMPLATE_ID: string;
   GOOGLE_SHEETS_WEBHOOK_URL: string;
 }
@@ -129,11 +132,15 @@ async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
       metaEnv.EMAILJS_ADMIN_TEMPLATE_ID ||
       metaEnv.VITE_EMAILJS_TEMPLATE_ID
   );
-  let EMAILJS_AUTO_REPLY_TEMPLATE_ID = cleanEnvValue(
-    process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+  let EMAILJS_CUSTOMER_TEMPLATE_ID = cleanEnvValue(
+    process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+      metaEnv.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+      process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
       metaEnv.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+      metaEnv.EMAILJS_CUSTOMER_TEMPLATE_ID ||
       metaEnv.EMAILJS_AUTO_REPLY_TEMPLATE_ID
   );
+  let EMAILJS_AUTO_REPLY_TEMPLATE_ID = EMAILJS_CUSTOMER_TEMPLATE_ID;
   let GOOGLE_SHEETS_WEBHOOK_URL = cleanWebhookUrl(
     process.env.GOOGLE_SHEETS_WEBHOOK_URL ||
       metaEnv.VITE_GOOGLE_SHEETS_WEBHOOK_URL ||
@@ -144,7 +151,7 @@ async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
     !EMAILJS_PUBLIC_KEY ||
     !EMAILJS_SERVICE_ID ||
     !EMAILJS_ADMIN_TEMPLATE_ID ||
-    !EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+    !EMAILJS_CUSTOMER_TEMPLATE_ID ||
     !GOOGLE_SHEETS_WEBHOOK_URL
   ) {
     try {
@@ -156,8 +163,11 @@ async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
         EMAILJS_SERVICE_ID = EMAILJS_SERVICE_ID || cleanEnvValue(data.EMAILJS_SERVICE_ID);
         EMAILJS_ADMIN_TEMPLATE_ID =
           EMAILJS_ADMIN_TEMPLATE_ID || cleanEnvValue(data.EMAILJS_ADMIN_TEMPLATE_ID);
-        EMAILJS_AUTO_REPLY_TEMPLATE_ID =
-          EMAILJS_AUTO_REPLY_TEMPLATE_ID || cleanEnvValue(data.EMAILJS_AUTO_REPLY_TEMPLATE_ID);
+        EMAILJS_CUSTOMER_TEMPLATE_ID =
+          EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          cleanEnvValue(data.EMAILJS_CUSTOMER_TEMPLATE_ID) ||
+          cleanEnvValue(data.EMAILJS_AUTO_REPLY_TEMPLATE_ID);
+        EMAILJS_AUTO_REPLY_TEMPLATE_ID = EMAILJS_CUSTOMER_TEMPLATE_ID;
         GOOGLE_SHEETS_WEBHOOK_URL =
           GOOGLE_SHEETS_WEBHOOK_URL || cleanWebhookUrl(data.GOOGLE_SHEETS_WEBHOOK_URL);
       }
@@ -170,6 +180,7 @@ async function resolveIntegrationSecrets(): Promise<IntegrationSecrets> {
     EMAILJS_PUBLIC_KEY,
     EMAILJS_SERVICE_ID,
     EMAILJS_ADMIN_TEMPLATE_ID,
+    EMAILJS_CUSTOMER_TEMPLATE_ID,
     EMAILJS_AUTO_REPLY_TEMPLATE_ID,
     GOOGLE_SHEETS_WEBHOOK_URL
   };
@@ -259,7 +270,7 @@ function resolveDynamicPackageFields(params: EmailParams) {
 }
 
 async function sendEmailJsWithFallback(options: {
-  type: 'admin' | 'auto_reply';
+  type: 'admin' | 'customer' | 'auto_reply';
   serviceId: string;
   templateId: string;
   publicKey: string;
@@ -439,20 +450,28 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
     selectedBlueprint: params.selectedBlueprint || null
   });
 
-  // STEP 2 (OPTIONAL): Trigger EmailJS / Google Sheets / WhatsApp notifications if configured.
-  // Failures in optional 3rd-party webhooks must not overwrite a confirmed Supabase insert.
+  // STEP 2: Trigger TWO separate EmailJS notifications (Admin + Customer Confirmation).
+  // Note: Only triggered after Supabase insert succeeds.
+  // Failures in EmailJS must not overwrite or rollback a confirmed Supabase insert.
   const secrets = await resolveIntegrationSecrets();
   const {
     EMAILJS_PUBLIC_KEY,
     EMAILJS_SERVICE_ID,
     EMAILJS_ADMIN_TEMPLATE_ID,
+    EMAILJS_CUSTOMER_TEMPLATE_ID,
     EMAILJS_AUTO_REPLY_TEMPLATE_ID,
     GOOGLE_SHEETS_WEBHOOK_URL
   } = secrets;
 
   const channelsUsed: string[] = ['Supabase project_inquiries'];
+  let adminEmailSuccess = false;
+  let customerEmailSuccess = false;
+  let adminEmailError: string | null = null;
+  let customerEmailError: string | null = null;
 
-  if (EMAILJS_PUBLIC_KEY && EMAILJS_SERVICE_ID && EMAILJS_ADMIN_TEMPLATE_ID) {
+  const customerTemplateId = EMAILJS_CUSTOMER_TEMPLATE_ID || EMAILJS_AUTO_REPLY_TEMPLATE_ID;
+
+  if (EMAILJS_PUBLIC_KEY && EMAILJS_SERVICE_ID) {
     if (emailJsInitializedKey !== EMAILJS_PUBLIC_KEY) {
       try {
         emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
@@ -462,68 +481,98 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
       }
     }
 
-    const adminTemplateParams = {
-      name,
-      company,
-      email,
-      phone,
-      service: pkgFields.service,
-      package: pkgFields.package,
-      package_id: pkgFields.package_id,
-      price: pkgFields.price,
-      timeline: pkgFields.timeline,
-      category: pkgFields.category,
-      budget: pkgFields.budget,
-      start_date: pkgFields.start_date,
-      message,
-      lead_source: 'QBENCH Website',
-      lead_status: 'New',
-      reply_to: email,
-      to_email: 'contact@qbench.in'
-    };
-
-    try {
-      await sendEmailJsWithFallback({
-        type: 'admin',
-        serviceId: EMAILJS_SERVICE_ID,
-        templateId: EMAILJS_ADMIN_TEMPLATE_ID,
-        publicKey: EMAILJS_PUBLIC_KEY,
-        templateParams: adminTemplateParams
-      });
-      channelsUsed.push('EmailJS');
-    } catch (adminErr) {
-      console.warn('QBENCH: Optional EmailJS Admin notification skipped/failed:', adminErr);
-    }
-
-    if (EMAILJS_AUTO_REPLY_TEMPLATE_ID) {
-      const autoReplyTemplateParams = {
+    // Email 1 – QBENCH Admin Notification
+    // Recipient: qbench.official@gmail.com
+    // Subject: New Project Enquiry Received – QBENCH
+    if (EMAILJS_ADMIN_TEMPLATE_ID) {
+      const adminTemplateParams = {
+        from_name: 'QBENCH Creative Agency',
+        subject: 'New Project Enquiry Received – QBENCH',
         name,
+        customer_name: name,
         email,
+        phone,
+        company: company || 'Not specified',
         service: pkgFields.service,
         package: pkgFields.package,
         package_id: pkgFields.package_id,
+        budget: params.budget || pkgFields.budget,
         price: pkgFields.price,
         timeline: pkgFields.timeline,
         category: pkgFields.category,
-        budget: pkgFields.budget,
+        start_date: pkgFields.start_date,
         message,
-        to_email: email,
-        user_email: email,
-        recipient_email: email,
-        to_name: name,
-        reply_to: 'contact@qbench.in'
+        project_message: message,
+        date: submissionDateTime,
+        submission_date: submissionDateTime,
+        lead_source: 'QBENCH Website',
+        lead_status: 'New',
+        reply_to: email,
+        to_email: 'qbench.official@gmail.com',
+        recipient_email: 'qbench.official@gmail.com'
       };
 
       try {
         await sendEmailJsWithFallback({
-          type: 'auto_reply',
+          type: 'admin',
           serviceId: EMAILJS_SERVICE_ID,
-          templateId: EMAILJS_AUTO_REPLY_TEMPLATE_ID,
+          templateId: EMAILJS_ADMIN_TEMPLATE_ID,
           publicKey: EMAILJS_PUBLIC_KEY,
-          templateParams: autoReplyTemplateParams
+          templateParams: adminTemplateParams
         });
-      } catch (autoReplyErr) {
-        console.warn('QBENCH: Optional EmailJS Auto-Reply skipped/failed:', autoReplyErr);
+        adminEmailSuccess = true;
+        channelsUsed.push('Admin Notification');
+      } catch (adminErr: any) {
+        adminEmailError = adminErr?.message || 'Admin notification failed';
+        console.warn('QBENCH: Admin EmailJS notification failed (enquiry preserved in Supabase):', adminErr?.message || adminErr);
+      }
+    }
+
+    // Email 2 – Customer Automatic Confirmation
+    // Recipient: Customer's submitted email address ({{email}})
+    // Subject: Thank You for Reaching Out to QBENCH
+    if (customerTemplateId) {
+      const customerTemplateParams = {
+        from_name: 'QBENCH Creative Agency',
+        subject: 'Thank You for Reaching Out to QBENCH',
+        name,
+        customer_name: name,
+        to_name: name,
+        email,
+        phone,
+        company: company || 'Not specified',
+        to_email: email,
+        user_email: email,
+        recipient_email: email,
+        service: pkgFields.service,
+        package: pkgFields.package,
+        package_id: pkgFields.package_id,
+        budget: params.budget || pkgFields.budget,
+        price: pkgFields.price,
+        timeline: pkgFields.timeline,
+        category: pkgFields.category,
+        confirmation_message: 'Thank you for reaching out to QBENCH Creative Agency! We have successfully received your project enquiry. Our team will review your requirements and get back to you as soon as possible.',
+        message: 'Thank you for reaching out to QBENCH Creative Agency! We have successfully received your project enquiry.',
+        customer_message: message,
+        project_message: message,
+        date: submissionDateTime,
+        submission_date: submissionDateTime,
+        reply_to: 'qbench.official@gmail.com'
+      };
+
+      try {
+        await sendEmailJsWithFallback({
+          type: 'customer',
+          serviceId: EMAILJS_SERVICE_ID,
+          templateId: customerTemplateId,
+          publicKey: EMAILJS_PUBLIC_KEY,
+          templateParams: customerTemplateParams
+        });
+        customerEmailSuccess = true;
+        channelsUsed.push('Customer Confirmation');
+      } catch (customerErr: any) {
+        customerEmailError = customerErr?.message || 'Customer confirmation failed';
+        console.warn('QBENCH: Customer EmailJS confirmation failed (enquiry preserved in Supabase):', customerErr?.message || customerErr);
       }
     }
   }
@@ -553,13 +602,32 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
     }
   }
 
+  let emailDelivery: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'SKIPPED' = 'SKIPPED';
+  let outcomeMessage = 'Thank you! Your enquiry has been submitted successfully. We’ll get back to you shortly.';
+
+  if (EMAILJS_PUBLIC_KEY && EMAILJS_SERVICE_ID && (EMAILJS_ADMIN_TEMPLATE_ID || customerTemplateId)) {
+    if (adminEmailSuccess && customerEmailSuccess) {
+      emailDelivery = 'SUCCESS';
+      outcomeMessage = 'Thank you! Your enquiry has been submitted and notifications sent. We’ll get back to you shortly.';
+    } else if (adminEmailSuccess || customerEmailSuccess) {
+      emailDelivery = 'PARTIAL';
+      outcomeMessage = 'Thank you! Your enquiry has been safely received and stored. Automated notification delivery is in progress.';
+    } else {
+      emailDelivery = 'FAILED';
+      outcomeMessage = 'Thank you! Your enquiry has been safely recorded in our database. Our team will review your requirements.';
+    }
+  }
+
   return {
     success: true,
-    message: 'Thank you! Your enquiry has been submitted successfully. We’ll get back to you shortly.',
-    smtpConfigured: true,
-    smtpSuccess: true,
+    message: outcomeMessage,
+    smtpConfigured: Boolean(EMAILJS_PUBLIC_KEY && EMAILJS_SERVICE_ID),
+    smtpSuccess: adminEmailSuccess && customerEmailSuccess,
+    adminEmailSuccess,
+    customerEmailSuccess,
     authentication: 'SUCCESS',
-    emailDelivery: 'SUCCESS',
-    deliveryChannel: channelsUsed.join(' + ')
+    emailDelivery,
+    deliveryChannel: channelsUsed.join(' + '),
+    error: adminEmailError || customerEmailError || undefined
   };
 };

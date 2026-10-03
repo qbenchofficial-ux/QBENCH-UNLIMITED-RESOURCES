@@ -111,8 +111,17 @@ app.get('/api/integration-config', (_req, res) => {
         process.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
         process.env.VITE_EMAILJS_TEMPLATE_ID
     ),
+    EMAILJS_CUSTOMER_TEMPLATE_ID: clean(
+      process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+        process.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+        process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+        process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
+    ),
     EMAILJS_AUTO_REPLY_TEMPLATE_ID: clean(
-      process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID || process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
+      process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+        process.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+        process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+        process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
     ),
     GOOGLE_SHEETS_WEBHOOK_URL: cleanUrl(
       process.env.GOOGLE_SHEETS_WEBHOOK_URL || process.env.VITE_GOOGLE_SHEETS_WEBHOOK_URL
@@ -122,7 +131,7 @@ app.get('/api/integration-config', (_req, res) => {
 
 /**
  * Server-side EmailJS relay endpoint (/api/emailjs-send)
- * Ensures EmailJS Admin and Auto-Reply notifications succeed even if browser extensions,
+ * Ensures EmailJS Admin and Customer notifications succeed even if browser extensions,
  * iframe policies, or network filters block client-side calls to api.emailjs.com.
  */
 app.post('/api/emailjs-send', async (req, res) => {
@@ -137,8 +146,11 @@ app.post('/api/emailjs-send', async (req, res) => {
   );
   const resolvedTemplateId = clean(
     templateId ||
-      (type === 'auto_reply'
-        ? process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID || process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
+      (type === 'customer' || type === 'auto_reply'
+        ? process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          process.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+          process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
         : process.env.EMAILJS_ADMIN_TEMPLATE_ID ||
           process.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
           process.env.VITE_EMAILJS_TEMPLATE_ID)

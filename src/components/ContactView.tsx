@@ -191,6 +191,10 @@ export default function ContactView({ onNavigate }: ContactViewProps) {
   const [submissionDelivery, setSubmissionDelivery] = useState<{
     smtpConfigured: boolean;
     smtpSuccess: boolean;
+    adminEmailSuccess?: boolean;
+    customerEmailSuccess?: boolean;
+    emailDelivery?: 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'SKIPPED';
+    message?: string;
     error?: string;
     advice?: string;
   } | null>(null);
@@ -357,6 +361,10 @@ ${message}`;
       setSubmissionDelivery({
         smtpConfigured: responseData.smtpConfigured ?? true,
         smtpSuccess: responseData.smtpSuccess ?? true,
+        adminEmailSuccess: responseData.adminEmailSuccess,
+        customerEmailSuccess: responseData.customerEmailSuccess,
+        emailDelivery: responseData.emailDelivery,
+        message: responseData.message,
         error: responseData.error,
         advice: responseData.advice
       });
@@ -941,7 +949,7 @@ ${message}`;
                           transition={{ delay: 0.32, duration: 0.35, ease: "easeOut" }}
                           className="font-sans text-xs sm:text-sm text-brand-text-muted leading-relaxed max-w-md mx-auto"
                         >
-                          Thank you! Your enquiry has been submitted successfully. We’ll get back to you shortly.
+                          {submissionDelivery?.message || 'Thank you! Your enquiry has been submitted successfully. We’ll get back to you shortly.'}
                         </motion.p>
                       </div>
 
@@ -1468,10 +1476,14 @@ ${message}`;
                   </button>
                 </div>
                 <p className="font-display text-xs sm:text-sm font-bold text-white leading-snug">
-                  Thank you! Your enquiry has been submitted successfully.
+                  {submissionDelivery?.emailDelivery === 'SUCCESS'
+                    ? 'Inquiry Saved & Confirmations Dispatched'
+                    : submissionDelivery?.emailDelivery === 'PARTIAL'
+                      ? 'Inquiry Saved (Notification Delivery in Progress)'
+                      : 'Inquiry Received Successfully'}
                 </p>
                 <p className="font-sans text-[11px] text-white/75 leading-relaxed">
-                  We’ll get back to you shortly.
+                  {submissionDelivery?.message || 'Thank you! Your enquiry has been submitted successfully.'}
                 </p>
               </div>
             </div>
@@ -1540,10 +1552,10 @@ ${message}`;
                   id="contact-success-modal-title"
                   className="font-display text-xl sm:text-2xl font-black text-[#002f29] tracking-tight"
                 >
-                  Your Inquiry Has Been Sent!
+                  Your Inquiry Has Been Received!
                 </h3>
                 <p className="font-sans text-xs sm:text-sm text-brand-text-muted leading-relaxed">
-                  Thank you! Your enquiry has been submitted successfully. We’ll get back to you shortly.
+                  {submissionDelivery?.message || 'Thank you! Your enquiry has been submitted successfully. We’ll get back to you shortly.'}
                 </p>
               </div>
 
