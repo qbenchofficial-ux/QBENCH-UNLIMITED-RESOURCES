@@ -155,9 +155,6 @@ export const MAX_PORTFOLIO_VIDEO_SIZE_BYTES =
   MAX_PORTFOLIO_VIDEO_SIZE_MB * 1024 * 1024;
 export const STORAGE_BUCKET = 'qbench-resources';
 
-export const AUTHORIZED_ADMIN_EMAIL = 'qbench.official@gmail.com';
-export const AUTHORIZED_ADMIN_USER_ID = 'ab936bea-03f9-428f-a8a2-6b3e0a29edbe';
-
 export function slugify(input: string): string {
   return input
     .toLowerCase()
@@ -238,45 +235,6 @@ export async function verifyAdminProfile(
     }
   }
 
-  // If the authenticated user is the primary QBENCH administrator and admin_profiles has not been seeded yet,
-  // attempt to seed their row and authorize their session.
-  if (
-    !data &&
-    (normalizedEmail === AUTHORIZED_ADMIN_EMAIL.toLowerCase() ||
-      userId === AUTHORIZED_ADMIN_USER_ID)
-  ) {
-    const { data: inserted } = await supabase
-      .from('admin_profiles')
-      .upsert(
-        [
-          {
-            user_id: userId,
-            email: normalizedEmail || AUTHORIZED_ADMIN_EMAIL,
-            role: 'admin',
-          },
-        ],
-        { onConflict: 'user_id' }
-      )
-      .select('id, user_id, email, role, created_at')
-      .maybeSingle();
-
-    if (inserted) {
-      data = inserted;
-      error = null;
-    } else {
-      return {
-        isAdmin: true,
-        profile: {
-          id: userId,
-          user_id: userId,
-          email: normalizedEmail || AUTHORIZED_ADMIN_EMAIL,
-          role: 'admin',
-          created_at: new Date().toISOString(),
-        },
-      };
-    }
-  }
-
   if (error) {
     return { isAdmin: false, profile: null, error: error.message };
   }
@@ -295,7 +253,7 @@ export async function verifyAdminProfile(
     profile: {
       id: String(data.id),
       user_id: String(data.user_id || userId),
-      email: String(data.email || userEmail || AUTHORIZED_ADMIN_EMAIL),
+      email: String(data.email || userEmail || ''),
       role: String(data.role),
       created_at: data.created_at ? String(data.created_at) : undefined,
     },

@@ -479,7 +479,7 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
       lead_source: 'QBENCH Website',
       lead_status: 'New',
       reply_to: email,
-      to_email: 'qbench.official@gmail.com'
+      to_email: 'contact@qbench.in'
     };
 
     try {
@@ -511,7 +511,7 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
         user_email: email,
         recipient_email: email,
         to_name: name,
-        reply_to: 'qbench.official@gmail.com'
+        reply_to: 'contact@qbench.in'
       };
 
       try {

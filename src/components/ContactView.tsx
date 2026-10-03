@@ -33,6 +33,7 @@ import {
 import { NavSection, ServiceTab } from '../types';
 import { sendEmailJS, formatSupabaseError } from '../lib/emailService';
 import { useProjects } from '../hooks/useProjects';
+import { useAuth } from '../hooks/useAuth';
 import LeadsDashboard from './LeadsDashboard';
 
 interface ContactViewProps {
@@ -41,6 +42,7 @@ interface ContactViewProps {
 
 export default function ContactView({ onNavigate }: ContactViewProps) {
   const { settings } = useProjects('public');
+  const { isAdmin } = useAuth();
   // Load selected package from local storage
   const [selectedPackage, setSelectedPackage] = useState<any>(() => {
     try {
@@ -205,219 +207,8 @@ export default function ContactView({ onNavigate }: ContactViewProps) {
     return () => clearTimeout(timer);
   }, [showSuccessToast]);
 
-  // Lead Automation & CRM Dashboard States
+  // Lead Automation & CRM Tab (Authorized Admins Only)
   const [activeTab, setActiveTab] = useState<'form' | 'dashboard'>('form');
-  const [adminSecretInput, setAdminSecretInput] = useState('');
-  const [isDashboardUnlocked, setIsDashboardUnlocked] = useState(() => {
-    try {
-      return sessionStorage.getItem('qbench_admin_crm_unlocked') === 'true';
-    } catch {
-      return false;
-    }
-  });
-  const [leadsList, setLeadsList] = useState<any[]>([]);
-  const [leadsLoading, setLeadsLoading] = useState(false);
-  const [leadsError, setLeadsError] = useState<string | null>(null);
-  const [crmSearchQuery, setCrmSearchQuery] = useState('');
-  const [crmServiceFilter, setCrmServiceFilter] = useState('');
-  const [crmSortOrder, setCrmSortOrder] = useState<'newest' | 'oldest'>('newest');
-  const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
-  const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
-  const [exportNotice, setExportNotice] = useState<string | null>(null);
-
-  // Authenticate user's input with server's configured ADMIN_SECRET
-  const unlockDashboardCRM = async (secret: string) => {
-    if (!secret.trim()) {
-      setLeadsError('Please enter the Admin Secret access key.');
-      return;
-    }
-    setLeadsLoading(true);
-    setLeadsError(null);
-    try {
-      const response = await fetch(`/api/messages?secret=${encodeURIComponent(secret)}`);
-      const data = await response.json();
-      if (response.ok && data.success) {
-        setIsDashboardUnlocked(true);
-        setLeadsList(data.messages || []);
-        sessionStorage.setItem('qbench_admin_crm_unlocked', 'true');
-        sessionStorage.setItem('qbench_admin_secret_key', secret);
-      } else {
-        setLeadsError(data.error || 'Access Denied: Invalid Admin Secret.');
-      }
-    } catch (err: any) {
-      setLeadsError('Network error authenticating. Verify if your backend server is running.');
-      console.error('CRM Authenticate Error:', err);
-    } finally {
-      setLeadsLoading(false);
-    }
-  };
-
-  // Reload the leads dataset from server dynamically
-  const fetchLeads = async () => {
-    const key = sessionStorage.getItem('qbench_admin_secret_key') || adminSecretInput;
-    if (!key) return;
-    setLeadsLoading(true);
-    setLeadsError(null);
-    try {
-      const response = await fetch(`/api/messages?secret=${encodeURIComponent(key)}`);
-      const data = await response.json();
-      if (response.ok && data.success) {
-        setLeadsList(data.messages || []);
-      } else {
-        setLeadsError(data.error || 'Failed to pull messages.');
-      }
-    } catch (err: any) {
-      setLeadsError('Could not contact leads endpoint.');
-      console.error('CRM Fetch Error:', err);
-    } finally {
-      setLeadsLoading(false);
-    }
-  };
-
-  // Delete lead record via safe DELETE request API mapping
-  const deleteLeadRecord = async (leadId: string) => {
-    const key = sessionStorage.getItem('qbench_admin_secret_key') || adminSecretInput;
-    if (!key) return;
-    
-    if (!window.confirm('Are you absolutely sure you want to permanently delete this lead? This cannot be undone.')) {
-      return;
-    }
-
-    setIsDeletingId(leadId);
-    try {
-      const response = await fetch(`/api/messages/${leadId}?secret=${encodeURIComponent(key)}`, {
-        method: 'DELETE'
-      });
-      const data = await response.json();
-      if (response.ok && data.success) {
-        // Update local dataset state instantly for snappy UI feel
-        setLeadsList(prev => prev.filter(m => m.id !== leadId));
-        if (expandedLeadId === leadId) {
-          setExpandedLeadId(null);
-        }
-      } else {
-        alert(data.error || 'Could not complete deletion.');
-      }
-    } catch (err: any) {
-      alert('Network exception deleting entry.');
-      console.error('CRM Delete Error:', err);
-    } finally {
-      setIsDeletingId(null);
-    }
-  };
-
-  // Clear logged CRM session
-  const lockCRM = () => {
-    setIsDashboardUnlocked(false);
-    setLeadsList([]);
-    sessionStorage.removeItem('qbench_admin_crm_unlocked');
-    sessionStorage.removeItem('qbench_admin_secret_key');
-  };
-
-  // Trigger CRM dataset to CSV export download
-  const handleExportCSV = (dataset: any[]) => {
-    if (!dataset || dataset.length === 0) {
-      alert('There are no filtered leads to export.');
-      return;
-    }
-
-    // Define columns
-    const headers = ['ID', 'Timestamp', 'Full Name', 'Company', 'Phone Number', 'Email Address', 'Inquired Service', 'Routed Address', 'Selected Package ID', 'Selected Package Name', 'Message'];
-    
-    const rows = dataset.map((item, idx) => {
-      const timeStr = item.timestamp ? new Date(item.timestamp).toLocaleString() : 'N/A';
-      return [
-        item.id || `L-${idx + 1}`,
-        timeStr,
-        item.fullName || 'Anonymous',
-        item.businessName || 'Not specified',
-        item.phoneNumber || 'Not specified',
-        item.emailAddress || 'Not specified',
-        item.service || 'General Branding',
-        item.routedTo || 'qbench.official@gmail.com',
-        item.selectedPackage ? (item.selectedPackage.packageId || 'Package') : 'None',
-        item.selectedPackage ? (item.selectedPackage.packageName || 'Active Tier') : 'None',
-        // Sanitize commas and linebreaks to prevent CSV layout breakages
-        (item.message || '').replace(/"/g, '""').replace(/\r?\n|\r/g, ' ')
-      ];
-    });
-
-    // Structure CSV content format
-    const csvContent = [headers, ...rows]
-      .map(row => row.map(cell => `"${cell}"`).join(','))
-      .join('\n');
-
-    try {
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `qbench_leads_export_${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      setExportNotice('CSV dataset downloaded successfully!');
-      setTimeout(() => setExportNotice(null), 3500);
-    } catch (csvErr: any) {
-      alert(`Problem processing CSV file: ${csvErr.message || csvErr}`);
-    }
-  };
-
-  // SMTP diagnostics states
-  const [smtpChecking, setSmtpChecking] = useState(false);
-  const [smtpResult, setSmtpResult] = useState<{
-    tested: boolean;
-    success: boolean;
-    smtpConfigured: 'YES' | 'NO';
-    authentication: 'SUCCESS' | 'FAILED';
-    emailDelivery: 'SUCCESS' | 'FAILED';
-    message: string;
-    error?: string;
-    code?: string;
-    advice?: string;
-    details?: {
-      host: string;
-      port: number;
-      security?: string;
-      user: string;
-      ssl: boolean;
-    };
-  } | null>(null);
-
-  const testSmtpConnection = async () => {
-    setSmtpChecking(true);
-    setSmtpResult(null);
-    try {
-      const response = await fetch('/api/smtp-test');
-      const data = await response.json();
-      setSmtpResult({
-        tested: true,
-        success: Boolean(data.success),
-        smtpConfigured: data.smtpConfigured === 'YES' ? 'YES' : 'NO',
-        authentication: data.authentication === 'SUCCESS' ? 'SUCCESS' : 'FAILED',
-        emailDelivery: data.emailDelivery === 'SUCCESS' ? 'SUCCESS' : 'FAILED',
-        message: data.message || '',
-        error: data.error,
-        code: data.code,
-        advice: data.advice,
-        details: data.details
-      });
-    } catch (err: any) {
-      console.error('SMTP test execution network or server error:', err);
-      setSmtpResult({
-        tested: true,
-        success: false,
-        smtpConfigured: 'NO',
-        authentication: 'FAILED',
-        emailDelivery: 'FAILED',
-        message: 'Could not contact the server SMTP diagnostics API route.',
-        error: err?.message || 'Network Exception'
-      });
-    } finally {
-      setSmtpChecking(false);
-    }
-  };
 
   // Anti-spam honeypot protection field & double-click submission lock
   const [honeypot, setHoneypot] = useState('');
@@ -641,10 +432,10 @@ ${message}`;
     {
       icon: Mail,
       title: 'Email Address',
-      desc: settings.email || 'qbench.official@gmail.com',
+      desc: settings.email || 'contact@qbench.in',
       subDesc: 'Click to compose email directly',
-      link: `mailto:${settings.email || 'qbench.official@gmail.com'}?subject=Inquiry%20from%20QBENCH%20Website&body=Hello%20QBENCH%20Team%2C%0A%0AI%20would%20like%20to%20know%20more%20about%20your%20services.%0A%0ARegards%2C`,
-      ariaLabel: `Draft email to QBENCH at ${settings.email || 'qbench.official@gmail.com'}`,
+      link: `mailto:${settings.email || 'contact@qbench.in'}?subject=Inquiry%20from%20QBENCH%20Website&body=Hello%20QBENCH%20Team%2C%0A%0AI%20would%20like%20to%20know%20more%20about%20your%20services.%0A%0ARegards%2C`,
+      ariaLabel: `Draft email to QBENCH at ${settings.email || 'contact@qbench.in'}`,
       colorClass: 'text-emerald-600 bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20'
     },
     {
@@ -885,35 +676,37 @@ ${message}`;
             
             {/* Right Column: Interaction form panel */}
             <div id="message-form-segment" className="lg:col-span-7">
-              {/* Tab Selector Section */}
-              <div id="crm-tab-header" className="flex border-b border-[#00685b]/10 mb-6 bg-slate-50 p-1 rounded-xl gap-2 select-none">
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('form')}
-                  className={`flex-1 rounded-lg py-2.5 px-3 font-display text-xs font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer text-center flex items-center justify-center gap-1.5 ${
-                    activeTab === 'form' 
-                      ? 'bg-[#00685b] text-white shadow-xs' 
-                      : 'text-brand-text-muted hover:text-[#00685b] bg-transparent'
-                  }`}
-                >
-                  <span className="text-xs">✉</span>
-                  <span>Send a Message</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('dashboard')}
-                  className={`flex-1 rounded-lg py-2.5 px-3 font-display text-xs font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer text-center flex items-center justify-center gap-1.5 ${
-                    activeTab === 'dashboard' 
-                      ? 'bg-[#00685b] text-white shadow-xs' 
-                      : 'text-brand-text-muted hover:text-[#00685b] bg-transparent'
-                  }`}
-                >
-                  <span className="text-xs">📊</span>
-                  <span>Admin Leads CRM Portal</span>
-                </button>
-              </div>
+              {/* Tab Selector Section (Only displayed for authenticated admins) */}
+              {isAdmin && (
+                <div id="crm-tab-header" className="flex border-b border-[#00685b]/10 mb-6 bg-slate-50 p-1 rounded-xl gap-2 select-none">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('form')}
+                    className={`flex-1 rounded-lg py-2.5 px-3 font-display text-xs font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer text-center flex items-center justify-center gap-1.5 ${
+                      activeTab === 'form' 
+                        ? 'bg-[#00685b] text-white shadow-xs' 
+                        : 'text-brand-text-muted hover:text-[#00685b] bg-transparent'
+                    }`}
+                  >
+                    <span className="text-xs">✉</span>
+                    <span>Send a Message</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('dashboard')}
+                    className={`flex-1 rounded-lg py-2.5 px-3 font-display text-xs font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer text-center flex items-center justify-center gap-1.5 ${
+                      activeTab === 'dashboard' 
+                        ? 'bg-[#00685b] text-white shadow-xs' 
+                        : 'text-brand-text-muted hover:text-[#00685b] bg-transparent'
+                    }`}
+                  >
+                    <span className="text-xs">📊</span>
+                    <span>Admin Leads CRM Portal</span>
+                  </button>
+                </div>
+              )}
 
-              {activeTab === 'dashboard' ? (
+              {isAdmin && activeTab === 'dashboard' ? (
                 <LeadsDashboard />
               ) : (
                 <div className="space-y-6">

@@ -39,12 +39,8 @@ function mergeLeadsWithLocalBackup(serverLeads: any[]): any[] {
 }
 
 export default function LeadsDashboard() {
-  const [adminSecret, setAdminSecret] = useState(() => {
-    return sessionStorage.getItem('qbench_admin_secret_key') || '';
-  });
-  const [isUnlocked, setIsUnlocked] = useState(() => {
-    return sessionStorage.getItem('qbench_admin_crm_unlocked') === 'true';
-  });
+  const [adminSecret, setAdminSecret] = useState('');
+  const [isUnlocked, setIsUnlocked] = useState(false);
 
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -101,7 +97,7 @@ export default function LeadsDashboard() {
   const handleUnlock = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!adminSecret.trim()) {
-      setError('Please provide the ADMIN_SECRET access key.');
+      setError('Please provide the authorized access key.');
       return;
     }
 
@@ -114,23 +110,12 @@ export default function LeadsDashboard() {
       if (response.ok && data.success) {
         setIsUnlocked(true);
         setLeads(mergeLeadsWithLocalBackup(data.messages || []));
-        sessionStorage.setItem('qbench_admin_crm_unlocked', 'true');
-        sessionStorage.setItem('qbench_admin_secret_key', adminSecret.trim());
         triggerSuccessNotice('Portal Unlocked Successfully');
       } else {
-        setError(data.error || 'Access Denied: The provided secret key is invalid.');
+        setError(data.error || 'Access Denied: The provided access key is invalid.');
       }
     } catch {
-      // Fallback to local enquiries backup if backend is unreachable
-      if (adminSecret.trim() === 'qbench2026secret') {
-        setIsUnlocked(true);
-        setLeads(getLocalEnquiriesBackup());
-        sessionStorage.setItem('qbench_admin_crm_unlocked', 'true');
-        sessionStorage.setItem('qbench_admin_secret_key', adminSecret.trim());
-        triggerSuccessNotice('Portal Unlocked (Local Backup Mode)');
-      } else {
-        setError('Could not connect to the API. Verify that the server is running.');
-      }
+      setError('Could not connect to the API. Verify that the server is running.');
     } finally {
       setLoading(false);
     }
@@ -189,8 +174,6 @@ export default function LeadsDashboard() {
   const handleLock = () => {
     setIsUnlocked(false);
     setLeads([]);
-    sessionStorage.removeItem('qbench_admin_crm_unlocked');
-    sessionStorage.removeItem('qbench_admin_secret_key');
     setAdminSecret('');
     setError(null);
   };
@@ -305,7 +288,7 @@ export default function LeadsDashboard() {
             Secure Leads Portal Key
           </h3>
           <p className="font-sans text-xs text-brand-text-muted leading-relaxed">
-            Please enter the authentication key specified by the <strong>ADMIN_SECRET</strong> environment variable on your server workspace.
+            Please enter your administrator access key to open the leads management portal.
           </p>
         </div>
 
@@ -320,7 +303,7 @@ export default function LeadsDashboard() {
                 required
                 value={adminSecret}
                 onChange={(e) => setAdminSecret(e.target.value)}
-                placeholder="Enter access key (e.g. qbench2026secret)"
+                placeholder="Enter access key"
                 className="w-full bg-white border border-brand-outline/25 rounded-xl pl-4 pr-10 py-3 text-xs text-brand-text focus:outline-none focus:border-[#00685b] transition-colors"
               />
               <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-brand-text-muted/40">
@@ -356,12 +339,6 @@ export default function LeadsDashboard() {
             </button>
           </div>
         </form>
-
-        <div className="pt-4 border-t border-brand-outline/10 text-center max-w-sm mx-auto">
-          <p className="font-mono text-[10px] text-brand-text-muted/80 leading-relaxed">
-            Note: The default key configured in the local setup environment template is <code className="bg-slate-200 px-1 py-0.5 rounded text-amber-900 font-bold font-mono">qbench2026secret</code>
-          </p>
-        </div>
       </div>
     );
   }
@@ -380,7 +357,7 @@ export default function LeadsDashboard() {
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] bg-emerald-100 text-[#00685b] px-2 py-0.5 font-bold rounded-full font-mono uppercase tracking-wider block w-fit">
-                Inbox Target: qbench.official@gmail.com
+                Inbox: Agency Notifications Relay
               </span>
             </div>
             <h4 className="font-display text-sm font-black text-[#002f29] mt-0.5">
@@ -395,7 +372,7 @@ export default function LeadsDashboard() {
             disabled={smtpTesting}
             onClick={runEmailDiagnostic}
             className="rounded-lg border border-[#00685b]/30 bg-[#00685b]/10 hover:bg-[#00685b]/20 text-[#002f29] p-2 px-3 text-[11px] font-sans font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-            title="Test Gmail SMTP & Webhook delivery to qbench.official@gmail.com"
+            title="Test Gmail SMTP & Webhook delivery"
           >
             <Activity className={`h-3.5 w-3.5 text-[#00685b] ${smtpTesting ? 'animate-spin' : ''}`} />
             <span>{smtpTesting ? 'Testing SMTP...' : 'Verify Email Delivery'}</span>
@@ -434,7 +411,7 @@ export default function LeadsDashboard() {
           <div className="flex items-center justify-between gap-2">
             <span className="font-mono text-[10px] uppercase font-extrabold tracking-wider">
               {smtpDiagnostic.emailDelivery === 'SUCCESS'
-                ? '✓ Email Delivery Verified (qbench.official@gmail.com)'
+                ? '✓ Email Delivery Verified'
                 : '⚠️ Email Delivery Diagnostic Status'}
             </span>
             <button

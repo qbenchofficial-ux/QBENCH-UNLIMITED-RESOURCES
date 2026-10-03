@@ -9,7 +9,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   agency_name: 'QBENCH',
   agency_description:
     'QBENCH is a creative & digital agency specializing in Strategy → Creativity → Execution across branding, social media design, motion graphics, video editing, UI/UX, and web development.',
-  email: 'qbench.official@gmail.com',
+  email: 'contact@qbench.in',
   phone: '+91 73565 25932',
   whatsapp: '917356525932',
   instagram_url: 'https://www.instagram.com/qbench_official',

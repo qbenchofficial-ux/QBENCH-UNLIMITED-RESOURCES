@@ -1360,9 +1360,9 @@ app.post('/api/contact', async (req, res) => {
 // Admin-level review panel route to view saved submissions securely
 app.get('/api/messages', (req, res) => {
   const secret = String(req.query.secret || '').trim();
-  const expectedSecret = (process.env.ADMIN_SECRET || 'qbench2026secret').trim();
-  if (!secret || (secret !== expectedSecret && secret !== 'qbench2026secret')) {
-    return res.status(401).json({ success: false, error: 'Unauthorized access. ADMIN_SECRET mismatch.' });
+  const expectedSecret = (process.env.ADMIN_SECRET || '').trim();
+  if (!secret || !expectedSecret || secret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized access.' });
   }
 
   const messages = readMessagesSafe();
@@ -1372,9 +1372,9 @@ app.get('/api/messages', (req, res) => {
 // Admin-level route to update lead status or notes on a specific submission
 app.patch('/api/messages/:id', (req, res) => {
   const secret = String(req.query.secret || '').trim();
-  const expectedSecret = (process.env.ADMIN_SECRET || 'qbench2026secret').trim();
-  if (!secret || (secret !== expectedSecret && secret !== 'qbench2026secret')) {
-    return res.status(401).json({ success: false, error: 'Unauthorized access. ADMIN_SECRET mismatch.' });
+  const expectedSecret = (process.env.ADMIN_SECRET || '').trim();
+  if (!secret || !expectedSecret || secret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized access.' });
   }
 
   const idToUpdate = req.params.id;
@@ -1468,9 +1468,9 @@ app.get('/api/admin-settings', (_req, res) => {
 
 app.post('/api/admin-settings', (req, res) => {
   const secret = String(req.query.secret || '').trim();
-  const expectedSecret = (process.env.ADMIN_SECRET || 'qbench2026secret').trim();
-  if (!secret || (secret !== expectedSecret && secret !== 'qbench2026secret')) {
-    return res.status(401).json({ success: false, error: 'Unauthorized access. ADMIN_SECRET mismatch.' });
+  const expectedSecret = (process.env.ADMIN_SECRET || '').trim();
+  if (!secret || !expectedSecret || secret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized access.' });
   }
 
   const current = readAdminSettingsSafe();
@@ -1492,9 +1492,9 @@ app.post('/api/admin-settings', (req, res) => {
 
 app.get('/api/admin-overview', (req, res) => {
   const secret = String(req.query.secret || '').trim();
-  const expectedSecret = (process.env.ADMIN_SECRET || 'qbench2026secret').trim();
-  if (!secret || (secret !== expectedSecret && secret !== 'qbench2026secret')) {
-    return res.status(401).json({ success: false, error: 'Unauthorized access. ADMIN_SECRET mismatch.' });
+  const expectedSecret = (process.env.ADMIN_SECRET || '').trim();
+  if (!secret || !expectedSecret || secret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized access.' });
   }
 
   const clean = (val?: string) => (val || '').trim().replace(/^["']|["']$/g, '');
@@ -1551,9 +1551,9 @@ app.get('/api/admin-overview', (req, res) => {
 // Admin-level route to delete specific submissions securely
 app.delete('/api/messages/:id', (req, res) => {
   const secret = String(req.query.secret || '').trim();
-  const expectedSecret = (process.env.ADMIN_SECRET || 'qbench2026secret').trim();
-  if (!secret || (secret !== expectedSecret && secret !== 'qbench2026secret')) {
-    return res.status(401).json({ success: false, error: 'Unauthorized access. ADMIN_SECRET mismatch.' });
+  const expectedSecret = (process.env.ADMIN_SECRET || '').trim();
+  if (!secret || !expectedSecret || secret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized access.' });
   }
 
   const idToDelete = req.params.id;
