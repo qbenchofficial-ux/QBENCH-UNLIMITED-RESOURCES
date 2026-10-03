@@ -227,7 +227,7 @@ async function markSeedAsDeleted(seedIdOrSlug: string): Promise<void> {
 
 export const SEED_PROJECTS: Project[] = [
   {
-    id: 'seed-1',
+    id: '8eca5481-f9ea-4a83-b868-6c5b3388ba57',
     title: 'The Journey of a Ring',
     slug: 'the-journey-of-a-ring',
     short_description:
@@ -261,51 +261,51 @@ export const SEED_PROJECTS: Project[] = [
     ],
     portfolio_images: [
       {
-        id: 'seed-1-img-1',
-        project_id: 'seed-1',
+        id: '859708a9-e9da-4472-8e0a-9b522a7e7552',
+        project_id: '8eca5481-f9ea-4a83-b868-6c5b3388ba57',
         image_url:
-          'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=1200&q=80',
-        alt_text: 'Main Cover Image',
+          'https://images.unsplash.com/photo-1573408301185-9146fe634ad0?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Project Presentation',
         sort_order: 0,
         display_order: 0,
         created_at: '2026-02-10T10:00:00.000Z',
       },
       {
-        id: 'seed-1-img-2',
-        project_id: 'seed-1',
+        id: '8eca5481-img-2',
+        project_id: '8eca5481-f9ea-4a83-b868-6c5b3388ba57',
         image_url:
-          'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=1200&q=80',
-        alt_text: 'Storyboard Image 01',
+          'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Main Cover Image',
         sort_order: 1,
         display_order: 1,
         created_at: '2026-02-10T10:00:00.000Z',
       },
       {
-        id: 'seed-1-img-3',
-        project_id: 'seed-1',
+        id: '8eca5481-img-3',
+        project_id: '8eca5481-f9ea-4a83-b868-6c5b3388ba57',
         image_url:
-          'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1200&q=80',
-        alt_text: 'Storyboard Image 02',
+          'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Storyboard Image 01',
         sort_order: 2,
         display_order: 2,
         created_at: '2026-02-10T10:00:00.000Z',
       },
       {
-        id: 'seed-1-img-4',
-        project_id: 'seed-1',
+        id: '8eca5481-img-4',
+        project_id: '8eca5481-f9ea-4a83-b868-6c5b3388ba57',
         image_url:
-          'https://images.unsplash.com/photo-1603561591411-07134e71a2a9?auto=format&fit=crop&w=1200&q=80',
-        alt_text: 'Final Artwork',
+          'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Storyboard Image 02',
         sort_order: 3,
         display_order: 3,
         created_at: '2026-02-10T10:00:00.000Z',
       },
       {
-        id: 'seed-1-img-5',
-        project_id: 'seed-1',
+        id: '8eca5481-img-5',
+        project_id: '8eca5481-f9ea-4a83-b868-6c5b3388ba57',
         image_url:
-          'https://images.unsplash.com/photo-1573408301185-9146fe634ad0?auto=format&fit=crop&w=1200&q=80',
-        alt_text: 'Project Presentation',
+          'https://images.unsplash.com/photo-1603561591411-07134e71a2a9?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Final Artwork',
         sort_order: 4,
         display_order: 4,
         created_at: '2026-02-10T10:00:00.000Z',
@@ -322,12 +322,12 @@ export const SEED_PROJECTS: Project[] = [
     status: 'published',
     sort_order: 1,
     display_order: 1,
-    is_seed: true,
+    is_seed: false,
     created_at: '2026-02-10T10:00:00.000Z',
     updated_at: '2026-02-10T10:00:00.000Z',
   },
   {
-    id: 'seed-2',
+    id: '2b8a2c1e-509c-4673-93c7-7479f058a68d',
     title: 'Sleepless Night',
     slug: 'sleepless-night',
     short_description:
@@ -344,32 +344,43 @@ export const SEED_PROJECTS: Project[] = [
     services: ['Motion Graphics', 'Visual Storytelling', 'Sound Sync'],
     software_tools: ['After Effects', 'Illustrator', 'Photoshop'],
     cover_image:
-      'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=800&h=500&q=80',
+      'https://zsbpxqzmkhcvxdvjoabp.supabase.co/storage/v1/object/public/portfolio-images/projects/2b8a2c1e-509c-4673-93c7-7479f058a68d/1791024288539-imlqfo-img-04.jpg',
     cover_image_url:
-      'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=800&h=500&q=80',
+      'https://zsbpxqzmkhcvxdvjoabp.supabase.co/storage/v1/object/public/portfolio-images/projects/2b8a2c1e-509c-4673-93c7-7479f058a68d/1791024288539-imlqfo-img-04.jpg',
     gallery: [
+      'https://zsbpxqzmkhcvxdvjoabp.supabase.co/storage/v1/object/public/portfolio-images/projects/2b8a2c1e-509c-4673-93c7-7479f058a68d/1791024288539-imlqfo-img-04.jpg',
       'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=1200&q=80',
       'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
     ],
     portfolio_images: [
       {
-        id: 'seed-2-img-1',
-        project_id: 'seed-2',
+        id: '5b889ac6-04d1-40a9-911a-e76e1ed33f4b',
+        project_id: '2b8a2c1e-509c-4673-93c7-7479f058a68d',
         image_url:
-          'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=1200&q=80',
-        alt_text: 'Main Cover Image',
+          'https://zsbpxqzmkhcvxdvjoabp.supabase.co/storage/v1/object/public/portfolio-images/projects/2b8a2c1e-509c-4673-93c7-7479f058a68d/1791024288539-imlqfo-img-04.jpg',
+        alt_text: 'Sleepless Night — Cover Image',
         sort_order: 0,
         display_order: 0,
         created_at: '2026-02-14T10:00:00.000Z',
       },
       {
-        id: 'seed-2-img-2',
-        project_id: 'seed-2',
+        id: '2b8a2c1e-img-2',
+        project_id: '2b8a2c1e-509c-4673-93c7-7479f058a68d',
         image_url:
-          'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
+          'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=1200&q=80',
         alt_text: 'Visual Lighting Study',
         sort_order: 1,
         display_order: 1,
+        created_at: '2026-02-14T10:00:00.000Z',
+      },
+      {
+        id: '2b8a2c1e-img-3',
+        project_id: '2b8a2c1e-509c-4673-93c7-7479f058a68d',
+        image_url:
+          'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Midnight Mood Exploration',
+        sort_order: 2,
+        display_order: 2,
         created_at: '2026-02-14T10:00:00.000Z',
       },
     ],
@@ -383,12 +394,12 @@ export const SEED_PROJECTS: Project[] = [
     status: 'published',
     sort_order: 2,
     display_order: 2,
-    is_seed: true,
+    is_seed: false,
     created_at: '2026-02-14T10:00:00.000Z',
     updated_at: '2026-02-14T10:00:00.000Z',
   },
   {
-    id: 'seed-3',
+    id: 'b77b7ff1-bf5d-4d85-9731-e1974ce975b6',
     title: 'Treat Your Kidneys Well',
     slug: 'treat-your-kidneys-well',
     short_description:
@@ -405,21 +416,32 @@ export const SEED_PROJECTS: Project[] = [
     services: ['Creative Campaigns', 'Social Media', 'Infographic Design'],
     software_tools: ['Illustrator', 'Photoshop', 'After Effects'],
     cover_image:
-      'https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&fit=crop&w=800&h=500&q=80',
+      'https://zsbpxqzmkhcvxdvjoabp.supabase.co/storage/v1/object/public/portfolio-images/projects/b77b7ff1-bf5d-4d85-9731-e1974ce975b6/1791024365096-wee9yo-img-02.png',
     cover_image_url:
-      'https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&fit=crop&w=800&h=500&q=80',
+      'https://zsbpxqzmkhcvxdvjoabp.supabase.co/storage/v1/object/public/portfolio-images/projects/b77b7ff1-bf5d-4d85-9731-e1974ce975b6/1791024365096-wee9yo-img-02.png',
     gallery: [
+      'https://zsbpxqzmkhcvxdvjoabp.supabase.co/storage/v1/object/public/portfolio-images/projects/b77b7ff1-bf5d-4d85-9731-e1974ce975b6/1791024365096-wee9yo-img-02.png',
       'https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&fit=crop&w=1200&q=80',
     ],
     portfolio_images: [
       {
-        id: 'seed-3-img-1',
-        project_id: 'seed-3',
+        id: 'b24f9ef2-06e8-4fe7-939b-a1974cf58b61',
+        project_id: 'b77b7ff1-bf5d-4d85-9731-e1974ce975b6',
         image_url:
-          'https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&fit=crop&w=1200&q=80',
+          'https://zsbpxqzmkhcvxdvjoabp.supabase.co/storage/v1/object/public/portfolio-images/projects/b77b7ff1-bf5d-4d85-9731-e1974ce975b6/1791024365096-wee9yo-img-02.png',
         alt_text: 'Campaign Key Visual',
         sort_order: 0,
         display_order: 0,
+        created_at: '2026-02-18T10:00:00.000Z',
+      },
+      {
+        id: 'b77b7ff1-img-2',
+        project_id: 'b77b7ff1-bf5d-4d85-9731-e1974ce975b6',
+        image_url:
+          'https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&fit=crop&w=1200&q=80',
+        alt_text: 'Infographic Poster Detail',
+        sort_order: 1,
+        display_order: 1,
         created_at: '2026-02-18T10:00:00.000Z',
       },
     ],
@@ -433,7 +455,7 @@ export const SEED_PROJECTS: Project[] = [
     status: 'published',
     sort_order: 3,
     display_order: 3,
-    is_seed: true,
+    is_seed: false,
     created_at: '2026-02-18T10:00:00.000Z',
     updated_at: '2026-02-18T10:00:00.000Z',
   },
@@ -873,7 +895,8 @@ export async function getAllProjects(): Promise<Project[]> {
     .order('created_at', { ascending: false });
 
   if (error) {
-    throw new Error(error.message);
+    console.warn('[getAllProjects] Supabase query notice:', error.message);
+    return sortProjects(await getActiveSeedProjects());
   }
 
   const rows = (data || []).map((row) => {
@@ -919,7 +942,9 @@ export async function getPublishedProjects(): Promise<Project[]> {
     .order('created_at', { ascending: false });
 
   if (error) {
-    throw new Error(error.message);
+    console.warn('[getPublishedProjects] Supabase query notice:', error.message);
+    const activeSeeds = await getActiveSeedProjects();
+    return sortProjects(activeSeeds.filter((p) => p.status === 'published'));
   }
 
   const publishedRows = (data || []).map((row) => {
@@ -985,7 +1010,14 @@ export async function getProjectBySlug(
   const { data, error } = await query.maybeSingle();
 
   if (error) {
-    throw new Error(error.message);
+    console.warn('[getProjectBySlug] Supabase query notice:', error.message);
+    const activeSeeds = await getActiveSeedProjects();
+    return (
+      activeSeeds.find(
+        (p) =>
+          p.slug === cleanSlug && (includeDrafts || p.status === 'published')
+      ) || null
+    );
   }
 
   if (!data) {

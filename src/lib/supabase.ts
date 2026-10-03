@@ -1,4 +1,4 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, type User } from '@supabase/supabase-js';
 import type { AdminProfile } from '../types/project';
 
 export const DEFAULT_SUPABASE_PROJECT_URL =
@@ -197,76 +197,102 @@ export function isSeedIdentifier(value: unknown): boolean {
   );
 }
 
+export interface AdminRpcVerificationResult {
+  isAdmin: boolean;
+  user: User | null;
+  profile: AdminProfile | null;
+  error?: string;
+  isSystemError: boolean;
+}
+
 /**
- * Verify that the authenticated Supabase user exists in `public.admin_profiles`
- * with `user_id = auth.uid()` and `role = 'admin'`.
+ * Authoritatively verifies whether the currently authenticated Supabase session
+ * belongs to a valid QBench administrator using the existing PostgreSQL RPC:
+ * `supabase.rpc('is_qbench_admin')`.
+ *
+ * Strictly avoids querying `public.admin_profiles` directly from the browser.
+ * Does NOT expose admin_profiles rows or rely on client email checks.
+ * Treats the RPC return value strictly as a boolean.
+ */
+export async function checkIsQBenchAdminRpc(): Promise<AdminRpcVerificationResult> {
+  await ensureSupabaseConfig();
+
+  const {
+    data: { user },
+    error: sessionError,
+  } = await supabase.auth.getUser();
+
+  if (sessionError || !user) {
+    return {
+      isAdmin: false,
+      user: null,
+      profile: null,
+      error: sessionError?.message || 'No authenticated Supabase user session.',
+      isSystemError: false,
+    };
+  }
+
+  const { data: isAdmin, error: adminError } = await supabase.rpc(
+    'is_qbench_admin'
+  );
+
+  if (adminError) {
+    return {
+      isAdmin: false,
+      user,
+      profile: null,
+      error: `Authentication system error: ${adminError.message || 'Failed to execute is_qbench_admin RPC.'}`,
+      isSystemError: true,
+    };
+  }
+
+  // Treat the returned result strictly as a boolean (not object, array, or row)
+  const isAuthorized = isAdmin === true;
+
+  if (!isAuthorized) {
+    return {
+      isAdmin: false,
+      user,
+      profile: null,
+      error:
+        'Access denied. Your account is not registered as an admin (role = "admin") in public.admin_profiles.',
+      isSystemError: false,
+    };
+  }
+
+  const profile: AdminProfile = {
+    id: user.id,
+    user_id: user.id,
+    email: user.email || '',
+    role: 'admin',
+  };
+
+  return {
+    isAdmin: true,
+    user,
+    profile,
+    error: undefined,
+    isSystemError: false,
+  };
+}
+
+/**
+ * Backwards-compatible verifyAdminProfile that uses the secure RPC check
+ * instead of direct public.admin_profiles table queries.
  */
 export async function verifyAdminProfile(
-  userId: string,
-  userEmail?: string
+  _userId?: string,
+  _userEmail?: string
 ): Promise<{
   isAdmin: boolean;
   profile: AdminProfile | null;
   error?: string;
 }> {
-  await ensureSupabaseConfig();
-
-  if (!userId) {
-    return { isAdmin: false, profile: null, error: 'Not authenticated.' };
-  }
-
-  const normalizedEmail = (userEmail || '').trim().toLowerCase();
-
-  let { data, error } = await supabase
-    .from('admin_profiles')
-    .select('id, user_id, email, role, created_at')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (!data && normalizedEmail) {
-    const byEmail = await supabase
-      .from('admin_profiles')
-      .select('id, user_id, email, role, created_at')
-      .ilike('email', normalizedEmail)
-      .maybeSingle();
-    if (byEmail.data) {
-      data = byEmail.data;
-      error = null;
-      if (data && (!data.user_id || data.user_id !== userId)) {
-        try {
-          await supabase
-            .from('admin_profiles')
-            .update({ user_id: userId })
-            .eq('id', data.id);
-        } catch {
-          // Ignore if RLS blocks direct client update
-        }
-      }
-    }
-  }
-
-  if (error) {
-    return { isAdmin: false, profile: null, error: error.message };
-  }
-
-  if (!data || data.role !== 'admin') {
-    return {
-      isAdmin: false,
-      profile: (data as AdminProfile) || null,
-      error:
-        'Access denied. Your account is not registered as an admin (role = "admin") in public.admin_profiles.',
-    };
-  }
-
+  const result = await checkIsQBenchAdminRpc();
   return {
-    isAdmin: true,
-    profile: {
-      id: String(data.id),
-      user_id: String(data.user_id || userId),
-      email: String(data.email || userEmail || ''),
-      role: String(data.role),
-      created_at: data.created_at ? String(data.created_at) : undefined,
-    },
+    isAdmin: result.isAdmin,
+    profile: result.profile,
+    error: result.error,
   };
 }
 

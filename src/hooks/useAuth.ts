@@ -1,10 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { User } from '@supabase/supabase-js';
-import {
-  supabase,
-  ensureSupabaseConfig,
-  verifyAdminProfile,
-} from '../lib/supabase';
+import { supabase, ensureSupabaseConfig } from '../lib/supabase';
 import type { AdminProfile } from '../types/project';
 
 export interface UseAuthResult {
@@ -25,58 +21,130 @@ export function useAuth(): UseAuthResult {
   const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [authError, setAuthError] = useState<string | null>(null);
-  const initializedRef = useRef(false);
 
-  const resolveAdminFromUser = useCallback(async (currentUser: User | null) => {
-    if (!currentUser) {
-      setUser(null);
-      setAdminProfile(null);
-      return false;
+  // In-flight verification tracking to prevent race conditions
+  const activeVerificationRef = useRef<Promise<boolean> | null>(null);
+  const mountedRef = useRef(true);
+
+  /**
+   * Authoritatively verify the authenticated Supabase session using the `is_qbench_admin` RPC.
+   *
+   * Flow:
+   * 1. Obtain current Supabase user via `supabase.auth.getUser()`.
+   * 2. If unauthenticated, clear admin state.
+   * 3. Call `supabase.rpc('is_qbench_admin')`.
+   * 4. If adminError occurs, display system error (do NOT show "not registered as admin").
+   * 5. If returned value is NOT strictly true (false/null/other), sign out and show:
+   *    "Access denied. Your account is not registered as an admin (role = "admin") in public.admin_profiles."
+   * 6. If strictly true, set adminProfile and allow access.
+   */
+  const verifyCurrentAdminSession = useCallback(async (): Promise<boolean> => {
+    // If a verification is already executing, reuse the promise to prevent race conditions
+    if (activeVerificationRef.current) {
+      return activeVerificationRef.current;
     }
 
-    setUser(currentUser);
-    const check = await verifyAdminProfile(currentUser.id, currentUser.email);
-    if (!check.isAdmin || !check.profile) {
-      await supabase.auth.signOut();
-      setUser(null);
-      setAdminProfile(null);
-      setAuthError(
-        check.error ||
-          'Access denied. Only authorized admins (role = "admin" in public.admin_profiles) can access the QBENCH Admin Dashboard.'
-      );
-      return false;
-    }
+    const verificationPromise = (async () => {
+      try {
+        await ensureSupabaseConfig();
 
-    setAdminProfile(check.profile);
-    return true;
+        // 1. Obtain the current Supabase session/user after establishing auth
+        const {
+          data: { user: currentUser },
+          error: sessionError,
+        } = await supabase.auth.getUser();
+
+        if (sessionError || !currentUser) {
+          if (mountedRef.current) {
+            setUser(null);
+            setAdminProfile(null);
+          }
+          return false;
+        }
+
+        // 2. Do NOT query public.admin_profiles directly from the browser.
+        // Instead call the existing PostgreSQL RPC: supabase.rpc('is_qbench_admin')
+        const { data: isAdmin, error: adminError } = await supabase.rpc(
+          'is_qbench_admin'
+        );
+
+        // 3. Handle RPC errors separately from a legitimate false result.
+        // Do not incorrectly display "not registered as admin" when the RPC itself failed.
+        if (adminError) {
+          if (mountedRef.current) {
+            setUser(null);
+            setAdminProfile(null);
+            setAuthError(
+              `Authentication error: ${adminError.message || 'Failed to verify admin status.'}`
+            );
+          }
+          return false;
+        }
+
+        // 4. Treat the returned boolean strictly as a boolean
+        const isAuthorized = isAdmin === true;
+
+        if (!isAuthorized) {
+          // If it returns false, sign the user out and show the existing access-denied message.
+          await supabase.auth.signOut();
+          if (mountedRef.current) {
+            setUser(null);
+            setAdminProfile(null);
+            setAuthError(
+              'Access denied. Your account is not registered as an admin (role = "admin") in public.admin_profiles.'
+            );
+          }
+          return false;
+        }
+
+        // 5. Authenticated admin — construct the session admin representation from the Supabase user
+        const profile: AdminProfile = {
+          id: currentUser.id,
+          user_id: currentUser.id,
+          email: currentUser.email || '',
+          role: 'admin',
+        };
+
+        if (mountedRef.current) {
+          setUser(currentUser);
+          setAdminProfile(profile);
+          setAuthError(null);
+        }
+        return true;
+      } catch (err: unknown) {
+        if (mountedRef.current) {
+          setUser(null);
+          setAdminProfile(null);
+          setAuthError(
+            err instanceof Error
+              ? err.message
+              : 'Failed to verify admin authentication session.'
+          );
+        }
+        return false;
+      } finally {
+        activeVerificationRef.current = null;
+      }
+    })();
+
+    activeVerificationRef.current = verificationPromise;
+    return verificationPromise;
   }, []);
 
   useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-    let mounted = true;
+    mountedRef.current = true;
 
-    async function initAuth() {
+    async function initSession() {
+      setLoading(true);
       try {
         await ensureSupabaseConfig();
 
         const {
           data: { session },
-          error,
         } = await supabase.auth.getSession();
 
-        if (error) {
-          if (mounted) {
-            setUser(null);
-            setAdminProfile(null);
-            setAuthError(error.message);
-            setLoading(false);
-          }
-          return;
-        }
-
         if (!session?.user) {
-          if (mounted) {
+          if (mountedRef.current) {
             setUser(null);
             setAdminProfile(null);
             setLoading(false);
@@ -84,41 +152,55 @@ export function useAuth(): UseAuthResult {
           return;
         }
 
-        if (mounted) {
-          await resolveAdminFromUser(session.user);
-          setLoading(false);
+        if (mountedRef.current) {
+          await verifyCurrentAdminSession();
         }
       } catch (err: unknown) {
-        if (mounted) {
+        if (mountedRef.current) {
           setUser(null);
           setAdminProfile(null);
           setAuthError(
-            err instanceof Error ? err.message : 'Failed to verify Supabase session.'
+            err instanceof Error
+              ? err.message
+              : 'Failed to restore Supabase session.'
           );
+        }
+      } finally {
+        if (mountedRef.current) {
           setLoading(false);
         }
       }
     }
 
-    initAuth();
+    initSession();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (!mounted) return;
+        if (!mountedRef.current) return;
+
         if (event === 'SIGNED_OUT' || !session?.user) {
           setUser(null);
           setAdminProfile(null);
+          setLoading(false);
         } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          await resolveAdminFromUser(session.user);
+          // Keep authentication state synchronized while preventing race conditions
+          setLoading(true);
+          try {
+            await verifyCurrentAdminSession();
+          } finally {
+            if (mountedRef.current) {
+              setLoading(false);
+            }
+          }
         }
       }
     );
 
     return () => {
-      mounted = false;
+      mountedRef.current = false;
       authListener.subscription.unsubscribe();
     };
-  }, [resolveAdminFromUser]);
+  }, [verifyCurrentAdminSession]);
 
   const login = useCallback(
     async (email: string, password: string): Promise<boolean> => {
@@ -134,6 +216,7 @@ export function useAuth(): UseAuthResult {
       try {
         await ensureSupabaseConfig();
 
+        // 1. User signs in using the existing Supabase Auth login
         const { data, error } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
           password,
@@ -144,7 +227,8 @@ export function useAuth(): UseAuthResult {
           return false;
         }
 
-        const ok = await resolveAdminFromUser(data.user);
+        // 2. Authoritatively verify admin status using the RPC
+        const ok = await verifyCurrentAdminSession();
         return ok;
       } catch (err: unknown) {
         setAuthError(
@@ -155,14 +239,21 @@ export function useAuth(): UseAuthResult {
         setLoading(false);
       }
     },
-    [resolveAdminFromUser]
+    [verifyCurrentAdminSession]
   );
 
   const logout = useCallback(async () => {
     setAuthError(null);
-    await supabase.auth.signOut();
-    setUser(null);
-    setAdminProfile(null);
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Ignore signOut network errors
+    } finally {
+      if (mountedRef.current) {
+        setUser(null);
+        setAdminProfile(null);
+      }
+    }
   }, []);
 
   const clearError = useCallback(() => setAuthError(null), []);
