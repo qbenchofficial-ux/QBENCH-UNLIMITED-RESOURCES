@@ -1070,6 +1070,12 @@ export async function isSlugTaken(
   }
   const { data, error } = await query.maybeSingle();
   if (error) {
+    if (
+      error.code === '42501' ||
+      (error.message || '').includes('permission denied for function is_qbench_admin')
+    ) {
+      return false;
+    }
     throw new Error(error.message);
   }
   return Boolean(data);
@@ -1235,6 +1241,14 @@ export async function createProject(
   if (error) {
     if (error.code === '23505') {
       throw new Error(`A project with slug "${cleanSlug}" already exists.`);
+    }
+    if (
+      error.code === '42501' &&
+      (error.message || '').includes('permission denied for function is_qbench_admin')
+    ) {
+      throw new Error(
+        `Database function permission missing: Run "GRANT EXECUTE ON FUNCTION public.is_qbench_admin() TO authenticated, anon;" in your Supabase SQL Editor.`
+      );
     }
     throw new Error(error.message);
   }
@@ -1510,6 +1524,14 @@ export async function updateProject(
     if (error.code === '23505') {
       throw new Error(`A project with slug "${cleanSlug}" already exists.`);
     }
+    if (
+      error.code === '42501' &&
+      (error.message || '').includes('permission denied for function is_qbench_admin')
+    ) {
+      throw new Error(
+        `Database function permission missing: Run "GRANT EXECUTE ON FUNCTION public.is_qbench_admin() TO authenticated, anon;" in your Supabase SQL Editor.`
+      );
+    }
     throw new Error(error.message);
   }
 
@@ -1710,6 +1732,27 @@ export async function getProjectById(id: string): Promise<Project | null> {
     .maybeSingle();
 
   if (error) {
+    if (
+      error.code === '42501' ||
+      (error.message || '').includes('permission denied for function is_qbench_admin')
+    ) {
+      const activeSeeds = await getActiveSeedProjects();
+      const seedById = activeSeeds.find((p) => p.id === cleanId);
+      if (seedById) {
+        const [portfolioImages, projectVideos] = await Promise.all([
+          getProjectPortfolioImages(cleanId),
+          getProjectVideos(cleanId),
+        ]);
+        return normalizeProject(
+          seedById as unknown as Record<string, unknown>,
+          byId,
+          portfolioImages.length > 0 ? portfolioImages : seedById.portfolio_images,
+          metaMap,
+          projectVideos.length > 0 ? projectVideos : seedById.project_videos
+        );
+      }
+      return null;
+    }
     throw new Error(error.message);
   }
 

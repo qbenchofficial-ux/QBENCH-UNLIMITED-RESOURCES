@@ -236,18 +236,52 @@ export async function checkIsQBenchAdminRpc(): Promise<AdminRpcVerificationResul
     'is_qbench_admin'
   );
 
-  if (adminError) {
-    return {
-      isAdmin: false,
-      user,
-      profile: null,
-      error: `Authentication system error: ${adminError.message || 'Failed to execute is_qbench_admin RPC.'}`,
-      isSystemError: true,
-    };
-  }
+  let isAuthorized = false;
 
-  // Treat the returned result strictly as a boolean (not object, array, or row)
-  const isAuthorized = isAdmin === true;
+  if (adminError) {
+    const isFuncPermDenied =
+      adminError.code === '42501' ||
+      (adminError.message || '')
+        .toLowerCase()
+        .includes('permission denied for function is_qbench_admin');
+
+    if (isFuncPermDenied) {
+      // If EXECUTE on public.is_qbench_admin() was revoked in PostgreSQL,
+      // evaluate the identical condition (user_id = auth.uid() AND role = 'admin')
+      // against the authenticated user's own row under strict RLS.
+      const { data: ownRow, error: rowError } = await supabase
+        .from('admin_profiles')
+        .select('user_id, role')
+        .eq('user_id', user.id)
+        .eq('role', 'admin')
+        .maybeSingle();
+
+      if (rowError) {
+        return {
+          isAdmin: false,
+          user,
+          profile: null,
+          error: `Authentication system error: ${rowError.message || adminError.message}`,
+          isSystemError: true,
+        };
+      }
+
+      isAuthorized = Boolean(
+        ownRow && ownRow.user_id === user.id && ownRow.role === 'admin'
+      );
+    } else {
+      return {
+        isAdmin: false,
+        user,
+        profile: null,
+        error: `Authentication system error: ${adminError.message || 'Failed to execute is_qbench_admin RPC.'}`,
+        isSystemError: true,
+      };
+    }
+  } else {
+    // Treat the returned result strictly as a boolean (not object, array, or row)
+    isAuthorized = isAdmin === true;
+  }
 
   if (!isAuthorized) {
     return {

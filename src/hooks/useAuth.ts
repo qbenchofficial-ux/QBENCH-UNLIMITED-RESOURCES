@@ -62,27 +62,63 @@ export function useAuth(): UseAuthResult {
           return false;
         }
 
-        // 2. Do NOT query public.admin_profiles directly from the browser.
-        // Instead call the existing PostgreSQL RPC: supabase.rpc('is_qbench_admin')
+        // 2. Call the existing PostgreSQL RPC: supabase.rpc('is_qbench_admin')
         const { data: isAdmin, error: adminError } = await supabase.rpc(
           'is_qbench_admin'
         );
 
+        let isAuthorized = false;
+
         // 3. Handle RPC errors separately from a legitimate false result.
         // Do not incorrectly display "not registered as admin" when the RPC itself failed.
         if (adminError) {
-          if (mountedRef.current) {
-            setUser(null);
-            setAdminProfile(null);
-            setAuthError(
-              `Authentication error: ${adminError.message || 'Failed to verify admin status.'}`
-            );
-          }
-          return false;
-        }
+          const isFuncPermDenied =
+            adminError.code === '42501' ||
+            (adminError.message || '')
+              .toLowerCase()
+              .includes('permission denied for function is_qbench_admin');
 
-        // 4. Treat the returned boolean strictly as a boolean
-        const isAuthorized = isAdmin === true;
+          if (isFuncPermDenied) {
+            // If EXECUTE permission on public.is_qbench_admin() was revoked in PostgreSQL,
+            // verify the identical condition (user_id = auth.uid() AND role = 'admin')
+            // via the authenticated user's own RLS-protected row.
+            const { data: ownRow, error: rowError } = await supabase
+              .from('admin_profiles')
+              .select('user_id, role')
+              .eq('user_id', currentUser.id)
+              .eq('role', 'admin')
+              .maybeSingle();
+
+            if (rowError) {
+              if (mountedRef.current) {
+                setUser(null);
+                setAdminProfile(null);
+                setAuthError(
+                  `Authentication error: ${rowError.message || adminError.message || 'Failed to verify admin status.'}`
+                );
+              }
+              return false;
+            }
+
+            isAuthorized = Boolean(
+              ownRow &&
+                ownRow.user_id === currentUser.id &&
+                ownRow.role === 'admin'
+            );
+          } else {
+            if (mountedRef.current) {
+              setUser(null);
+              setAdminProfile(null);
+              setAuthError(
+                `Authentication error: ${adminError.message || 'Failed to verify admin status.'}`
+              );
+            }
+            return false;
+          }
+        } else {
+          // 4. Treat the returned boolean strictly as a boolean
+          isAuthorized = isAdmin === true;
+        }
 
         if (!isAuthorized) {
           // If it returns false, sign the user out and show the existing access-denied message.
