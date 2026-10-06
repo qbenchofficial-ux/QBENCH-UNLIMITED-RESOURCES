@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { isSupabaseConfigured, SUPABASE_CONFIG_WARNING } from '../lib/supabase';
 import QBenchLogo from '../components/QBenchLogo';
-import { Lock, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Lock, Loader2, AlertCircle, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 
 interface AdminLoginProps {
   onLogin: (email: string, password: string) => Promise<boolean>;
@@ -19,6 +18,7 @@ export default function AdminLogin({
 }: AdminLoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,29 +34,16 @@ export default function AdminLogin({
 
       <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
         <div className="flex flex-col items-center text-center space-y-3">
-          <QBenchLogo variant="symbol" iconSize={52} />
-          <div className="space-y-1">
+          <QBenchLogo variant="stacked" />
+          <div className="space-y-1 pt-1">
             <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#00685b] block">
-              QBENCH CMS
+              Admin Portal
             </span>
-            <h1 className="font-display text-2xl font-black text-slate-900">
-              Creative Management System
-            </h1>
             <p className="font-sans text-xs text-slate-500">
               Sign in with your authorized administrator credentials
             </p>
           </div>
         </div>
-
-        {!isSupabaseConfigured && (
-          <div
-            role="status"
-            className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-800"
-          >
-            <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-            <span className="leading-relaxed">{SUPABASE_CONFIG_WARNING}</span>
-          </div>
-        )}
 
         {error && (
           <div
@@ -74,7 +61,7 @@ export default function AdminLogin({
               htmlFor="admin-email"
               className="block font-tech text-[11px] font-bold uppercase tracking-wider text-slate-700"
             >
-              Email
+              Email Address
             </label>
             <input
               id="admin-email"
@@ -83,7 +70,7 @@ export default function AdminLogin({
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="qbench.official@gmail.com"
+              placeholder="Enter your email address"
               className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none transition-colors"
             />
           </div>
@@ -95,16 +82,30 @@ export default function AdminLogin({
             >
               Password
             </label>
-            <input
-              id="admin-password"
-              type="password"
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••••••"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none transition-colors"
-            />
+            <div className="relative">
+              <input
+                id="admin-password"
+                type={showPassword ? 'text' : 'password'}
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-4 pr-11 py-2.5 text-sm text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none transition-colors"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer transition-colors"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
           </div>
 
           <button

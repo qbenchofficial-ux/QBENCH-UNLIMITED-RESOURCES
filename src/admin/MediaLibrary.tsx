@@ -3,6 +3,10 @@ import {
   listPortfolioMedia,
   uploadPortfolioImage,
   deletePortfolioMediaByPaths,
+  validatePortfolioImage,
+  formatFileSize,
+  MAX_PORTFOLIO_IMAGE_SIZE_MB,
+  type StorageFolderTarget,
 } from '../services/mediaService';
 import type { MediaFile } from '../types/project';
 import {
@@ -21,6 +25,12 @@ interface MediaLibraryProps {
   onNotify: (type: 'success' | 'error', message: string) => void;
 }
 
+interface StagedMediaFile {
+  tempId: string;
+  file: File;
+  previewUrl: string;
+}
+
 function formatBytes(bytes: number | null): string {
   if (bytes === null || bytes === undefined || isNaN(bytes)) return 'Size N/A';
   if (bytes < 1024) return `${bytes} B`;
@@ -35,6 +45,10 @@ export default function MediaLibrary({ onNotify }: MediaLibraryProps) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [targetFolder, setTargetFolder] =
+    useState<StorageFolderTarget>('site');
+  const [stagedFiles, setStagedFiles] = useState<StagedMediaFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<MediaFile | null>(null);
 
@@ -57,23 +71,105 @@ export default function MediaLibrary({ onNotify }: MediaLibraryProps) {
     loadMedia();
   }, [loadMedia]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const stageSelectedFiles = (selected: File[]) => {
+    if (!selected || selected.length === 0) return;
+    const valid: StagedMediaFile[] = [];
+    for (let i = 0; i < selected.length; i++) {
+      const file = selected[i];
+      const err = validatePortfolioImage(file);
+      if (err) {
+        onNotify('error', err);
+        return;
+      }
+      valid.push({
+        tempId: `media-${Date.now()}-${i}-${Math.random()
+          .toString(36)
+          .slice(2, 6)}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+      });
+    }
+    setStagedFiles((prev) => [...prev, ...valid]);
+  };
+
+  const handleFileInputSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
     const selected: File[] = Array.from(fileList);
+    e.target.value = '';
+    stageSelectedFiles(selected);
+  };
+
+  const handleDropFiles = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (uploading) return;
+    const dropped: File[] = Array.from(e.dataTransfer.files || []);
+    if (dropped.length > 0) {
+      stageSelectedFiles(dropped);
+    }
+  };
+
+  const handleReplaceStaged = (
+    idx: number,
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const err = validatePortfolioImage(file);
+    if (err) {
+      onNotify('error', err);
+      return;
+    }
+    setStagedFiles((prev) =>
+      prev.map((item, i) => {
+        if (i !== idx) return item;
+        URL.revokeObjectURL(item.previewUrl);
+        return {
+          ...item,
+          file,
+          previewUrl: URL.createObjectURL(file),
+        };
+      })
+    );
+  };
+
+  const handleRemoveStaged = (idx: number) => {
+    setStagedFiles((prev) => {
+      const target = prev[idx];
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
+
+  const handleUploadStaged = async () => {
+    if (stagedFiles.length === 0) return;
     setUploading(true);
     setUploadProgress(10);
 
     try {
-      for (let i = 0; i < selected.length; i++) {
-        await uploadPortfolioImage(selected[i], 'library', (pct) => {
-          const overall = Math.round(((i + pct / 100) / selected.length) * 100);
-          setUploadProgress(overall);
-        });
+      for (let i = 0; i < stagedFiles.length; i++) {
+        await uploadPortfolioImage(
+          stagedFiles[i].file,
+          targetFolder,
+          (pct) => {
+            const overall = Math.round(
+              ((i + pct / 100) / stagedFiles.length) * 100
+            );
+            setUploadProgress(overall);
+          }
+        );
+        URL.revokeObjectURL(stagedFiles[i].previewUrl);
       }
+      const count = stagedFiles.length;
+      setStagedFiles([]);
       onNotify(
         'success',
-        `Uploaded ${selected.length} image${selected.length === 1 ? '' : 's'} to portfolio bucket.`
+        `Uploaded ${count} image${
+          count === 1 ? '' : 's'
+        } to portfolio-images/${targetFolder}/.`
       );
       await loadMedia();
     } catch (err: unknown) {
@@ -84,7 +180,6 @@ export default function MediaLibrary({ onNotify }: MediaLibraryProps) {
     } finally {
       setUploading(false);
       setUploadProgress(0);
-      e.target.value = '';
     }
   };
 
@@ -123,11 +218,29 @@ export default function MediaLibrary({ onNotify }: MediaLibraryProps) {
             Media Library ({files.length})
           </h2>
           <p className="font-sans text-xs text-slate-500 mt-1">
-            Upload, preview, copy public URLs, and manage portfolio images (JPG, JPEG, PNG, WEBP).
+            Upload images from your local computer (Desktop, Downloads, Documents, C: or D: drive) to{' '}
+            <code className="font-mono text-[#00685b]">
+              portfolio-images/{targetFolder}/
+            </code>{' '}
+            (JPG, JPEG, PNG, WEBP, sanitized SVG up to {MAX_PORTFOLIO_IMAGE_SIZE_MB} MB).
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          <select
+            value={targetFolder}
+            onChange={(e) =>
+              setTargetFolder(e.target.value as StorageFolderTarget)
+            }
+            className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-bold text-slate-700 focus:border-[#00685b] focus:outline-none"
+          >
+            <option value="site">Folder: portfolio-images/site/</option>
+            <option value="categories">
+              Folder: portfolio-images/categories/
+            </option>
+            <option value="library">Folder: portfolio-images/library/</option>
+          </select>
+
           <button
             type="button"
             onClick={loadMedia}
@@ -147,20 +260,166 @@ export default function MediaLibrary({ onNotify }: MediaLibraryProps) {
             ) : (
               <>
                 <Upload className="h-4 w-4" />
-                <span>Upload Image</span>
+                <span>Upload from Computer</span>
               </>
             )}
             <input
               type="file"
               multiple
-              accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-              onChange={handleUpload}
+              accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+              onChange={handleFileInputSelect}
+              disabled={uploading}
+              className="hidden"
+            />
+          </label>
+
+          <label className="inline-flex items-center gap-1.5 rounded-xl border border-[#00685b]/30 bg-white hover:bg-[#00685b]/5 px-3.5 py-2.5 font-display text-xs font-bold text-[#00685b] cursor-pointer">
+            <ImageIcon className="h-4 w-4" />
+            <span>Browse Files</span>
+            <input
+              type="file"
+              multiple
+              accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+              onChange={handleFileInputSelect}
               disabled={uploading}
               className="hidden"
             />
           </label>
         </div>
       </div>
+
+      {/* Drag & Drop Area */}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!uploading) setIsDragging(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragging(false);
+        }}
+        onDrop={handleDropFiles}
+        className={`rounded-2xl border-2 border-dashed p-6 text-center transition-all ${
+          isDragging
+            ? 'border-[#00685b] bg-[#00685b]/10'
+            : 'border-slate-300 bg-white hover:border-[#00685b]/50'
+        }`}
+      >
+        <div className="max-w-lg mx-auto space-y-1.5">
+          <div className="mx-auto h-10 w-10 rounded-xl bg-[#00685b]/10 text-[#00685b] flex items-center justify-center">
+            <Upload className="h-5 w-5" />
+          </div>
+          <p className="font-display text-xs font-bold text-slate-800">
+            Drag & drop images from your computer here, or{' '}
+            <label className="text-[#00685b] underline cursor-pointer">
+              Browse Files
+              <input
+                type="file"
+                multiple
+                accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                onChange={handleFileInputSelect}
+                disabled={uploading}
+                className="hidden"
+              />
+            </label>
+          </p>
+          <p className="font-sans text-[11px] text-slate-500">
+            Supports Desktop, Downloads, Documents, C: drive, D: drive • JPG, JPEG, PNG, WEBP, SVG (max {MAX_PORTFOLIO_IMAGE_SIZE_MB} MB)
+          </p>
+        </div>
+      </div>
+
+      {/* Pre-upload Staged Files Preview */}
+      {stagedFiles.length > 0 && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50/75 p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-200/80 px-2.5 py-0.5 font-tech text-[10px] font-bold uppercase tracking-wider text-amber-950">
+                {stagedFiles.length} Local File{stagedFiles.length === 1 ? '' : 's'} Selected — Preview Before Uploading
+              </span>
+              <p className="text-xs text-amber-900 mt-0.5">
+                Target path: <code className="font-mono">portfolio-images/{targetFolder}/</code>
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={handleUploadStaged}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#00685b] hover:bg-[#005348] px-4 py-2 font-display text-xs font-bold text-white cursor-pointer"
+              >
+                {uploading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Upload className="h-3.5 w-3.5" />
+                )}
+                <span>Upload {stagedFiles.length} Selected</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => {
+                  stagedFiles.forEach((s) => URL.revokeObjectURL(s.previewUrl));
+                  setStagedFiles([]);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-white hover:bg-red-50 px-3 py-2 font-display text-xs font-bold text-red-700 cursor-pointer"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Clear</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
+            {stagedFiles.map((item, idx) => (
+              <div
+                key={item.tempId}
+                className="rounded-xl border border-amber-300 bg-white p-3 space-y-2"
+              >
+                <div className="aspect-[16/10] rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
+                  <img
+                    src={item.previewUrl}
+                    alt={item.file.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="text-[11px] font-mono">
+                  <p className="font-bold text-slate-800 truncate" title={item.file.name}>
+                    {item.file.name}
+                  </p>
+                  <p className="text-slate-500">{formatFileSize(item.file.size)}</p>
+                </div>
+                <div className="flex items-center justify-between gap-1 pt-1">
+                  <label className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-bold text-[#00685b] hover:bg-slate-50 cursor-pointer">
+                    <RefreshCw className="h-3 w-3" />
+                    <span>Replace</span>
+                    <input
+                      type="file"
+                      accept=".jpg,.jpeg,.png,.webp,.svg,image/jpeg,image/png,image/webp,image/svg+xml"
+                      onChange={(e) => handleReplaceStaged(idx, e)}
+                      disabled={uploading}
+                      className="hidden"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={uploading}
+                    onClick={() => handleRemoveStaged(idx)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-bold text-red-600 hover:bg-red-100 cursor-pointer"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    <span>Remove</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {uploading && (
         <div className="h-2 w-full rounded-full bg-slate-200 overflow-hidden">
@@ -188,7 +447,7 @@ export default function MediaLibrary({ onNotify }: MediaLibraryProps) {
               No uploaded images in the portfolio bucket yet
             </p>
             <p className="font-sans text-xs text-slate-500">
-              Click "Upload Image" above or upload cover/gallery images inside any project.
+              Click "Upload from Computer" or "Browse Files" above, or upload cover/gallery images inside any project.
             </p>
           </div>
         ) : (
@@ -256,8 +515,8 @@ export default function MediaLibrary({ onNotify }: MediaLibraryProps) {
                   <button
                     type="button"
                     onClick={() => handleDelete(item)}
-                    className="rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-700 hover:bg-red-100 cursor-pointer"
-                    title="Delete Image"
+                    className="rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-600 hover:bg-red-100 cursor-pointer"
+                    title="Delete file"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -268,52 +527,38 @@ export default function MediaLibrary({ onNotify }: MediaLibraryProps) {
         )}
       </div>
 
-      {/* Lightbox Preview Modal */}
       {previewItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-xs p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-3xl w-full p-5 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between gap-4">
+        <div
+          onClick={() => setPreviewItem(null)}
+          className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-4xl w-full overflow-hidden shadow-2xl border border-slate-200"
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div className="min-w-0">
-                <h3 className="font-display text-sm font-black text-slate-900 truncate">
+                <p className="font-display text-sm font-black text-slate-900 truncate">
                   {previewItem.name}
-                </h3>
-                <p className="font-mono text-[11px] text-slate-500">
-                  {formatBytes(previewItem.size)} • Uploaded{' '}
-                  {new Date(previewItem.created_at).toLocaleString()}
+                </p>
+                <p className="font-mono text-xs text-slate-500 truncate">
+                  portfolio-images/{previewItem.path}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setPreviewItem(null)}
-                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 cursor-pointer"
+                className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-
-            <div className="rounded-xl overflow-hidden bg-slate-900 max-h-[65vh] flex items-center justify-center">
+            <div className="p-6 bg-slate-950 flex items-center justify-center max-h-[75vh]">
               <img
                 src={previewItem.url}
                 alt={previewItem.name}
-                className="max-h-[65vh] w-auto object-contain"
+                className="max-h-[68vh] w-auto object-contain rounded-xl"
               />
-            </div>
-
-            <div className="flex items-center justify-between gap-3">
-              <input
-                type="text"
-                readOnly
-                value={previewItem.url}
-                className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-600"
-              />
-              <button
-                type="button"
-                onClick={() => handleCopyUrl(previewItem.url)}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[#00685b] px-4 py-2 font-display text-xs font-bold text-white cursor-pointer"
-              >
-                <Copy className="h-3.5 w-3.5" />
-                <span>Copy URL</span>
-              </button>
             </div>
           </div>
         </div>

@@ -32,7 +32,7 @@ export default function Footer({ onNavigate }: FooterProps) {
 
   const handleCopyEmail = (e: React.MouseEvent) => {
     e.preventDefault();
-    navigator.clipboard.writeText(settings.email || 'qbench.official@gmail.com');
+    navigator.clipboard.writeText(settings.email || 'contact@qbench.in');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -283,7 +283,7 @@ export default function Footer({ onNavigate }: FooterProps) {
               <li className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2.5">
                 <div className="flex items-center space-x-2.5">
                   <Mail className="h-4 w-4 text-[#45b88a] shrink-0" />
-                  <a href={`mailto:${settings.email || 'qbench.official@gmail.com'}`} className="font-sans text-xs text-white/70 hover:text-[#88f8c5] transition-colors">{settings.email || 'qbench.official@gmail.com'}</a>
+                  <a href={`mailto:${settings.email || 'contact@qbench.in'}`} className="font-sans text-xs text-white/70 hover:text-[#88f8c5] transition-colors">{settings.email || 'contact@qbench.in'}</a>
                 </div>
                 <button
                   onClick={handleCopyEmail}

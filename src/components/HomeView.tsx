@@ -1,8 +1,10 @@
 import { useState, useEffect, FormEvent, useRef, useMemo } from 'react';
 import { NavSection, ServiceTab } from '../types';
 import { sendEmailJS } from '../lib/emailService';
+import { createProjectInquiry } from '../services/inquiryService';
 import { useProjects } from '../hooks/useProjects';
 import PublicResourcesSection from './PublicResourcesSection';
+import { buildCategoryPortfolioGroups } from './PortfolioView';
 import { 
   ArrowRight, 
   CheckCircle2, 
@@ -20,12 +22,15 @@ import {
   Linkedin,
   MessageSquare,
   Award,
-  ChevronRight
+  ChevronRight,
+  Play,
+  Film,
 } from 'lucide-react';
 
 interface HomeViewProps {
   onNavigate: (section: NavSection, tab?: ServiceTab) => void;
   onOpenProjectDetail?: (slug: string) => void;
+  onOpenPortfolioCategory?: (categorySlug: string) => void;
 }
 
 function Typewriter({ 
@@ -77,8 +82,17 @@ function Typewriter({
   );
 }
 
-export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewProps) {
-  const { projects: publishedProjects } = useProjects('public');
+export default function HomeView({
+  onNavigate,
+  onOpenProjectDetail,
+  onOpenPortfolioCategory,
+}: HomeViewProps) {
+  const {
+    projects: publishedProjects,
+    categories,
+    services: cmsServices,
+    websiteContent,
+  } = useProjects('public');
   // Free Audit Form State
   const [formData, setFormData] = useState({
     fullName: '',
@@ -133,7 +147,7 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
         service: 'Free Brand Visibility Audit',
         package: 'Free Brand Visibility Audit',
         price: 'Free',
-        budget: 'Not specified',
+        budget: 'Free Audit',
         start_date: 'Immediate / Flexible',
         message: auditMessage,
         lead_source: 'QBENCH Website'
@@ -163,120 +177,123 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
     emoji: string; 
     title: string; 
     desc: string; 
-  }[] = [
-    {
-      id: 'branding',
-      emoji: '🎨',
-      title: 'Branding & Identity',
-      desc: 'Logos, brand identity systems, visual guidelines, and brand assets that create a lasting impression.'
-    },
-    {
-      id: 'social-media',
-      emoji: '📱',
-      title: 'Social Media Design',
-      desc: 'Creative social media designs that strengthen your brand across every platform.'
-    },
-    {
-      id: 'video-editing',
-      emoji: '🎬',
-      title: 'Video Editing',
-      desc: 'Professional editing for promotional videos, product showcases, reels, and brand stories.'
-    },
-    {
-      id: 'webdev',
-      emoji: '🌐',
-      title: 'Website Development',
-      desc: 'Modern, responsive websites designed for performance, usability, and great user experiences.'
-    },
-    {
-      id: 'digital-marketing',
-      emoji: '📈',
-      title: 'Digital Marketing',
-      desc: 'Creative campaigns and digital solutions that help brands build a stronger online presence.'
-    },
-    {
-      id: 'motion',
-      emoji: '✨',
-      title: 'Motion Graphics',
-      desc: 'Eye-catching animations and motion visuals that bring ideas to life.'
-    },
-    {
-      id: 'uiux',
-      emoji: '🖥️',
-      title: 'UI/UX Design',
-      desc: 'User-centered interfaces designed for intuitive, engaging, and seamless digital experiences.'
-    },
-    {
-      id: 'growth',
-      emoji: '🚀',
-      title: 'Creative Strategy',
-      desc: 'Creative direction and digital solutions that help brands communicate with clarity and confidence.'
-    },
-    {
-      id: 'business-support',
-      emoji: '💼',
-      title: 'Creative Support',
-      desc: 'Ongoing design support for presentations, marketing materials, print media, and creative content.'
+  }[] = useMemo(() => {
+    if (cmsServices && cmsServices.length > 0) {
+      return cmsServices.map((s) => ({
+        id: s.id,
+        emoji: s.emoji || '✨',
+        title: s.title,
+        desc: s.desc,
+      }));
     }
-  ];
+    return [
+      {
+        id: 'branding',
+        emoji: '🎨',
+        title: 'Branding & Identity',
+        desc: 'Logos, brand identity systems, visual guidelines, and brand assets that create a lasting impression.'
+      },
+      {
+        id: 'social-media',
+        emoji: '📱',
+        title: 'Social Media Design',
+        desc: 'Creative social media designs that strengthen your brand across every platform.'
+      },
+      {
+        id: 'video-editing',
+        emoji: '🎬',
+        title: 'Video Editing',
+        desc: 'Professional editing for promotional videos, product showcases, reels, and brand stories.'
+      },
+      {
+        id: 'webdev',
+        emoji: '🌐',
+        title: 'Website Development',
+        desc: 'Modern, responsive websites designed for performance, usability, and great user experiences.'
+      },
+      {
+        id: 'digital-marketing',
+        emoji: '📈',
+        title: 'Digital Marketing',
+        desc: 'Creative campaigns and digital solutions that help brands build a stronger online presence.'
+      },
+      {
+        id: 'motion',
+        emoji: '✨',
+        title: 'Motion Graphics',
+        desc: 'Eye-catching animations and motion visuals that bring ideas to life.'
+      },
+      {
+        id: 'uiux',
+        emoji: '🖥️',
+        title: 'UI/UX Design',
+        desc: 'User-centered interfaces designed for intuitive, engaging, and seamless digital experiences.'
+      },
+      {
+        id: 'growth',
+        emoji: '🚀',
+        title: 'Creative Strategy',
+        desc: 'Creative direction and digital solutions that help brands communicate with clarity and confidence.'
+      },
+      {
+        id: 'business-support',
+        emoji: '💼',
+        title: 'Creative Support',
+        desc: 'Ongoing design support for presentations, marketing materials, print media, and creative content.'
+      }
+    ];
+  }, [cmsServices]);
 
-  const processSteps = [
-    {
-      num: '01',
-      title: 'Discover',
-      desc: 'We learn about your goals, audience, and vision.'
-    },
-    {
-      num: '02',
-      title: 'Create',
-      desc: 'We design and iterate until it is perfect.'
-    },
-    {
-      num: '03',
-      title: 'Deliver',
-      desc: 'We hand over the final files and assets.'
-    },
-    {
-      num: '04',
-      title: 'Support',
-      desc: 'We help you launch and grow your brand.'
-    }
-  ];
+  const processSteps = websiteContent?.homeProcessSummary?.length
+    ? websiteContent.homeProcessSummary
+    : [
+        {
+          num: '01',
+          title: 'Discover',
+          desc: 'We learn about your goals, audience, and vision.'
+        },
+        {
+          num: '02',
+          title: 'Create',
+          desc: 'We design and iterate until it is perfect.'
+        },
+        {
+          num: '03',
+          title: 'Deliver',
+          desc: 'We hand over the final files and assets.'
+        },
+        {
+          num: '04',
+          title: 'Support',
+          desc: 'We help you launch and grow your brand.'
+        }
+      ];
 
-  const latestProjects = useMemo(() => {
-    const featuredList = publishedProjects.filter((p) => p.featured);
-    const source = featuredList.length > 0 ? featuredList : publishedProjects;
-    return source.slice(0, 3).map((p) => ({
-      id: p.id,
-      slug: p.slug,
-      title: p.title,
-      category: p.category || 'Creative Work',
-      imageUrl:
-        p.cover_image ||
-        p.gallery?.[0] ||
-        'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=600&h=450&q=80',
-      externalUrl: p.behance_url || p.website_url || undefined,
-    }));
-  }, [publishedProjects]);
+  const categoryPortfolioGroups = useMemo(
+    () => buildCategoryPortfolioGroups(categories, publishedProjects),
+    [categories, publishedProjects]
+  );
 
-  const whyChooseItems = [
-    {
-      title: 'Strategic Thinking',
-      desc: 'We focus on business outcomes, not just design.'
-    },
-    {
-      title: 'End-to-End Solutions',
-      desc: "From branding to business support, we've got you covered."
-    },
-    {
-      title: 'Growth Focused',
-      desc: 'Everything we do is built around visibility, leads and growth.'
-    },
-    {
-      title: 'Scalable Partnership',
-      desc: 'Solutions that grow with your business.'
-    }
-  ];
+  const whyChooseItems = websiteContent?.whyChoose?.items?.length
+    ? websiteContent.whyChoose.items
+    : [
+        {
+          title: 'Strategic Thinking',
+          desc: 'We focus on business outcomes, not just design.'
+        },
+        {
+          title: 'End-to-End Solutions',
+          desc: "From branding to business support, we've got you covered."
+        },
+        {
+          title: 'Growth Focused',
+          desc: 'Everything we do is built around visibility, leads and growth.'
+        },
+        {
+          title: 'Scalable Partnership',
+          desc: 'Solutions that grow with your business.'
+        }
+      ];
 
   return (
     <div id="qbench-homepage" className="w-full">
@@ -288,16 +305,16 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
           {/* Left Text Detail */}
           <div className="lg:col-span-6 space-y-6 sm:space-y-8">
             <span id="hero-badge" className="font-tech text-xs tracking-widest text-[#00685b] font-extrabold uppercase flex items-center gap-2 bg-[#00685b]/10 w-fit px-3 py-1 rounded-full">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#00685b] animate-pulse" /> WE DESIGN BRANDS THAT PEOPLE REMEMBER
+              <span className="h-1.5 w-1.5 rounded-full bg-[#00685b] animate-pulse" /> {websiteContent?.hero?.badge || 'WE DESIGN BRANDS THAT PEOPLE REMEMBER'}
             </span>
             
             <h1 id="hero-title" className="font-display text-4xl sm:text-5xl lg:text-6xl font-black text-brand-text leading-[1.1] tracking-tight">
-              We Design Brands<br />
-              That <span className="text-[#00685b]">People Remember</span>.
+              {websiteContent?.hero?.headlinePrefix || 'We Design Brands'}<br />
+              That <span className="text-[#00685b]">{websiteContent?.hero?.headlineHighlight || 'People Remember'}</span>.
             </h1>
             
             <p id="hero-intro" className="font-sans text-sm sm:text-base text-brand-text-muted leading-relaxed max-w-xl">
-              QBench is a creative agency specializing in branding, web design, social media, video production, and digital marketing. We create thoughtful visual experiences that help businesses grow and stand out.
+              {websiteContent?.hero?.description || 'QBench is a creative agency specializing in branding, web design, social media, video production, and digital marketing. We create thoughtful visual experiences that help businesses grow and stand out.'}
             </p>
             
             <div id="hero-actions" className="flex flex-col sm:flex-row gap-4">
@@ -306,7 +323,7 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
                 onClick={() => onNavigate('contact')}
                 className="rounded-xl bg-[#00685b] text-white px-7 py-3.5 font-display text-sm font-bold hover:bg-[#178373] transition-all duration-300 shadow-md flex items-center justify-center gap-2 cursor-pointer group"
               >
-                <span>Start a Project</span>
+                <span>{websiteContent?.hero?.primaryCtaText || 'Start a Project'}</span>
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
               </button>
               
@@ -315,7 +332,7 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
                 onClick={() => onNavigate('portfolio')}
                 className="rounded-xl bg-white border border-brand-outline/40 text-brand-text px-7 py-3.5 font-display text-sm font-semibold hover:border-[#00685b] hover:bg-brand-surface-low transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer"
               >
-                <span>View Portfolio</span>
+                <span>{websiteContent?.hero?.secondaryCtaText || 'View Portfolio'}</span>
               </button>
             </div>
             
@@ -566,14 +583,14 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
         </div>
       </section>
 
-      {/* 4. RECENT PROJECTS SECTION */}
+      {/* 4. DYNAMIC PORTFOLIO / EXAMPLE PROJECTS SECTION BY CATEGORY */}
       <section id="recent-projects-block" className="bg-brand-surface-low/50 border-t border-brand-outline/20 py-20 px-6 lg:px-12">
-        <div className="mx-auto max-w-7xl">
+        <div className="mx-auto max-w-7xl space-y-14">
           
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-12">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
             <div className="space-y-3.5">
               <span className="font-tech text-[10px] tracking-widest text-[#00685b] font-extrabold uppercase bg-[#00685b]/10 px-3 py-1 rounded-full inline-block">
-                RECENT PROJECTS
+                PORTFOLIO & EXAMPLE PROJECTS
               </span>
               <h2 id="projects-title" className="font-display text-3xl sm:text-4xl font-black text-brand-text tracking-tight">
                 Our Latest Work
@@ -585,81 +602,152 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
               onClick={() => onNavigate('portfolio')}
               className="text-xs font-tech font-bold text-[#00685b] hover:text-[#178373] transition-colors flex items-center gap-1 cursor-pointer"
             >
-              <span>View All Portfolio</span>
+              <span>View Full Portfolio</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>
-          
-          {/* Projects Visual Cards Row */}
-          <div id="projects-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {latestProjects.map((proj) => {
-              const cardContent = (
-                <>
-                  {/* Card Top Image View */}
-                  <div className="aspect-[4/3] overflow-hidden bg-brand-surface relative select-none">
-                    <img
-                      src={proj.imageUrl}
-                      alt={proj.title}
-                      className="w-full h-full object-cover filter brightness-[0.98] saturate-[0.95] group-hover:scale-102 transition-transform duration-500"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-                  </div>
-                  
-                  {/* Card Descriptions text fields */}
-                  <div className="p-4 space-y-1 border-t border-brand-outline/10">
-                    <h4 className="font-display text-sm font-bold text-brand-text group-hover:text-[#00685b] transition-colors duration-200">
-                      {proj.title}
-                    </h4>
-                    <p className="font-sans text-[10.5px] text-brand-text-muted leading-tight">
-                      {proj.category}
-                    </p>
-                  </div>
-                </>
-              );
 
-              return (
-                <div 
-                  id={`project-card-${proj.id}`}
-                  key={proj.id}
-                  onClick={() => {
-                    if (onOpenProjectDetail && proj.slug) {
-                      onOpenProjectDetail(proj.slug);
-                    } else {
-                      onNavigate('portfolio');
-                    }
-                  }}
-                  className="bg-white border border-brand-outline/15 rounded-2xl overflow-hidden group shadow-xs hover:shadow-md hover:border-[#00685b]/20 transition-all duration-300 cursor-pointer"
-                >
-                  {cardContent}
+          {categoryPortfolioGroups.map((group) => {
+            const { category, allProjects, displayedProjects } = group;
+            const showViewAllBtn = category.show_view_all !== false;
+
+            const handleOpenCatPage = () => {
+              if (onOpenPortfolioCategory) {
+                onOpenPortfolioCategory(category.slug);
+              } else {
+                onNavigate('portfolio');
+              }
+            };
+
+            return (
+              <div
+                key={category.id}
+                id={`home-category-section-${category.slug}`}
+                className="space-y-6"
+              >
+                {/* Category Header Row */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-brand-outline/15 pb-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-tech text-[11px] tracking-widest text-[#00685b] font-extrabold uppercase">
+                        {category.name.toUpperCase()}
+                      </span>
+                      <span className="font-mono text-[10px] font-bold text-brand-text-muted bg-white border border-brand-outline/20 px-2 py-0.5 rounded-full">
+                        {displayedProjects.length} / {allProjects.length}
+                      </span>
+                    </div>
+                    {category.description && (
+                      <p className="font-sans text-xs text-brand-text-muted">
+                        {category.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {showViewAllBtn && (
+                    <button
+                      type="button"
+                      onClick={handleOpenCatPage}
+                      className="inline-flex items-center gap-1.5 font-display text-xs font-bold text-[#00685b] hover:text-[#178373] transition-colors cursor-pointer self-start sm:self-auto"
+                    >
+                      <span>View All {category.name} Projects</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
-              );
-            })}
-            
-            {/* View Full Portfolio Box (Final Block space in the row) */}
-            <div 
-              id="view-portfolio-fallback-block"
-              onClick={() => onNavigate('portfolio')}
-              className="bg-white border border-brand-outline/20 rounded-2xl p-6 flex flex-col justify-between hover:border-[#00685b]/45 hover:shadow-md transition-all duration-300 cursor-pointer text-left md:col-span-2 lg:col-span-1"
-            >
-              <div className="space-y-3.5">
-                <span className="p-2 bg-[#00685b]/5 text-[#00685b] rounded outline-none h-fit w-fit flex items-center justify-center">
-                  <Award className="h-5 w-5" />
-                </span>
-                <h4 className="font-display text-base font-bold text-brand-text tracking-tight">View Full Portfolio</h4>
-                <p className="font-sans text-xs text-brand-text-muted leading-relaxed">
-                  See more of our work and success stories in building modern entities.
-                </p>
+
+                {/* Category Projects Grid (Respects category.projects_display_limit) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {displayedProjects.map((proj) => {
+                    const imgUrl =
+                      proj.cover_image_url ||
+                      proj.cover_image ||
+                      proj.gallery?.[0] ||
+                      'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=600&h=450&q=80';
+
+                    return (
+                      <div
+                        id={`project-card-${proj.id}`}
+                        key={proj.id}
+                        onClick={() => {
+                          if (onOpenProjectDetail && proj.slug) {
+                            onOpenProjectDetail(proj.slug);
+                          } else {
+                            onNavigate('portfolio');
+                          }
+                        }}
+                        className="bg-white border border-brand-outline/15 rounded-2xl overflow-hidden group shadow-xs hover:shadow-md hover:border-[#00685b]/25 transition-all duration-300 cursor-pointer flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="aspect-[4/3] overflow-hidden bg-brand-surface relative select-none">
+                            <img
+                              src={imgUrl}
+                              alt={proj.title}
+                              loading="lazy"
+                              className="w-full h-full object-cover filter brightness-[0.98] saturate-[0.95] group-hover:scale-103 transition-transform duration-500"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                            {proj.thumbnail_mode === 'video_thumbnail' && (
+                              <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors flex items-center justify-center pointer-events-none">
+                                <span className="h-10 w-10 rounded-full bg-[#00685b]/90 text-white flex items-center justify-center shadow-md group-hover:scale-110 transition-transform duration-300">
+                                  <Play className="h-4 w-4 fill-white ml-0.5" />
+                                </span>
+                              </div>
+                            )}
+                            {(proj.thumbnail_mode === 'video_thumbnail' ||
+                              (proj.project_videos &&
+                                proj.project_videos.length > 0)) && (
+                              <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md bg-[#00685b]/90 backdrop-blur-xs px-2 py-0.5 font-mono text-[9px] font-bold text-white pointer-events-none">
+                                <Film className="h-2.5 w-2.5" />
+                                <span>
+                                  {proj.project_videos &&
+                                  proj.project_videos.length > 1
+                                    ? `${proj.project_videos.length} Videos`
+                                    : 'Video'}
+                                </span>
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="p-4 space-y-1.5 border-t border-brand-outline/10">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-tech text-[9.5px] font-bold uppercase text-[#00685b]">
+                                {proj.project_type || category.name}
+                              </span>
+                              <span className="font-mono text-[9.5px] text-brand-text-muted">
+                                {proj.project_date || proj.year || 2026}
+                              </span>
+                            </div>
+                            <h4 className="font-display text-sm font-bold text-brand-text group-hover:text-[#00685b] transition-colors duration-200 line-clamp-1">
+                              {proj.title}
+                            </h4>
+                            {proj.short_description && (
+                              <p className="font-sans text-[11px] text-brand-text-muted line-clamp-2 leading-relaxed">
+                                {proj.short_description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {showViewAllBtn && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={handleOpenCatPage}
+                      className="inline-flex items-center gap-2 rounded-xl border border-[#00685b]/25 bg-white hover:bg-[#00685b] hover:text-white text-[#00685b] font-display text-xs font-bold px-4 py-2.5 transition-all duration-200 shadow-2xs cursor-pointer"
+                    >
+                      <span>View All {category.name} Projects</span>
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
-              
-              <div className="border-t border-brand-outline/10 pt-4 mt-6">
-                <span className="font-display text-xs font-bold text-[#00685b] hover:text-[#178373] transition-colors flex items-center gap-1">
-                  <span>View Portfolio</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </span>
-              </div>
-            </div>
-          </div>
+            );
+          })}
           
         </div>
       </section>
@@ -860,13 +948,13 @@ export default function HomeView({ onNavigate, onOpenProjectDetail }: HomeViewPr
           <div className="lg:col-span-7 space-y-10">
             <div className="space-y-3.5">
               <span className="font-tech text-[10px] tracking-widest text-[#00685b] font-extrabold uppercase bg-[#00685b]/10 px-3 py-1 rounded-full inline-block">
-                WHY CHOOSE Q BENCH?
+                {websiteContent?.whyChoose?.badge || 'WHY CHOOSE Q BENCH?'}
               </span>
               <h2 className="font-display text-3xl sm:text-4xl font-black text-brand-text tracking-tight">
-                Why Choose Us
+                {websiteContent?.whyChoose?.title || 'Why Choose Us'}
               </h2>
               <p className="font-sans text-sm text-brand-text-muted leading-relaxed max-w-xl">
-                We are a Kerala-based branding and creative agency helping startups and businesses grow.
+                {websiteContent?.whyChoose?.subtitle || 'We are a Kerala-based branding and creative agency helping startups and businesses grow.'}
               </p>
             </div>
             

@@ -83,7 +83,7 @@ export default function SEOHead({ section, activeServiceTab }: SEOHeadProps) {
         pathSlug === 'start-a-project'
           ? `Start a Project | ${agencyName} Creative & Digital Agency`
           : `Contact ${agencyName} | Start Your Next Creative Project`;
-      description = `Get in touch with ${agencyName} (${settings.email || 'qbench.official@gmail.com'} | ${settings.phone || '+91 73565 25932'}) to launch your next branding, motion, or digital project.`;
+      description = `Get in touch with ${agencyName} (${settings.email || 'contact@qbench.in'} | ${settings.phone || '+91 73565 25932'}) to launch your next branding, motion, or digital project.`;
       break;
 
     default:

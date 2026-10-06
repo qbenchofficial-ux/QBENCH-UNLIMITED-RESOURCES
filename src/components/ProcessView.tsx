@@ -1,5 +1,6 @@
 import { PROCESS_STEPS } from '../data';
 import { NavSection } from '../types';
+import { useProjects } from '../hooks/useProjects';
 import { 
   Compass, Milestone, PenTool, Code, Rocket, Check, ArrowRight 
 } from 'lucide-react';
@@ -10,7 +11,14 @@ interface ProcessViewProps {
 }
 
 export default function ProcessView({ onNavigate }: ProcessViewProps) {
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [, setHoveredIdx] = useState<number | null>(null);
+  const { websiteContent } = useProjects('public');
+
+  const steps = websiteContent?.processSteps?.length
+    ? websiteContent.processSteps
+    : PROCESS_STEPS;
+  const metrics = websiteContent?.processMetrics;
+  const hero = websiteContent?.processHero;
 
   // Helper to map icon names to actual Lucide component nodes
   const renderStepIcon = (name: string, className: string) => {
@@ -36,26 +44,27 @@ export default function ProcessView({ onNavigate }: ProcessViewProps) {
       {/* Title Segment */}
       <div id="process-headline-segment" className="space-y-4 max-w-3xl">
         <span className="font-tech text-xs tracking-widest text-brand-primary font-bold uppercase">
-          OUR TIMELINE
+          {hero?.badge || 'OUR TIMELINE'}
         </span>
         <h1 className="font-display text-4xl sm:text-5xl font-extrabold tracking-tight text-brand-text">
-          The <span className="text-brand-primary">Precision Path</span>
+          {hero?.titleLine1 || 'The'} <span className="text-brand-primary">{hero?.titleHighlight || 'Precision Path'}</span>
         </h1>
         <p className="font-display text-sm sm:text-base text-brand-text-muted leading-relaxed">
-          A mathematical approach to digital artistry. We navigate through ambiguity with a structured 5-step framework designed to deliver elite creative solutions.
+          {hero?.description ||
+            'A mathematical approach to digital artistry. We navigate through ambiguity with a structured 5-step framework designed to deliver elite creative solutions.'}
         </p>
       </div>
 
       {/* Dynamic Interactive Timeline Steps List */}
       <div id="process-timeline-list" className="space-y-12 relative before:absolute before:inset-0 before:left-4 sm:before:left-1/2 before:w-0.5 before:bg-brand-outline/15 before:pointer-events-none">
         
-        {PROCESS_STEPS.map((step, idx) => {
+        {steps.map((step, idx) => {
           const isEven = idx % 2 === 0;
           return (
             <div 
               id={`process-row-${idx}`}
               key={idx}
-              className={`flex flex-col sm:flex-row items-start justify-between relative gap-6 sm:gap-12 outline-none`}
+              className="flex flex-col sm:flex-row items-start justify-between relative gap-6 sm:gap-12 outline-none"
               onMouseEnter={() => setHoveredIdx(idx)}
               onMouseLeave={() => setHoveredIdx(null)}
             >
@@ -134,21 +143,39 @@ export default function ProcessView({ onNavigate }: ProcessViewProps) {
 
         <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-8 text-center items-center divide-y md:divide-y-0 md:divide-x divide-white/10">
           <div className="space-y-2 py-4 md:py-0">
-            <h4 id="reliability-metric-val" className="font-tech text-4xl lg:text-5xl font-extrabold text-brand-accent">99.8%</h4>
-            <p className="font-display text-xs text-white/60 uppercase tracking-widest font-semibold">Uptime Reliability</p>
-            <p className="font-display text-[10px] text-white/40 max-w-xs mx-auto">Hardened nodes hosted across redundant edge proxies with automated rollback systems.</p>
+            <h4 id="reliability-metric-val" className="font-tech text-4xl lg:text-5xl font-extrabold text-brand-accent">
+              {metrics?.uptimeValue || '99.8%'}
+            </h4>
+            <p className="font-display text-xs text-white/60 uppercase tracking-widest font-semibold">
+              {metrics?.uptimeLabel || 'Uptime Reliability'}
+            </p>
+            <p className="font-display text-[10px] text-white/40 max-w-xs mx-auto">
+              {metrics?.uptimeDesc || 'Hardened nodes hosted across redundant edge proxies with automated rollback systems.'}
+            </p>
           </div>
 
           <div className="space-y-2 py-4 md:py-0">
-            <h4 id="latency-metric-val" className="font-tech text-4xl lg:text-5xl font-extrabold text-brand-accent">0.02s</h4>
-            <p className="font-display text-xs text-white/60 uppercase tracking-widest font-semibold">Interactive Latency</p>
-            <p className="font-display text-[10px] text-white/40 max-w-xs mx-auto">Vercel Edge-powered dynamic rendering keeping core response cycles optimized globally.</p>
+            <h4 id="latency-metric-val" className="font-tech text-4xl lg:text-5xl font-extrabold text-brand-accent">
+              {metrics?.latencyValue || '0.02s'}
+            </h4>
+            <p className="font-display text-xs text-white/60 uppercase tracking-widest font-semibold">
+              {metrics?.latencyLabel || 'Interactive Latency'}
+            </p>
+            <p className="font-display text-[10px] text-white/40 max-w-xs mx-auto">
+              {metrics?.latencyDesc || 'Vercel Edge-powered dynamic rendering keeping core response cycles optimized globally.'}
+            </p>
           </div>
 
           <div className="space-y-2 py-4 md:py-0">
-            <h4 id="awards-metric-val" className="font-tech text-4xl lg:text-5xl font-extrabold text-brand-accent">12+</h4>
-            <p className="font-display text-xs text-white/60 uppercase tracking-widest font-semibold">Creative Awards</p>
-            <p className="font-display text-[10px] text-white/40 max-w-xs mx-auto">Recognized globally for blending high-tech architecture with clean layout patterns.</p>
+            <h4 id="awards-metric-val" className="font-tech text-4xl lg:text-5xl font-extrabold text-brand-accent">
+              {metrics?.awardsValue || '12+'}
+            </h4>
+            <p className="font-display text-xs text-white/60 uppercase tracking-widest font-semibold">
+              {metrics?.awardsLabel || 'Creative Awards'}
+            </p>
+            <p className="font-display text-[10px] text-white/40 max-w-xs mx-auto">
+              {metrics?.awardsDesc || 'Recognized globally for blending high-tech architecture with clean layout patterns.'}
+            </p>
           </div>
         </div>
       </section>

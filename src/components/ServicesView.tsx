@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ServiceTab, NavSection } from '../types';
+import { useProjects } from '../hooks/useProjects';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Layers, 
@@ -60,6 +61,7 @@ interface ServicesViewProps {
 }
 
 export default function ServicesView({ initialTab, onNavigate }: ServicesViewProps) {
+  const { services: cmsServices, websiteContent } = useProjects('public');
   const [activeTab, setActiveTab] = useState<ServiceTab>(initialTab || 'branding');
   const [expandedAccordion, setExpandedAccordion] = useState<string | null>('prop');
 
@@ -78,79 +80,127 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
     }
   };
 
-  const servicesList: { 
-    id: ServiceTab; 
-    icon: any; 
-    title: string; 
-    desc: string; 
-  }[] = [
-    {
-      id: 'branding',
-      icon: Layers,
-      title: 'Branding & Identity',
-      desc: 'Logos, brand identity systems, visual guidelines, and brand assets that create a lasting impression.'
-    },
-    {
-      id: 'social-media',
-      icon: MessageSquare,
-      title: 'Social Media Design',
-      desc: 'Creative social media designs that strengthen your brand across every platform.'
-    },
-    {
-      id: 'video-editing',
-      icon: Video,
-      title: 'Video Editing',
-      desc: 'Professional editing for promotional videos, product showcases, reels, and brand stories.'
-    },
-    {
-      id: 'digital-marketing',
-      icon: Target,
-      title: 'Digital Marketing',
-      desc: 'Creative campaigns and digital solutions that help brands build a stronger online presence.'
-    },
-    {
-      id: 'uiux',
-      icon: Layers,
-      title: 'UI/UX Design',
-      desc: 'User-centered interfaces designed for intuitive, engaging, and seamless digital experiences.'
-    },
-    {
-      id: 'webdev',
-      icon: Code,
-      title: 'Website Development',
-      desc: 'Modern, responsive websites designed for performance, usability, and great user experiences.'
-    },
-    {
-      id: 'motion',
-      icon: Sparkles,
-      title: 'Motion Graphics',
-      desc: 'Eye-catching animations and motion visuals that bring ideas to life.'
-    },
-    {
-      id: 'growth',
-      icon: TrendingUp,
-      title: 'Creative Strategy',
-      desc: 'Creative direction and digital solutions that help brands communicate with clarity and confidence.'
-    },
-    {
-      id: 'business-support',
-      icon: Briefcase,
-      title: 'Creative Support',
-      desc: 'Ongoing design support for presentations, marketing materials, print media, and creative content.'
+  const resolveIcon = (iconName: string) => {
+    switch (iconName) {
+      case 'Layers': return Layers;
+      case 'MessageSquare': return MessageSquare;
+      case 'Video': return Video;
+      case 'Target': return Target;
+      case 'Code': return Code;
+      case 'Sparkles': return Sparkles;
+      case 'TrendingUp': return TrendingUp;
+      case 'Briefcase': return Briefcase;
+      case 'Laptop': return Laptop;
+      default: return Layers;
     }
-  ];
+  };
 
-  const explorerTabs: { id: ServiceTab; label: string }[] = [
-    { id: 'branding', label: 'Branding & Identity' },
-    { id: 'social-media', label: 'Social Media Design' },
-    { id: 'video-editing', label: 'Video Editing' },
-    { id: 'digital-marketing', label: 'Digital Marketing' },
-    { id: 'uiux', label: 'UI/UX Design' },
-    { id: 'webdev', label: 'Website Development' },
-    { id: 'motion', label: 'Motion Graphics' },
-    { id: 'growth', label: 'Creative Strategy' },
-    { id: 'business-support', label: 'Creative Support' }
-  ];
+  const servicesList = useMemo(() => {
+    if (cmsServices && cmsServices.length > 0) {
+      return cmsServices.map((s) => ({
+        id: s.id,
+        icon: resolveIcon(s.iconName),
+        title: s.title,
+        desc: s.desc,
+        startingPrice: s.startingPrice,
+        deliverables: s.deliverables,
+      }));
+    }
+    return [
+      {
+        id: 'branding' as ServiceTab,
+        icon: Layers,
+        title: 'Branding & Identity',
+        desc: 'Logos, brand identity systems, visual guidelines, and brand assets that create a lasting impression.',
+        startingPrice: '₹4,999',
+        deliverables: [],
+      },
+      {
+        id: 'social-media' as ServiceTab,
+        icon: MessageSquare,
+        title: 'Social Media Design',
+        desc: 'Creative social media designs that strengthen your brand across every platform.',
+        startingPrice: '₹6,999/mo',
+        deliverables: [],
+      },
+      {
+        id: 'video-editing' as ServiceTab,
+        icon: Video,
+        title: 'Video Editing',
+        desc: 'Professional editing for promotional videos, product showcases, reels, and brand stories.',
+        startingPrice: '₹1,500',
+        deliverables: [],
+      },
+      {
+        id: 'digital-marketing' as ServiceTab,
+        icon: Target,
+        title: 'Digital Marketing',
+        desc: 'Creative campaigns and digital solutions that help brands build a stronger online presence.',
+        startingPrice: '₹9,999/mo',
+        deliverables: [],
+      },
+      {
+        id: 'uiux' as ServiceTab,
+        icon: Layers,
+        title: 'UI/UX Design',
+        desc: 'User-centered interfaces designed for intuitive, engaging, and seamless digital experiences.',
+        startingPrice: '₹7,999',
+        deliverables: [],
+      },
+      {
+        id: 'webdev' as ServiceTab,
+        icon: Code,
+        title: 'Website Development',
+        desc: 'Modern, responsive websites designed for performance, usability, and great user experiences.',
+        startingPrice: '₹9,999',
+        deliverables: [],
+      },
+      {
+        id: 'motion' as ServiceTab,
+        icon: Sparkles,
+        title: 'Motion Graphics',
+        desc: 'Eye-catching animations and motion visuals that bring ideas to life.',
+        startingPrice: '₹2,500',
+        deliverables: [],
+      },
+      {
+        id: 'growth' as ServiceTab,
+        icon: TrendingUp,
+        title: 'Creative Strategy',
+        desc: 'Creative direction and digital solutions that help brands communicate with clarity and confidence.',
+        startingPrice: '₹14,999/mo',
+        deliverables: [],
+      },
+      {
+        id: 'business-support' as ServiceTab,
+        icon: Briefcase,
+        title: 'Creative Support',
+        desc: 'Ongoing design support for presentations, marketing materials, print media, and creative content.',
+        startingPrice: '₹4,999/mo',
+        deliverables: [],
+      },
+    ];
+  }, [cmsServices]);
+
+  const explorerTabs: { id: ServiceTab; label: string }[] = useMemo(() => {
+    if (cmsServices && cmsServices.length > 0) {
+      return cmsServices.map((s) => ({
+        id: s.id,
+        label: s.label || s.title,
+      }));
+    }
+    return [
+      { id: 'branding', label: 'Branding & Identity' },
+      { id: 'social-media', label: 'Social Media Design' },
+      { id: 'video-editing', label: 'Video Editing' },
+      { id: 'digital-marketing', label: 'Digital Marketing' },
+      { id: 'uiux', label: 'UI/UX Design' },
+      { id: 'webdev', label: 'Website Development' },
+      { id: 'motion', label: 'Motion Graphics' },
+      { id: 'growth', label: 'Creative Strategy' },
+      { id: 'business-support', label: 'Creative Support' }
+    ];
+  }, [cmsServices]);
 
   const whyChooseItems = [
     {
@@ -198,17 +248,17 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
           {/* Left Hero Details */}
           <div className="lg:col-span-6 space-y-6 sm:space-y-8">
             <span id="services-hero-badge" className="font-tech text-xs tracking-widest text-[#00685b] font-extrabold uppercase flex items-center gap-2 bg-[#00685b]/10 w-fit px-3 py-1 rounded-full">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#00685b] animate-pulse" /> Our Services
+              <span className="h-1.5 w-1.5 rounded-full bg-[#00685b] animate-pulse" /> {websiteContent?.servicesHero?.badge || 'Our Services'}
             </span>
             
             <h1 id="services-hero-title" className="font-display text-4xl sm:text-5xl lg:text-[44px] xl:text-[50px] font-black text-brand-text leading-[1.12] tracking-tight">
-              Creative Solutions That Build<br />
-              Brands, Generate Leads<br />
-              <span className="text-[#00685b]">& Drive Growth.</span>
+              {websiteContent?.servicesHero?.titleLine1 || 'Creative Solutions That Build'}<br />
+              {websiteContent?.servicesHero?.titleLine2 || 'Brands, Generate Leads'}<br />
+              <span className="text-[#00685b]">{websiteContent?.servicesHero?.titleHighlight || '& Drive Growth.'}</span>
             </h1>
             
             <p id="services-hero-desc" className="font-sans text-sm sm:text-base text-brand-text-muted leading-relaxed max-w-xl">
-              We deliver end-to-end creative, branding, web, and digital marketing solutions that help businesses stand out, connect with the right audience, and achieve measurable growth. From strategy to execution, every solution is designed to elevate your brand and drive lasting results.
+              {websiteContent?.servicesHero?.description || 'We deliver end-to-end creative, branding, web, and digital marketing solutions that help businesses stand out, connect with the right audience, and achieve measurable growth. From strategy to execution, every solution is designed to elevate your brand and drive lasting results.'}
             </p>
             
             <div id="services-hero-action">
@@ -217,7 +267,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
                 onClick={handleBuildSomethingGreatClick}
                 className="rounded-xl bg-[#00685b] text-white px-7 py-3.5 font-display text-sm font-bold hover:bg-[#178373] transition-all duration-300 shadow-md flex items-center justify-center gap-2 cursor-pointer group"
               >
-                <span>Let's Build Something Great</span>
+                <span>{websiteContent?.servicesHero?.ctaText || "Let's Build Something Great"}</span>
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
               </button>
             </div>

@@ -1,402 +1,476 @@
 import React, { useState, useMemo } from 'react';
+import { slugify } from '../lib/supabase';
 import type { Project, Category } from '../types/project';
 import {
-  Plus,
   Search,
+  Plus,
   Edit3,
   Trash2,
-  Eye,
-  Globe,
-  EyeOff,
   Star,
+  Globe,
+  FileEdit,
+  ExternalLink,
   Image as ImageIcon,
+  Film,
+  Play,
   AlertTriangle,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
+  Database,
 } from 'lucide-react';
 
 interface ProjectListProps {
   projects: Project[];
   categories: Category[];
-  loading: boolean;
-  onNavigateRoute: (path: string) => void;
+  loading?: boolean;
+  onCreateNew?: () => void;
+  onEdit?: (project: Project) => void;
+  onDelete?: (project: Project) => Promise<void>;
+  onDeleteProject?: (project: Project) => Promise<void>;
+  onNavigateRoute?: (path: string) => void;
   onToggleStatus: (project: Project) => Promise<void>;
   onToggleFeatured: (project: Project) => Promise<void>;
-  onDeleteProject: (project: Project) => Promise<void>;
+  onOpenPublicSlug?: (slug: string) => void;
+  onSeedDefaults?: () => Promise<void>;
 }
 
-const ITEMS_PER_PAGE = 8;
+const FALLBACK_THUMB =
+  'https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&fit=crop&w=400&h=260&q=80';
 
 export default function ProjectList({
   projects,
   categories,
-  loading,
+  onCreateNew,
+  onEdit,
+  onDelete,
+  onDeleteProject,
   onNavigateRoute,
   onToggleStatus,
   onToggleFeatured,
-  onDeleteProject,
+  onOpenPublicSlug,
+  onSeedDefaults,
 }: ProjectListProps) {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all');
-  const [featuredFilter, setFeaturedFilter] = useState<'all' | 'featured' | 'standard'>('all');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'published' | 'draft'
+  >('all');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
+  const [confirmDeleteProject, setConfirmDeleteProject] =
+    useState<Project | null>(null);
 
-  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
-  const filteredProjects = useMemo(() => {
-    const q = search.trim().toLowerCase();
+  const filtered = useMemo(() => {
     return projects.filter((p) => {
-      if (categoryFilter !== 'all' && p.category !== categoryFilter) return false;
       if (statusFilter !== 'all' && p.status !== statusFilter) return false;
-      if (featuredFilter === 'featured' && !p.featured) return false;
-      if (featuredFilter === 'standard' && p.featured) return false;
-
-      if (!q) return true;
-      const inTitle = p.title.toLowerCase().includes(q);
-      const inClient = (p.client || '').toLowerCase().includes(q);
-      const inCat = (p.category || '').toLowerCase().includes(q);
-      const inDesc = (p.short_description || '').toLowerCase().includes(q);
-      return inTitle || inClient || inCat || inDesc;
+      if (categoryFilter !== 'all') {
+        const matchId = p.category_id === categoryFilter;
+        const matchSlug = slugify(p.category || '') === categoryFilter;
+        const matchName =
+          (p.category || '').toLowerCase() === categoryFilter.toLowerCase();
+        if (!matchId && !matchSlug && !matchName) return false;
+      }
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const inTitle = p.title.toLowerCase().includes(q);
+        const inClient = (p.client || p.client_name || '')
+          .toLowerCase()
+          .includes(q);
+        const inCat = (p.category || '').toLowerCase().includes(q);
+        const inType = (p.project_type || '').toLowerCase().includes(q);
+        return inTitle || inClient || inCat || inType;
+      }
+      return true;
     });
-  }, [projects, search, categoryFilter, statusFilter, featuredFilter]);
+  }, [projects, search, categoryFilter, statusFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredProjects.length / ITEMS_PER_PAGE));
-  const safePage = Math.min(currentPage, totalPages);
-  const paginatedProjects = useMemo(() => {
-    const start = (safePage - 1) * ITEMS_PER_PAGE;
-    return filteredProjects.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredProjects, safePage]);
+  const hasSeedOnlyProjects = useMemo(
+    () => projects.some((p) => p.id.startsWith('seed-')),
+    [projects]
+  );
+
+  const handleCreate = () => {
+    if (onCreateNew) {
+      onCreateNew();
+    } else if (onNavigateRoute) {
+      onNavigateRoute('/admin/projects/new');
+    }
+  };
+
+  const handleEditProject = (project: Project) => {
+    if (onEdit) {
+      onEdit(project);
+    } else if (onNavigateRoute) {
+      onNavigateRoute(`/admin/projects/edit/${project.id}`);
+    }
+  };
+
+  const handleOpenSlug = (slug: string) => {
+    if (onOpenPublicSlug) {
+      onOpenPublicSlug(slug);
+    } else if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', `/portfolio/${slug}`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  };
 
   const handleConfirmDelete = async () => {
-    if (!projectToDelete) return;
-    setDeleting(true);
+    if (!confirmDeleteProject) return;
+    setBusyId(confirmDeleteProject.id);
     try {
-      await onDeleteProject(projectToDelete);
-      setProjectToDelete(null);
+      const fn = onDelete || onDeleteProject;
+      if (fn) {
+        await fn(confirmDeleteProject);
+      }
+      setConfirmDeleteProject(null);
     } finally {
-      setDeleting(false);
+      setBusyId(null);
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header & Filters */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#00685b]">
-              PORTFOLIO PROJECTS
-            </span>
-            <h2 className="font-display text-2xl font-black text-slate-900">
-              All Projects ({filteredProjects.length})
-            </h2>
-          </div>
+      {/* Top Header + CTA */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs">
+        <div>
+          <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#00685b]">
+            PORTFOLIO PROJECTS CMS
+          </span>
+          <h2 className="font-display text-2xl font-black text-slate-900 mt-0.5">
+            Portfolio Projects ({projects.length})
+          </h2>
+          <p className="font-sans text-xs text-slate-500 mt-1">
+            Add, edit, reorder, feature, publish, or save draft projects across dynamic portfolio categories.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5 self-start">
+          {hasSeedOnlyProjects && onSeedDefaults && (
+            <button
+              type="button"
+              disabled={seeding}
+              onClick={async () => {
+                setSeeding(true);
+                try {
+                  await onSeedDefaults();
+                } finally {
+                  setSeeding(false);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-[#00685b]/30 bg-[#00685b]/5 hover:bg-[#00685b]/10 px-3.5 py-2.5 font-display text-xs font-bold text-[#00685b] cursor-pointer"
+            >
+              {seeding ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Database className="h-4 w-4" />
+              )}
+              <span>Persist Starter Projects to DB</span>
+            </button>
+          )}
 
           <button
             type="button"
-            onClick={() => onNavigateRoute('/admin/projects/new')}
+            onClick={handleCreate}
             className="inline-flex items-center gap-2 rounded-xl bg-[#00685b] hover:bg-[#005348] px-4 py-2.5 font-display text-xs font-bold text-white shadow-xs transition-colors cursor-pointer"
           >
             <Plus className="h-4 w-4" />
-            <span>Add Project</span>
+            <span>Add New Project</span>
           </button>
         </div>
+      </div>
 
-        {/* Search & Filter Controls */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          <div className="relative lg:col-span-2">
-            <Search className="h-4 w-4 text-slate-400 absolute left-3.5 top-3" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setCurrentPage(1);
-              }}
-              placeholder="Search title, client, category..."
-              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-3.5 py-2 text-xs text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
-            />
-          </div>
+      {/* Search & Filter Controls */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+        <div className="md:col-span-5 relative">
+          <Search className="h-4 w-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by project title, category, client, or type..."
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-4 py-2 text-xs text-slate-900 focus:border-[#00685b] focus:bg-white focus:outline-none"
+          />
+        </div>
 
+        <div className="md:col-span-4">
           <select
             value={categoryFilter}
-            onChange={(e) => {
-              setCategoryFilter(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-800 focus:border-[#00685b] focus:outline-none"
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-bold text-slate-700 focus:border-[#00685b] focus:outline-none"
           >
-            <option value="all">All Categories</option>
+            <option value="all">All Portfolio Categories</option>
             {categories.map((cat) => (
-              <option key={cat.id} value={cat.name}>
+              <option key={cat.id} value={cat.slug}>
                 {cat.name}
               </option>
             ))}
           </select>
+        </div>
 
+        <div className="md:col-span-3">
           <select
             value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value as 'all' | 'published' | 'draft');
-              setCurrentPage(1);
-            }}
-            className="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-800 focus:border-[#00685b] focus:outline-none"
+            onChange={(e) =>
+              setStatusFilter(e.target.value as 'all' | 'published' | 'draft')
+            }
+            className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs font-bold text-slate-700 focus:border-[#00685b] focus:outline-none"
           >
-            <option value="all">All Status</option>
-            <option value="published">Published</option>
-            <option value="draft">Draft</option>
-          </select>
-
-          <select
-            value={featuredFilter}
-            onChange={(e) => {
-              setFeaturedFilter(e.target.value as 'all' | 'featured' | 'standard');
-              setCurrentPage(1);
-            }}
-            className="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-800 focus:border-[#00685b] focus:outline-none"
-          >
-            <option value="all">All Featured States</option>
-            <option value="featured">Featured Only</option>
-            <option value="standard">Non-Featured</option>
+            <option value="all">All Statuses</option>
+            <option value="published">Published Only</option>
+            <option value="draft">Drafts Only</option>
           </select>
         </div>
       </div>
 
-      {/* Projects Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs space-y-5">
-        {loading ? (
-          <div className="py-16 flex flex-col items-center justify-center space-y-3">
-            <Loader2 className="h-7 w-7 text-[#00685b] animate-spin" />
-            <p className="font-display text-xs font-bold text-slate-500">
-              Loading projects...
-            </p>
-          </div>
-        ) : paginatedProjects.length === 0 ? (
-          <div className="py-14 text-center space-y-3">
-            <p className="font-display text-sm font-bold text-slate-700">
-              No projects match your current filters
-            </p>
-            <p className="font-sans text-xs text-slate-500">
-              Try clearing your search filters or create a new project.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-100 font-tech text-[10px] uppercase tracking-wider text-slate-400">
-                  <th className="py-3 pr-4">Cover & Title</th>
-                  <th className="py-3 px-4">Category</th>
-                  <th className="py-3 px-4">Year</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Featured</th>
-                  <th className="py-3 px-4">Updated Date</th>
-                  <th className="py-3 pl-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs">
-                {paginatedProjects.map((project) => (
-                  <tr key={project.id} className="hover:bg-slate-50/70">
-                    <td className="py-4 pr-4">
-                      <div className="flex items-center gap-3.5">
-                        {project.cover_image ? (
-                          <img
-                            src={project.cover_image}
-                            alt={project.title}
-                            loading="lazy"
-                            className="h-12 w-18 rounded-lg object-cover border border-slate-200 shrink-0"
-                          />
-                        ) : (
-                          <div className="h-12 w-18 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
-                            <ImageIcon className="h-4 w-4" />
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <p className="font-display font-bold text-slate-900 truncate max-w-xs">
-                            {project.title}
-                          </p>
-                          <p className="font-mono text-[10px] text-slate-400 truncate max-w-xs">
-                            /{project.slug}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <span className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 font-tech text-[10px] font-bold text-slate-700">
-                        {project.category || 'Uncategorized'}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 font-mono text-slate-600 tabular-nums">
-                      {project.year || '—'}
-                    </td>
-                    <td className="py-4 px-4">
-                      <button
-                        type="button"
-                        onClick={() => onToggleStatus(project)}
-                        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer ${
-                          project.status === 'published'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-amber-200 bg-amber-50 text-amber-700'
-                        }`}
-                      >
-                        {project.status === 'published' ? (
-                          <>
-                            <Globe className="h-3 w-3" />
-                            <span>Published</span>
-                          </>
-                        ) : (
-                          <>
-                            <EyeOff className="h-3 w-3" />
-                            <span>Draft</span>
-                          </>
-                        )}
-                      </button>
-                    </td>
-                    <td className="py-4 px-4">
-                      <button
-                        type="button"
-                        onClick={() => onToggleFeatured(project)}
-                        className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-bold transition-colors cursor-pointer ${
-                          project.featured
-                            ? 'border-amber-300 bg-amber-50 text-amber-800'
-                            : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
-                        }`}
-                      >
-                        <Star
-                          className={`h-3.5 w-3.5 ${
-                            project.featured ? 'fill-amber-400 text-amber-500' : ''
-                          }`}
-                        />
-                        <span>{project.featured ? 'Featured' : 'Standard'}</span>
-                      </button>
-                    </td>
-                    <td className="py-4 px-4 font-mono text-[11px] text-slate-500">
-                      {new Date(project.updated_at).toLocaleDateString()}
-                    </td>
-                    <td className="py-4 pl-4 text-right">
-                      <div className="inline-flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => onNavigateRoute(`/portfolio/${project.slug}`)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-700 cursor-pointer"
-                          title="Preview Project"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          <span className="hidden xl:inline">Preview</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onNavigateRoute(`/admin/projects/${project.id}/edit`)
-                          }
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-[#00685b] cursor-pointer"
-                          title="Edit Project"
-                        >
-                          <Edit3 className="h-3.5 w-3.5" />
-                          <span className="hidden xl:inline">Edit</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setProjectToDelete(project)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50/70 hover:bg-red-100 px-2.5 py-1.5 text-xs font-bold text-red-700 cursor-pointer"
-                          title="Delete Project"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span className="hidden xl:inline">Delete</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Pagination Bar */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-slate-100 pt-4 text-xs">
-            <span className="text-slate-500">
-              Page <strong className="text-slate-900">{safePage}</strong> of{' '}
-              <strong className="text-slate-900">{totalPages}</strong>
-            </span>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={safePage <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 font-bold text-slate-700 disabled:opacity-40 cursor-pointer"
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-                <span>Previous</span>
-              </button>
-              <button
-                type="button"
-                disabled={safePage >= totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 font-bold text-slate-700 disabled:opacity-40 cursor-pointer"
-              >
-                <span>Next</span>
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Delete Confirmation Modal */}
-      {projectToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-xl space-y-5">
-            <div className="flex items-start gap-3.5">
-              <div className="h-10 w-10 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center text-red-600 shrink-0">
+      {confirmDeleteProject && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="h-10 w-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div className="space-y-1">
                 <h3 className="font-display text-base font-black text-slate-900">
-                  Delete Project: {projectToDelete.title}
+                  Delete "{confirmDeleteProject.title}"?
                 </h3>
                 <p className="font-sans text-xs text-slate-600 leading-relaxed">
-                  Are you sure you want to delete this project? This action cannot be undone.
+                  This will permanently remove the project and its gallery records from Supabase. This action cannot be undone.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2.5 pt-2">
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
               <button
                 type="button"
-                disabled={deleting}
-                onClick={() => setProjectToDelete(null)}
+                onClick={() => setConfirmDeleteProject(null)}
                 className="rounded-xl border border-slate-200 px-4 py-2 font-display text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                disabled={deleting}
                 onClick={handleConfirmDelete}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-60 px-4 py-2 font-display text-xs font-bold text-white cursor-pointer"
+                disabled={busyId === confirmDeleteProject.id}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 hover:bg-red-700 px-4 py-2 font-display text-xs font-bold text-white cursor-pointer"
               >
-                {deleting ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    <span>Deleting...</span>
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="h-3.5 w-3.5" />
-                    <span>Delete Project</span>
-                  </>
+                {busyId === confirmDeleteProject.id && (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 )}
+                <span>Delete Project</span>
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Projects List */}
+      {filtered.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3">
+          <p className="font-display text-base font-black text-slate-800">
+            No matching portfolio projects found
+          </p>
+          <p className="font-sans text-xs text-slate-500 max-w-md mx-auto">
+            Try adjusting your category or status filter, or click "Add New Project" to create a new portfolio case study.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filtered.map((project, idx) => {
+            const thumb =
+              project.cover_image_url ||
+              project.cover_image ||
+              project.gallery?.[0] ||
+              FALLBACK_THUMB;
+            const imageCount = Math.max(
+              project.portfolio_images?.length || 0,
+              project.gallery?.length || 0,
+              project.cover_image ? 1 : 0
+            );
+            const isBusy = busyId === project.id;
+
+            return (
+              <div
+                key={project.id}
+                className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between shadow-2xs hover:shadow-md transition-all"
+              >
+                <div>
+                  {/* Cover Thumbnail */}
+                  <div className="relative aspect-[16/10] bg-slate-100 overflow-hidden">
+                    <img
+                      src={thumb}
+                      alt={project.title}
+                      loading="lazy"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                      <span className="rounded-md bg-slate-900/80 px-2 py-0.5 font-mono text-[10px] font-bold text-white">
+                        #{project.display_order ?? project.sort_order ?? idx + 1}
+                      </span>
+                      <span
+                        className={`rounded-md px-2 py-0.5 font-tech text-[9px] font-extrabold uppercase ${
+                          project.status === 'published'
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-amber-500 text-white'
+                        }`}
+                      >
+                        {project.status}
+                      </span>
+                    </div>
+
+                    {project.thumbnail_mode === 'video_thumbnail' && (
+                      <div className="absolute inset-0 bg-slate-900/20 flex items-center justify-center pointer-events-none">
+                        <span className="h-9 w-9 rounded-full bg-[#00685b]/90 text-white flex items-center justify-center shadow-md">
+                          <Play className="h-4 w-4 fill-white ml-0.5" />
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+                      {project.project_videos &&
+                        project.project_videos.length > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-[#00685b]/90 px-2 py-0.5 font-mono text-[10px] font-bold text-white">
+                            <Film className="h-3 w-3" />
+                            <span>{project.project_videos.length}</span>
+                          </span>
+                        )}
+                      <span className="inline-flex items-center gap-1 rounded-md bg-slate-900/75 px-2 py-0.5 font-mono text-[10px] font-bold text-white">
+                        <ImageIcon className="h-3 w-3" />
+                        <span>{imageCount}</span>
+                      </span>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={async () => {
+                          setBusyId(project.id);
+                          try {
+                            await onToggleFeatured(project);
+                          } finally {
+                            setBusyId(null);
+                          }
+                        }}
+                        className="rounded-md bg-white/90 p-1.5 shadow-2xs hover:bg-white cursor-pointer"
+                        title={
+                          project.featured
+                            ? 'Remove Featured status'
+                            : 'Mark as Featured'
+                        }
+                      >
+                        <Star
+                          className={`h-3.5 w-3.5 ${
+                            project.featured
+                              ? 'text-amber-500 fill-amber-400'
+                              : 'text-slate-400'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Card Body */}
+                  <div className="p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-tech text-[10px] font-bold uppercase tracking-wider text-[#00685b] bg-[#00685b]/10 px-2.5 py-0.5 rounded-full truncate">
+                        {project.category || 'Uncategorized'}
+                      </span>
+                      <span className="font-mono text-[10px] text-slate-400 shrink-0">
+                        {project.project_date || project.year || 2026}
+                      </span>
+                    </div>
+
+                    <h3 className="font-display text-base font-black text-slate-900 line-clamp-1">
+                      {project.title}
+                    </h3>
+
+                    {project.project_type && (
+                      <p className="font-tech text-[10px] font-bold text-slate-500 uppercase">
+                        {project.project_type}
+                      </p>
+                    )}
+
+                    <p className="font-sans text-xs text-slate-600 line-clamp-2 leading-relaxed">
+                      {project.short_description ||
+                        project.description ||
+                        'No description provided.'}
+                    </p>
+
+                    {project.software_tools &&
+                      project.software_tools.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {project.software_tools.slice(0, 4).map((tool) => (
+                            <span
+                              key={tool}
+                              className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-slate-600"
+                            >
+                              {tool}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+                </div>
+
+                {/* Card Actions */}
+                <div className="px-4 py-3 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleEditProject(project)}
+                      className="inline-flex items-center gap-1 rounded-lg bg-[#00685b] hover:bg-[#005348] px-2.5 py-1.5 font-display text-[11px] font-bold text-white cursor-pointer"
+                    >
+                      <Edit3 className="h-3 w-3" />
+                      <span>Edit</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={async () => {
+                        setBusyId(project.id);
+                        try {
+                          await onToggleStatus(project);
+                        } finally {
+                          setBusyId(null);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 px-2.5 py-1.5 font-display text-[11px] font-bold text-slate-700 cursor-pointer"
+                    >
+                      {project.status === 'published' ? (
+                        <>
+                          <FileEdit className="h-3 w-3 text-amber-600" />
+                          <span>Unpublish</span>
+                        </>
+                      ) : (
+                        <>
+                          <Globe className="h-3 w-3 text-emerald-600" />
+                          <span>Publish</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenSlug(project.slug)}
+                      className="rounded-lg border border-slate-200 bg-white hover:bg-slate-100 p-1.5 text-slate-600 cursor-pointer"
+                      title="Open Project Page"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteProject(project)}
+                      className="rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 p-1.5 text-red-600 cursor-pointer"
+                      title="Delete Project"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

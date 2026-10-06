@@ -90,9 +90,12 @@ app.get('/api/integration-config', (_req, res) => {
       process.env.SUPABASE_ANON_KEY
   );
   const safeAnonKey =
-    rawAnon && !rawAnon.startsWith('sb_secret_') && !rawAnon.includes('service_role')
+    rawAnon &&
+    !rawAnon.startsWith('sb_secret_') &&
+    !rawAnon.includes('service_role') &&
+    !rawAnon.includes('YOUR_SUPABASE_')
       ? rawAnon
-      : '';
+      : 'sb_publishable_BC9COvwoI_v9BX5XJocfLg_NCniLoiR';
   return res.status(200).json({
     VITE_SUPABASE_URL:
       clean(
@@ -101,6 +104,23 @@ app.get('/api/integration-config', (_req, res) => {
           process.env.SUPABASE_URL
       ) || 'https://zsbpxqzmkhcvxdvjoabp.supabase.co',
     VITE_SUPABASE_ANON_KEY: safeAnonKey,
+    VITE_EMAILJS_PUBLIC_KEY: clean(
+      process.env.VITE_EMAILJS_PUBLIC_KEY || process.env.EMAILJS_PUBLIC_KEY
+    ),
+    VITE_EMAILJS_SERVICE_ID: clean(
+      process.env.VITE_EMAILJS_SERVICE_ID || process.env.EMAILJS_SERVICE_ID
+    ),
+    VITE_EMAILJS_ADMIN_TEMPLATE_ID: clean(
+      process.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
+        process.env.EMAILJS_ADMIN_TEMPLATE_ID ||
+        process.env.VITE_EMAILJS_TEMPLATE_ID
+    ),
+    VITE_EMAILJS_CUSTOMER_TEMPLATE_ID: clean(
+      process.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+        process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+        process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+        process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID
+    ),
     EMAILJS_PUBLIC_KEY: clean(process.env.EMAILJS_PUBLIC_KEY || process.env.VITE_EMAILJS_PUBLIC_KEY),
     EMAILJS_SERVICE_ID: clean(process.env.EMAILJS_SERVICE_ID || process.env.VITE_EMAILJS_SERVICE_ID),
     EMAILJS_ADMIN_TEMPLATE_ID: clean(
@@ -108,8 +128,17 @@ app.get('/api/integration-config', (_req, res) => {
         process.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
         process.env.VITE_EMAILJS_TEMPLATE_ID
     ),
+    EMAILJS_CUSTOMER_TEMPLATE_ID: clean(
+      process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+        process.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+        process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+        process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
+    ),
     EMAILJS_AUTO_REPLY_TEMPLATE_ID: clean(
-      process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID || process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
+      process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+        process.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+        process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+        process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
     ),
     GOOGLE_SHEETS_WEBHOOK_URL: cleanUrl(
       process.env.GOOGLE_SHEETS_WEBHOOK_URL || process.env.VITE_GOOGLE_SHEETS_WEBHOOK_URL
@@ -119,7 +148,7 @@ app.get('/api/integration-config', (_req, res) => {
 
 /**
  * Server-side EmailJS relay endpoint (/api/emailjs-send)
- * Ensures EmailJS Admin and Auto-Reply notifications succeed even if browser extensions,
+ * Ensures EmailJS Admin and Customer notifications succeed even if browser extensions,
  * iframe policies, or network filters block client-side calls to api.emailjs.com.
  */
 app.post('/api/emailjs-send', async (req, res) => {
@@ -134,8 +163,11 @@ app.post('/api/emailjs-send', async (req, res) => {
   );
   const resolvedTemplateId = clean(
     templateId ||
-      (type === 'auto_reply'
-        ? process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID || process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
+      (type === 'customer' || type === 'auto_reply'
+        ? process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          process.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+          process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
         : process.env.EMAILJS_ADMIN_TEMPLATE_ID ||
           process.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
           process.env.VITE_EMAILJS_TEMPLATE_ID)
@@ -154,6 +186,19 @@ app.post('/api/emailjs-send', async (req, res) => {
     'https://ais-dev-somwyso2xv5jhu4pxvfzyv-572791785868.asia-east1.run.app';
 
   try {
+    const payload: Record<string, any> = {
+      lib_version: '4.4.1',
+      user_id: resolvedPublicKey,
+      service_id: resolvedServiceId,
+      template_id: resolvedTemplateId,
+      template_params: templateParams || {}
+    };
+
+    const privateKey = clean(process.env.EMAILJS_PRIVATE_KEY);
+    if (privateKey) {
+      payload.accessToken = privateKey;
+    }
+
     const resp = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method: 'POST',
       headers: {
@@ -162,13 +207,7 @@ app.post('/api/emailjs-send', async (req, res) => {
         'User-Agent':
           'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
       },
-      body: JSON.stringify({
-        lib_version: '4.4.1',
-        user_id: resolvedPublicKey,
-        service_id: resolvedServiceId,
-        template_id: resolvedTemplateId,
-        template_params: templateParams || {}
-      })
+      body: JSON.stringify(payload)
     });
 
     const text = await resp.text().catch(() => '');
@@ -1357,9 +1396,9 @@ app.post('/api/contact', async (req, res) => {
 // Admin-level review panel route to view saved submissions securely
 app.get('/api/messages', (req, res) => {
   const secret = String(req.query.secret || '').trim();
-  const expectedSecret = (process.env.ADMIN_SECRET || 'qbench2026secret').trim();
-  if (!secret || (secret !== expectedSecret && secret !== 'qbench2026secret')) {
-    return res.status(401).json({ success: false, error: 'Unauthorized access. ADMIN_SECRET mismatch.' });
+  const expectedSecret = (process.env.ADMIN_SECRET || '').trim();
+  if (!secret || !expectedSecret || secret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized access.' });
   }
 
   const messages = readMessagesSafe();
@@ -1369,9 +1408,9 @@ app.get('/api/messages', (req, res) => {
 // Admin-level route to update lead status or notes on a specific submission
 app.patch('/api/messages/:id', (req, res) => {
   const secret = String(req.query.secret || '').trim();
-  const expectedSecret = (process.env.ADMIN_SECRET || 'qbench2026secret').trim();
-  if (!secret || (secret !== expectedSecret && secret !== 'qbench2026secret')) {
-    return res.status(401).json({ success: false, error: 'Unauthorized access. ADMIN_SECRET mismatch.' });
+  const expectedSecret = (process.env.ADMIN_SECRET || '').trim();
+  if (!secret || !expectedSecret || secret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized access.' });
   }
 
   const idToUpdate = req.params.id;
@@ -1442,12 +1481,17 @@ app.get('/api/supabase-config', (_req, res) => {
     clean(process.env.SUPABASE_ANON_KEY) ||
     '';
 
-  const isSecret =
-    rawKey.startsWith('sb_secret_') || rawKey.includes('service_role');
+  const isInvalidOrSecret =
+    !rawKey ||
+    rawKey.startsWith('sb_secret_') ||
+    rawKey.includes('service_role') ||
+    rawKey.includes('YOUR_SUPABASE_');
 
   return res.status(200).json({
     url,
-    publishableKey: isSecret ? '' : rawKey,
+    publishableKey: isInvalidOrSecret
+      ? 'sb_publishable_BC9COvwoI_v9BX5XJocfLg_NCniLoiR'
+      : rawKey,
   });
 });
 
@@ -1460,9 +1504,9 @@ app.get('/api/admin-settings', (_req, res) => {
 
 app.post('/api/admin-settings', (req, res) => {
   const secret = String(req.query.secret || '').trim();
-  const expectedSecret = (process.env.ADMIN_SECRET || 'qbench2026secret').trim();
-  if (!secret || (secret !== expectedSecret && secret !== 'qbench2026secret')) {
-    return res.status(401).json({ success: false, error: 'Unauthorized access. ADMIN_SECRET mismatch.' });
+  const expectedSecret = (process.env.ADMIN_SECRET || '').trim();
+  if (!secret || !expectedSecret || secret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized access.' });
   }
 
   const current = readAdminSettingsSafe();
@@ -1484,9 +1528,9 @@ app.post('/api/admin-settings', (req, res) => {
 
 app.get('/api/admin-overview', (req, res) => {
   const secret = String(req.query.secret || '').trim();
-  const expectedSecret = (process.env.ADMIN_SECRET || 'qbench2026secret').trim();
-  if (!secret || (secret !== expectedSecret && secret !== 'qbench2026secret')) {
-    return res.status(401).json({ success: false, error: 'Unauthorized access. ADMIN_SECRET mismatch.' });
+  const expectedSecret = (process.env.ADMIN_SECRET || '').trim();
+  if (!secret || !expectedSecret || secret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized access.' });
   }
 
   const clean = (val?: string) => (val || '').trim().replace(/^["']|["']$/g, '');
@@ -1543,9 +1587,9 @@ app.get('/api/admin-overview', (req, res) => {
 // Admin-level route to delete specific submissions securely
 app.delete('/api/messages/:id', (req, res) => {
   const secret = String(req.query.secret || '').trim();
-  const expectedSecret = (process.env.ADMIN_SECRET || 'qbench2026secret').trim();
-  if (!secret || (secret !== expectedSecret && secret !== 'qbench2026secret')) {
-    return res.status(401).json({ success: false, error: 'Unauthorized access. ADMIN_SECRET mismatch.' });
+  const expectedSecret = (process.env.ADMIN_SECRET || '').trim();
+  if (!secret || !expectedSecret || secret !== expectedSecret) {
+    return res.status(401).json({ success: false, error: 'Unauthorized access.' });
   }
 
   const idToDelete = req.params.id;

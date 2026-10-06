@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import type { Project, Category } from '../types/project';
+import type { Project, Category, ProjectInquiry } from '../types/project';
+import type { CmsPackageCategory, CmsServiceItem } from '../services/siteContentService';
 import {
   FolderKanban,
   Globe,
@@ -10,11 +11,20 @@ import {
   ExternalLink,
   Image as ImageIcon,
   Tags,
+  Package,
+  Briefcase,
+  FileText,
+  MessageSquare,
+  Settings,
+  ArrowRight,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
   projects: Project[];
   categories: Category[];
+  packages?: CmsPackageCategory[];
+  services?: CmsServiceItem[];
+  inquiries?: ProjectInquiry[];
   loading: boolean;
   onNavigateRoute: (path: string) => void;
   onToggleStatus: (project: Project) => Promise<void>;
@@ -24,6 +34,9 @@ interface AdminDashboardProps {
 export default function AdminDashboard({
   projects,
   categories,
+  packages = [],
+  services = [],
+  inquiries = [],
   loading,
   onNavigateRoute,
   onToggleStatus,
@@ -34,8 +47,9 @@ export default function AdminDashboard({
     const published = projects.filter((p) => p.status === 'published').length;
     const draft = projects.filter((p) => p.status === 'draft').length;
     const featured = projects.filter((p) => p.featured).length;
-    return { total, published, draft, featured };
-  }, [projects]);
+    const newInquiries = inquiries.filter((i) => i.status === 'new').length;
+    return { total, published, draft, featured, newInquiries };
+  }, [projects, inquiries]);
 
   const recentProjects = useMemo(() => {
     return [...projects]
@@ -52,24 +66,33 @@ export default function AdminDashboard({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs">
         <div>
           <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#00685b]">
-            DASHBOARD OVERVIEW
+            FULL WEBSITE CONTROL HUB
           </span>
           <h2 className="font-display text-2xl font-black text-slate-900 mt-0.5">
-            Portfolio & Agency Content
+            Portfolio, Packages, Services & Website CMS
           </h2>
           <p className="font-sans text-xs text-slate-500 mt-1">
-            Manage published case studies, categories, media library assets, and agency settings.
+            Control every part of QBENCH: portfolio case studies, package tiers & pricing matrices, service capabilities, homepage copy, process steps, team, and client inquiries.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
-            onClick={() => onNavigateRoute('/admin/categories')}
+            onClick={() => onNavigateRoute('/admin/packages')}
             className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 font-display text-xs font-bold text-slate-700 transition-colors cursor-pointer"
           >
-            <Tags className="h-4 w-4 text-[#00685b]" />
-            <span>Categories ({categories.length})</span>
+            <Package className="h-4 w-4 text-[#00685b]" />
+            <span>Edit Packages ({packages.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateRoute('/admin/services')}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 font-display text-xs font-bold text-slate-700 transition-colors cursor-pointer"
+          >
+            <Briefcase className="h-4 w-4 text-[#00685b]" />
+            <span>Edit Services ({services.length})</span>
           </button>
 
           <button
@@ -142,6 +165,188 @@ export default function AdminDashboard({
         </div>
       </div>
 
+      {/* Complete CMS Control Grid */}
+      <div className="space-y-3">
+        <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#00685b] block">
+          EDIT EVERYTHING ON THE WEBSITE
+        </span>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <button
+            type="button"
+            onClick={() => onNavigateRoute('/admin/projects')}
+            className="text-left bg-white hover:border-[#00685b] border border-slate-200 rounded-2xl p-5 shadow-2xs transition-all group cursor-pointer space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <div className="h-10 w-10 rounded-xl bg-[#00685b]/10 text-[#00685b] flex items-center justify-center">
+                <FolderKanban className="h-5 w-5" />
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-[#00685b] group-hover:translate-x-0.5 transition-all" />
+            </div>
+            <div>
+              <h4 className="font-display text-sm font-black text-slate-900">
+                Portfolio Case Studies
+              </h4>
+              <p className="font-sans text-xs text-slate-500 mt-1 leading-relaxed">
+                Add, edit, reorder, feature, or unpublish portfolio works, cover images, galleries, and Behance/YouTube links.
+              </p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateRoute('/admin/packages')}
+            className="text-left bg-white hover:border-[#00685b] border border-slate-200 rounded-2xl p-5 shadow-2xs transition-all group cursor-pointer space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <div className="h-10 w-10 rounded-xl bg-[#00685b]/10 text-[#00685b] flex items-center justify-center">
+                <Package className="h-5 w-5" />
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-[#00685b] group-hover:translate-x-0.5 transition-all" />
+            </div>
+            <div>
+              <h4 className="font-display text-sm font-black text-slate-900">
+                Packages & Pricing
+              </h4>
+              <p className="font-sans text-xs text-slate-500 mt-1 leading-relaxed">
+                Edit all {packages.length} package categories, Basic/Standard/Premium prices, timelines, comparison matrix rows, and Business Support plans.
+              </p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateRoute('/admin/services')}
+            className="text-left bg-white hover:border-[#00685b] border border-slate-200 rounded-2xl p-5 shadow-2xs transition-all group cursor-pointer space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <div className="h-10 w-10 rounded-xl bg-[#00685b]/10 text-[#00685b] flex items-center justify-center">
+                <Briefcase className="h-5 w-5" />
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-[#00685b] group-hover:translate-x-0.5 transition-all" />
+            </div>
+            <div>
+              <h4 className="font-display text-sm font-black text-slate-900">
+                Services & Capabilities
+              </h4>
+              <p className="font-sans text-xs text-slate-500 mt-1 leading-relaxed">
+                Customize all {services.length} agency services, starting prices, descriptions, icons, and bulleted deliverables.
+              </p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateRoute('/admin/content')}
+            className="text-left bg-white hover:border-[#00685b] border border-slate-200 rounded-2xl p-5 shadow-2xs transition-all group cursor-pointer space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <div className="h-10 w-10 rounded-xl bg-[#00685b]/10 text-[#00685b] flex items-center justify-center">
+                <FileText className="h-5 w-5" />
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-[#00685b] group-hover:translate-x-0.5 transition-all" />
+            </div>
+            <div>
+              <h4 className="font-display text-sm font-black text-slate-900">
+                Website Copy, Process & Team
+              </h4>
+              <p className="font-sans text-xs text-slate-500 mt-1 leading-relaxed">
+                Edit homepage hero text, rotating words, Why Choose Us cards, 6-stage process timeline, team members, and studio locations.
+              </p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateRoute('/admin/categories')}
+            className="text-left bg-white hover:border-[#00685b] border border-slate-200 rounded-2xl p-5 shadow-2xs transition-all group cursor-pointer space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <div className="h-10 w-10 rounded-xl bg-[#00685b]/10 text-[#00685b] flex items-center justify-center">
+                <Tags className="h-5 w-5" />
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-[#00685b] group-hover:translate-x-0.5 transition-all" />
+            </div>
+            <div>
+              <h4 className="font-display text-sm font-black text-slate-900">
+                Portfolio Categories ({categories.length})
+              </h4>
+              <p className="font-sans text-xs text-slate-500 mt-1 leading-relaxed">
+                Create, rename, or delete filter categories for the public portfolio showcase.
+              </p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateRoute('/admin/media')}
+            className="text-left bg-white hover:border-[#00685b] border border-slate-200 rounded-2xl p-5 shadow-2xs transition-all group cursor-pointer space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <div className="h-10 w-10 rounded-xl bg-[#00685b]/10 text-[#00685b] flex items-center justify-center">
+                <ImageIcon className="h-5 w-5" />
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-[#00685b] group-hover:translate-x-0.5 transition-all" />
+            </div>
+            <div>
+              <h4 className="font-display text-sm font-black text-slate-900">
+                Media Library
+              </h4>
+              <p className="font-sans text-xs text-slate-500 mt-1 leading-relaxed">
+                Upload images to Supabase Storage, copy public URLs, and manage uploaded visuals.
+              </p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateRoute('/admin/inquiries')}
+            className="text-left bg-white hover:border-[#00685b] border border-slate-200 rounded-2xl p-5 shadow-2xs transition-all group cursor-pointer space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <div className="h-10 w-10 rounded-xl bg-[#00685b]/10 text-[#00685b] flex items-center justify-center">
+                <MessageSquare className="h-5 w-5" />
+              </div>
+              {stats.newInquiries > 0 ? (
+                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 font-tech text-[10px] font-bold text-emerald-800">
+                  {stats.newInquiries} New
+                </span>
+              ) : (
+                <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-[#00685b] group-hover:translate-x-0.5 transition-all" />
+              )}
+            </div>
+            <div>
+              <h4 className="font-display text-sm font-black text-slate-900">
+                Client Inquiries ({inquiries.length})
+              </h4>
+              <p className="font-sans text-xs text-slate-500 mt-1 leading-relaxed">
+                Review leads submitted from the contact & package booking forms and update their status.
+              </p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateRoute('/admin/settings')}
+            className="text-left bg-white hover:border-[#00685b] border border-slate-200 rounded-2xl p-5 shadow-2xs transition-all group cursor-pointer space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <div className="h-10 w-10 rounded-xl bg-[#00685b]/10 text-[#00685b] flex items-center justify-center">
+                <Settings className="h-5 w-5" />
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-[#00685b] group-hover:translate-x-0.5 transition-all" />
+            </div>
+            <div>
+              <h4 className="font-display text-sm font-black text-slate-900">
+                Agency Contact & Socials
+              </h4>
+              <p className="font-sans text-xs text-slate-500 mt-1 leading-relaxed">
+                Update agency name, tagline, contact email, phone, WhatsApp number, and social profiles.
+              </p>
+            </div>
+          </button>
+        </div>
+      </div>
+
       {/* Recent Projects List */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-2xs space-y-5">
         <div className="flex items-center justify-between">
@@ -150,7 +355,7 @@ export default function AdminDashboard({
               RECENT ACTIVITY
             </span>
             <h3 className="font-display text-lg font-black text-slate-900">
-              Recent Projects
+              Recent Portfolio Projects
             </h3>
           </div>
           <button

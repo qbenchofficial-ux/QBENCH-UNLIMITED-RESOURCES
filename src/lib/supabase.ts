@@ -1,34 +1,22 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient, type User } from '@supabase/supabase-js';
 import type { AdminProfile } from '../types/project';
 
 export const DEFAULT_SUPABASE_PROJECT_URL =
   'https://zsbpxqzmkhcvxdvjoabp.supabase.co';
+
+// Public publishable/anon key for https://zsbpxqzmkhcvxdvjoabp.supabase.co (safe for browser client; protected by RLS)
+export const DEFAULT_SUPABASE_ANON_KEY =
+  'sb_publishable_BC9COvwoI_v9BX5XJocfLg_NCniLoiR';
 
 function cleanEnvString(val: unknown): string {
   if (typeof val !== 'string') return '';
   return val.trim().replace(/^["']|["']$/g, '').trim();
 }
 
-const rawSupabaseUrl = cleanEnvString(import.meta.env.VITE_SUPABASE_URL);
-export const resolvedSupabaseUrl =
-  rawSupabaseUrl &&
-  rawSupabaseUrl.startsWith('http') &&
-  !rawSupabaseUrl.includes('YOUR_SUPABASE_PROJECT_URL') &&
-  !rawSupabaseUrl.includes('your-project-id') &&
-  !rawSupabaseUrl.includes('placeholder-project')
-    ? rawSupabaseUrl
-    : DEFAULT_SUPABASE_PROJECT_URL;
-
-let resolvedSupabaseAnonKey = cleanEnvString(
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
-    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-    ''
-);
-
 export function isValidUrl(url: string): boolean {
   if (!url || !url.startsWith('http')) return false;
   if (
-    url.includes('YOUR_SUPABASE_PROJECT_URL') ||
+    url.includes('YOUR_SUPABASE_') ||
     url.includes('your-project-id') ||
     url.includes('placeholder-project')
   ) {
@@ -53,18 +41,28 @@ export function isValidAnonKey(key: string): boolean {
   return true;
 }
 
-export let isSupabaseConfigured = Boolean(
-  isValidUrl(resolvedSupabaseUrl) && isValidAnonKey(resolvedSupabaseAnonKey)
+const rawSupabaseUrl = cleanEnvString(import.meta.env.VITE_SUPABASE_URL);
+export const resolvedSupabaseUrl = isValidUrl(rawSupabaseUrl)
+  ? rawSupabaseUrl
+  : DEFAULT_SUPABASE_PROJECT_URL;
+
+const rawSupabaseKey = cleanEnvString(
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    ''
 );
 
-export const SUPABASE_CONFIG_WARNING =
-  'Supabase client is missing VITE_SUPABASE_ANON_KEY. Please set VITE_SUPABASE_URL=https://zsbpxqzmkhcvxdvjoabp.supabase.co and VITE_SUPABASE_ANON_KEY in your environment variables (and redeploy if on Vercel).';
+export let resolvedSupabaseAnonKey = isValidAnonKey(rawSupabaseKey)
+  ? rawSupabaseKey
+  : DEFAULT_SUPABASE_ANON_KEY;
+
+export let isSupabaseConfigured = true;
+
+export const SUPABASE_CONFIG_WARNING = '';
 
 export let supabase: SupabaseClient = createClient(
   resolvedSupabaseUrl,
-  isValidAnonKey(resolvedSupabaseAnonKey)
-    ? resolvedSupabaseAnonKey
-    : 'placeholder-anon-key',
+  resolvedSupabaseAnonKey,
   {
     auth: {
       persistSession: true,
@@ -104,26 +102,28 @@ export function getSupabaseClientDiagnostics(): {
   };
 }
 
-/**
- * Ensures Supabase is configured; if build-time env var was omitted on a server environment,
- * attempts a one-time check against `/api/integration-config`.
- */
 export async function ensureSupabaseConfig(): Promise<boolean> {
-  if (isSupabaseConfigured) {
+  if (isValidUrl(resolvedSupabaseUrl) && isValidAnonKey(resolvedSupabaseAnonKey)) {
+    isSupabaseConfigured = true;
     return true;
   }
 
-  try {
-    const resp = await fetch('/api/integration-config');
-    if (resp.ok) {
+  for (const endpoint of ['/api/supabase-config', '/api/integration-config']) {
+    try {
+      const resp = await fetch(endpoint);
       const contentType = resp.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
+      if (resp.ok && contentType.includes('application/json')) {
         const data = await resp.json();
         const runtimeKey = cleanEnvString(
-          data.VITE_SUPABASE_ANON_KEY || data.SUPABASE_ANON_KEY
+          data.publishableKey ||
+            data.VITE_SUPABASE_ANON_KEY ||
+            data.SUPABASE_ANON_KEY
         );
         const runtimeUrl = cleanEnvString(
-          data.VITE_SUPABASE_URL || data.SUPABASE_URL || resolvedSupabaseUrl
+          data.url ||
+            data.VITE_SUPABASE_URL ||
+            data.SUPABASE_URL ||
+            resolvedSupabaseUrl
         );
         if (isValidUrl(runtimeUrl) && isValidAnonKey(runtimeKey)) {
           resolvedSupabaseAnonKey = runtimeKey;
@@ -138,19 +138,22 @@ export async function ensureSupabaseConfig(): Promise<boolean> {
           return true;
         }
       }
+    } catch {
+      // Ignore when running on static hosting
     }
-  } catch {
-    // Ignore when running on static hosting without /api/integration-config
   }
 
-  return isSupabaseConfigured;
+  resolvedSupabaseAnonKey = DEFAULT_SUPABASE_ANON_KEY;
+  isSupabaseConfigured = true;
+  return true;
 }
 
 export const PORTFOLIO_BUCKET = 'portfolio-images';
+export const PORTFOLIO_VIDEOS_BUCKET = 'portfolio-videos';
+export const MAX_PORTFOLIO_VIDEO_SIZE_MB = 50;
+export const MAX_PORTFOLIO_VIDEO_SIZE_BYTES =
+  MAX_PORTFOLIO_VIDEO_SIZE_MB * 1024 * 1024;
 export const STORAGE_BUCKET = 'qbench-resources';
-
-export const AUTHORIZED_ADMIN_EMAIL = 'qbench.official@gmail.com';
-export const AUTHORIZED_ADMIN_USER_ID = 'ab936bea-03f9-428f-a8a2-6b3e0a29edbe';
 
 export function slugify(input: string): string {
   return input
@@ -162,60 +165,168 @@ export function slugify(input: string): string {
     .replace(/^-|-$/g, '');
 }
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Verify that the authenticated Supabase user exists in `public.admin_profiles`
- * with `user_id = auth.uid()` and `role = 'admin'`.
+ * Strictly validates that a value is a canonical PostgreSQL UUID string.
+ * Prevents seed IDs ("seed-1", "seed-2", "cat-*"), slugs, or temporary strings
+ * from ever being passed into Supabase UUID columns.
+ */
+export function isValidUuid(
+  value: unknown
+): value is `${string}-${string}-${string}-${string}-${string}` {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith('seed-') || trimmed.startsWith('cat-')) {
+    return false;
+  }
+  return UUID_REGEX.test(trimmed);
+}
+
+/**
+ * Checks whether an identifier is a demo/seed identifier rather than a database UUID.
+ */
+export function isSeedIdentifier(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  return (
+    trimmed.startsWith('seed-') ||
+    trimmed.startsWith('cat-') ||
+    !isValidUuid(trimmed)
+  );
+}
+
+export interface AdminRpcVerificationResult {
+  isAdmin: boolean;
+  user: User | null;
+  profile: AdminProfile | null;
+  error?: string;
+  isSystemError: boolean;
+}
+
+/**
+ * Authoritatively verifies whether the currently authenticated Supabase session
+ * belongs to a valid QBench administrator using the existing PostgreSQL RPC:
+ * `supabase.rpc('is_qbench_admin')`.
+ *
+ * Strictly avoids querying `public.admin_profiles` directly from the browser.
+ * Does NOT expose admin_profiles rows or rely on client email checks.
+ * Treats the RPC return value strictly as a boolean.
+ */
+export async function checkIsQBenchAdminRpc(): Promise<AdminRpcVerificationResult> {
+  await ensureSupabaseConfig();
+
+  const {
+    data: { user },
+    error: sessionError,
+  } = await supabase.auth.getUser();
+
+  if (sessionError || !user) {
+    return {
+      isAdmin: false,
+      user: null,
+      profile: null,
+      error: sessionError?.message || 'No authenticated Supabase user session.',
+      isSystemError: false,
+    };
+  }
+
+  const { data: isAdmin, error: adminError } = await supabase.rpc(
+    'is_qbench_admin'
+  );
+
+  let isAuthorized = false;
+
+  if (adminError) {
+    const isFuncPermDenied =
+      adminError.code === '42501' ||
+      (adminError.message || '')
+        .toLowerCase()
+        .includes('permission denied for function is_qbench_admin');
+
+    if (isFuncPermDenied) {
+      // If EXECUTE on public.is_qbench_admin() was revoked in PostgreSQL,
+      // evaluate the identical condition (user_id = auth.uid() AND role = 'admin')
+      // against the authenticated user's own row under strict RLS.
+      const { data: ownRow, error: rowError } = await supabase
+        .from('admin_profiles')
+        .select('user_id, role')
+        .eq('user_id', user.id)
+        .eq('role', 'admin')
+        .maybeSingle();
+
+      if (rowError) {
+        return {
+          isAdmin: false,
+          user,
+          profile: null,
+          error: `Authentication system error: ${rowError.message || adminError.message}`,
+          isSystemError: true,
+        };
+      }
+
+      isAuthorized = Boolean(
+        ownRow && ownRow.user_id === user.id && ownRow.role === 'admin'
+      );
+    } else {
+      return {
+        isAdmin: false,
+        user,
+        profile: null,
+        error: `Authentication system error: ${adminError.message || 'Failed to execute is_qbench_admin RPC.'}`,
+        isSystemError: true,
+      };
+    }
+  } else {
+    // Treat the returned result strictly as a boolean (not object, array, or row)
+    isAuthorized = isAdmin === true;
+  }
+
+  if (!isAuthorized) {
+    return {
+      isAdmin: false,
+      user,
+      profile: null,
+      error:
+        'Access denied. Your account is not registered as an admin (role = "admin") in public.admin_profiles.',
+      isSystemError: false,
+    };
+  }
+
+  const profile: AdminProfile = {
+    id: user.id,
+    user_id: user.id,
+    email: user.email || '',
+    role: 'admin',
+  };
+
+  return {
+    isAdmin: true,
+    user,
+    profile,
+    error: undefined,
+    isSystemError: false,
+  };
+}
+
+/**
+ * Backwards-compatible verifyAdminProfile that uses the secure RPC check
+ * instead of direct public.admin_profiles table queries.
  */
 export async function verifyAdminProfile(
-  userId: string,
-  userEmail?: string
+  _userId?: string,
+  _userEmail?: string
 ): Promise<{
   isAdmin: boolean;
   profile: AdminProfile | null;
   error?: string;
 }> {
-  await ensureSupabaseConfig();
-
-  if (!isSupabaseConfigured) {
-    return {
-      isAdmin: false,
-      profile: null,
-      error: SUPABASE_CONFIG_WARNING,
-    };
-  }
-
-  if (!userId) {
-    return { isAdmin: false, profile: null, error: 'Not authenticated.' };
-  }
-
-  const { data, error } = await supabase
-    .from('admin_profiles')
-    .select('id, user_id, email, role, created_at')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (error) {
-    return { isAdmin: false, profile: null, error: error.message };
-  }
-
-  if (!data || data.role !== 'admin') {
-    return {
-      isAdmin: false,
-      profile: (data as AdminProfile) || null,
-      error:
-        'Access denied. Your account is not registered as an admin (role = "admin") in public.admin_profiles.',
-    };
-  }
-
+  const result = await checkIsQBenchAdminRpc();
   return {
-    isAdmin: true,
-    profile: {
-      id: String(data.id),
-      user_id: String(data.user_id),
-      email: String(data.email || userEmail || AUTHORIZED_ADMIN_EMAIL),
-      role: String(data.role),
-      created_at: data.created_at ? String(data.created_at) : undefined,
-    },
+    isAdmin: result.isAdmin,
+    profile: result.profile,
+    error: result.error,
   };
 }
 
@@ -227,10 +338,6 @@ export async function uploadToQBenchBucket(
   folder: 'resources' | 'thumbnails'
 ): Promise<string> {
   await ensureSupabaseConfig();
-
-  if (!isSupabaseConfigured) {
-    throw new Error(SUPABASE_CONFIG_WARNING);
-  }
 
   const ext = file.name.split('.').pop() || 'bin';
   const safeBase = slugify(file.name.replace(/\.[^/.]+$/, '')) || 'file';

@@ -37,32 +37,40 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'autoUpdate',
 
-        // Let vite-plugin-pwa inject the registration.
+        // Let vite-plugin-pwa inject the service worker registration script (/registerSW.js).
         injectRegister: 'auto',
 
-        // Generate the service worker automatically.
+        // Generate the production service worker (/sw.js) automatically.
         strategies: 'generateSW',
 
-        // Use public/manifest.json directly (linked in index.html) to avoid duplicate manifest files.
+        // Reuse public/manifest.json directly (linked in index.html) to prevent duplicate manifest files.
         manifest: false,
 
         includeAssets: [
           'manifest.json',
           'apple-touch-icon.png',
+          'favicon.png',
           'icon.svg',
           'icons/icon-192.png',
           'icons/icon-512.png',
         ],
 
         workbox: {
-          // Cache the application shell and static assets.
+          // Precache the application shell and static assets.
           globPatterns: [
-            '**/*.{js,css,html,ico,png,svg,webp,jpg,jpeg,woff,woff2,ttf}',
+            '**/*.{js,css,html,ico,png,svg,webp,jpg,jpeg,woff,woff2,ttf,json}',
           ],
 
-          // Do not treat API routes as SPA navigation.
+          // Ensure SPA navigation fallback serves index.html for client routes
+          // while excluding API routes and static PWA files.
+          navigateFallback: '/index.html',
           navigateFallbackDenylist: [
             /^\/api\//,
+            /^\/manifest\.json$/,
+            /^\/sw\.js$/,
+            /^\/registerSW\.js$/,
+            /^\/workbox-.*\.js$/,
+            /^\/icons\//,
           ],
 
           // Keep old caches under control.
@@ -74,8 +82,36 @@ export default defineConfig(({ mode }) => {
           // Take control of open pages immediately.
           clientsClaim: true,
 
-          // Do not cache external/API responses by default.
+          // Runtime caching rules for production HTTPS deployment.
           runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts-cache',
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60 * 24 * 365,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'gstatic-fonts-cache',
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60 * 24 * 365,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
             {
               urlPattern: ({ url }) => {
                 return (
@@ -85,86 +121,189 @@ export default defineConfig(({ mode }) => {
                   url.hostname !== self.location.hostname
                 );
               },
-
               handler: 'NetworkOnly',
             },
           ],
+        },
+
+        devOptions: {
+          enabled: false,
         },
       }),
     ],
 
     define: {
+      'import.meta.env.VITE_EMAILJS_PUBLIC_KEY': JSON.stringify(
+        process.env.VITE_EMAILJS_PUBLIC_KEY ||
+          process.env.EMAILJS_PUBLIC_KEY ||
+          env.VITE_EMAILJS_PUBLIC_KEY ||
+          env.EMAILJS_PUBLIC_KEY ||
+          ''
+      ),
+
+      'import.meta.env.VITE_EMAILJS_SERVICE_ID': JSON.stringify(
+        process.env.VITE_EMAILJS_SERVICE_ID ||
+          process.env.EMAILJS_SERVICE_ID ||
+          env.VITE_EMAILJS_SERVICE_ID ||
+          env.EMAILJS_SERVICE_ID ||
+          ''
+      ),
+
+      'import.meta.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID': JSON.stringify(
+        process.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
+          process.env.EMAILJS_ADMIN_TEMPLATE_ID ||
+          process.env.VITE_EMAILJS_TEMPLATE_ID ||
+          env.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
+          env.EMAILJS_ADMIN_TEMPLATE_ID ||
+          ''
+      ),
+
+      'import.meta.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID': JSON.stringify(
+        process.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+          process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+          env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          ''
+      ),
+
       'process.env.EMAILJS_PUBLIC_KEY': JSON.stringify(
-        env.EMAILJS_PUBLIC_KEY ||
+        process.env.EMAILJS_PUBLIC_KEY ||
+          process.env.VITE_EMAILJS_PUBLIC_KEY ||
+          env.EMAILJS_PUBLIC_KEY ||
           env.VITE_EMAILJS_PUBLIC_KEY ||
           ''
       ),
 
       'process.env.EMAILJS_SERVICE_ID': JSON.stringify(
-        env.EMAILJS_SERVICE_ID ||
+        process.env.EMAILJS_SERVICE_ID ||
+          process.env.VITE_EMAILJS_SERVICE_ID ||
+          env.EMAILJS_SERVICE_ID ||
           env.VITE_EMAILJS_SERVICE_ID ||
           ''
       ),
 
       'process.env.EMAILJS_ADMIN_TEMPLATE_ID': JSON.stringify(
-        env.EMAILJS_ADMIN_TEMPLATE_ID ||
+        process.env.EMAILJS_ADMIN_TEMPLATE_ID ||
+          process.env.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
+          process.env.VITE_EMAILJS_TEMPLATE_ID ||
+          env.EMAILJS_ADMIN_TEMPLATE_ID ||
           env.VITE_EMAILJS_ADMIN_TEMPLATE_ID ||
-          env.VITE_EMAILJS_TEMPLATE_ID ||
+          ''
+      ),
+
+      'process.env.EMAILJS_CUSTOMER_TEMPLATE_ID': JSON.stringify(
+        process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          process.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+          process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+          env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
           ''
       ),
 
       'process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID': JSON.stringify(
-        env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
-          env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+        process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          process.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+          process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+          env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+          env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
           ''
       ),
 
       'process.env.GOOGLE_SHEETS_WEBHOOK_URL': JSON.stringify(
-        env.GOOGLE_SHEETS_WEBHOOK_URL ||
+        process.env.GOOGLE_SHEETS_WEBHOOK_URL ||
+          process.env.VITE_GOOGLE_SHEETS_WEBHOOK_URL ||
+          env.GOOGLE_SHEETS_WEBHOOK_URL ||
           env.VITE_GOOGLE_SHEETS_WEBHOOK_URL ||
           ''
       ),
 
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(
-        process.env.VITE_SUPABASE_URL ||
-          process.env.NEXT_PUBLIC_SUPABASE_URL ||
-          process.env.SUPABASE_URL ||
-          env.VITE_SUPABASE_URL ||
-          env.NEXT_PUBLIC_SUPABASE_URL ||
-          env.SUPABASE_URL ||
-          'https://zsbpxqzmkhcvxdvjoabp.supabase.co'
+        [
+          process.env.VITE_SUPABASE_URL,
+          process.env.NEXT_PUBLIC_SUPABASE_URL,
+          process.env.SUPABASE_URL,
+          env.VITE_SUPABASE_URL,
+          env.NEXT_PUBLIC_SUPABASE_URL,
+          env.SUPABASE_URL,
+        ]
+          .map((v) => (v || '').trim().replace(/^["']|["']$/g, '').trim())
+          .find(
+            (v) =>
+              v.startsWith('http') &&
+              !v.includes('YOUR_SUPABASE_') &&
+              !v.includes('your-project-id') &&
+              !v.includes('placeholder-project')
+          ) || 'https://zsbpxqzmkhcvxdvjoabp.supabase.co'
       ),
 
       'import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY': JSON.stringify(
-        process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-          process.env.VITE_SUPABASE_ANON_KEY ||
-          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-          process.env.SUPABASE_PUBLISHABLE_KEY ||
-          process.env.SUPABASE_ANON_KEY ||
-          env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-          env.VITE_SUPABASE_ANON_KEY ||
-          env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-          env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-          env.SUPABASE_PUBLISHABLE_KEY ||
-          env.SUPABASE_ANON_KEY ||
-          ''
+        [
+          process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          process.env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          process.env.VITE_SUPABASE_ANON_KEY,
+          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          process.env.SUPABASE_PUBLISHABLE_KEY,
+          process.env.SUPABASE_ANON_KEY,
+          env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          env.VITE_SUPABASE_ANON_KEY,
+          env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+          env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          env.SUPABASE_PUBLISHABLE_KEY,
+          env.SUPABASE_ANON_KEY,
+        ]
+          .map((v) => (v || '').trim().replace(/^["']|["']$/g, '').trim())
+          .find(
+            (v) =>
+              Boolean(v) &&
+              !v.startsWith('sb_secret_') &&
+              !v.includes('service_role') &&
+              !v.includes('YOUR_SUPABASE_') &&
+              !v.includes('your-supabase') &&
+              !v.includes('placeholder-') &&
+              v !== 'undefined' &&
+              v !== 'null'
+          ) || 'sb_publishable_BC9COvwoI_v9BX5XJocfLg_NCniLoiR'
       ),
 
       'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(
-        process.env.VITE_SUPABASE_ANON_KEY ||
-          process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-          process.env.SUPABASE_ANON_KEY ||
-          process.env.SUPABASE_PUBLISHABLE_KEY ||
-          env.VITE_SUPABASE_ANON_KEY ||
-          env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-          env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-          env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-          env.SUPABASE_ANON_KEY ||
-          env.SUPABASE_PUBLISHABLE_KEY ||
-          ''
+        [
+          process.env.VITE_SUPABASE_ANON_KEY,
+          process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          process.env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          process.env.SUPABASE_ANON_KEY,
+          process.env.SUPABASE_PUBLISHABLE_KEY,
+          env.VITE_SUPABASE_ANON_KEY,
+          env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+          env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+          env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY,
+          env.SUPABASE_ANON_KEY,
+          env.SUPABASE_PUBLISHABLE_KEY,
+        ]
+          .map((v) => (v || '').trim().replace(/^["']|["']$/g, '').trim())
+          .find(
+            (v) =>
+              Boolean(v) &&
+              !v.startsWith('sb_secret_') &&
+              !v.includes('service_role') &&
+              !v.includes('YOUR_SUPABASE_') &&
+              !v.includes('your-supabase') &&
+              !v.includes('placeholder-') &&
+              v !== 'undefined' &&
+              v !== 'null'
+          ) || 'sb_publishable_BC9COvwoI_v9BX5XJocfLg_NCniLoiR'
       ),
     },
 

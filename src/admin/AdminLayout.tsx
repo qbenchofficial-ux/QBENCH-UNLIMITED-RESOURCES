@@ -16,6 +16,9 @@ import {
   CheckCircle2,
   AlertCircle,
   MessageSquare,
+  Package,
+  Briefcase,
+  FileText,
 } from 'lucide-react';
 
 export type AdminCmsSection =
@@ -23,6 +26,9 @@ export type AdminCmsSection =
   | 'projects'
   | 'add-project'
   | 'edit-project'
+  | 'packages'
+  | 'services'
+  | 'site-content'
   | 'categories'
   | 'media'
   | 'inquiries'
@@ -65,7 +71,7 @@ export default function AdminLayout({
     },
     {
       id: 'projects',
-      label: 'Projects',
+      label: 'Portfolio Projects',
       path: '/admin/projects',
       icon: <FolderKanban className="h-4 w-4" />,
     },
@@ -76,26 +82,44 @@ export default function AdminLayout({
       icon: <PlusCircle className="h-4 w-4" />,
     },
     {
-      id: 'media',
-      label: 'Media',
-      path: '/admin/media',
-      icon: <ImageIcon className="h-4 w-4" />,
-    },
-    {
       id: 'categories',
-      label: 'Categories',
+      label: 'Portfolio Categories',
       path: '/admin/categories',
       icon: <Tags className="h-4 w-4" />,
     },
     {
+      id: 'packages',
+      label: 'Packages & Pricing',
+      path: '/admin/packages',
+      icon: <Package className="h-4 w-4" />,
+    },
+    {
+      id: 'services',
+      label: 'Services & Capabilities',
+      path: '/admin/services',
+      icon: <Briefcase className="h-4 w-4" />,
+    },
+    {
+      id: 'site-content',
+      label: 'Website Content',
+      path: '/admin/content',
+      icon: <FileText className="h-4 w-4" />,
+    },
+    {
+      id: 'media',
+      label: 'Media Library',
+      path: '/admin/media',
+      icon: <ImageIcon className="h-4 w-4" />,
+    },
+    {
       id: 'inquiries',
-      label: 'Inquiries',
+      label: 'Client Inquiries',
       path: '/admin/inquiries',
       icon: <MessageSquare className="h-4 w-4" />,
     },
     {
       id: 'settings',
-      label: 'Settings',
+      label: 'Agency Settings',
       path: '/admin/settings',
       icon: <Settings className="h-4 w-4" />,
     },
@@ -114,23 +138,22 @@ export default function AdminLayout({
       </Helmet>
 
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 bg-white border-r border-slate-200 z-30 justify-between">
-        <div className="p-6 space-y-8">
+      <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 bg-white border-r border-slate-200 z-30 justify-between overflow-y-auto">
+        <div className="p-6 space-y-6">
           {/* Brand Header */}
-          <div className="flex items-center gap-3 border-b border-slate-100 pb-5">
-            <QBenchLogo variant="symbol" iconSize={38} />
-            <div className="min-w-0">
-              <span className="font-display text-base font-black tracking-tight text-slate-900 block leading-none">
-                QBENCH
-              </span>
-              <span className="font-tech text-[10px] font-bold uppercase tracking-wider text-[#00685b] block mt-1">
-                Creative Management System
-              </span>
-            </div>
+          <div className="border-b border-slate-100 pb-5">
+            <button
+              type="button"
+              onClick={() => handleNavClick('/admin')}
+              className="text-left cursor-pointer group block focus:outline-none transition-opacity hover:opacity-90"
+              title="QBENCH — Unlimited Resources"
+            >
+              <QBenchLogo variant="horizontal" />
+            </button>
           </div>
 
           {/* Navigation Links */}
-          <nav className="space-y-1.5">
+          <nav className="space-y-1">
             {navItems.map((item) => {
               const isActive =
                 activeSection === item.id ||
@@ -140,7 +163,7 @@ export default function AdminLayout({
                   key={item.id}
                   type="button"
                   onClick={() => handleNavClick(item.path)}
-                  className={`w-full flex items-center gap-3 rounded-xl px-4 py-2.5 font-display text-xs font-bold transition-all cursor-pointer ${
+                  className={`w-full flex items-center gap-3 rounded-xl px-3.5 py-2.5 font-display text-xs font-bold transition-all cursor-pointer ${
                     isActive
                       ? 'bg-[#00685b] text-white shadow-xs'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -201,17 +224,35 @@ export default function AdminLayout({
             >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-            <div>
-              <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#00685b] block">
-                QBENCH CMS
-              </span>
-              <h1 className="font-display text-base sm:text-lg font-black text-slate-900">
-                Creative Management System
-              </h1>
-            </div>
+            <button
+              type="button"
+              onClick={() => handleNavClick('/admin')}
+              className="text-left cursor-pointer focus:outline-none transition-opacity hover:opacity-90"
+              title="QBENCH — Unlimited Resources"
+            >
+              <QBenchLogo variant="horizontal" />
+            </button>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleNavClick('/admin/packages')}
+              className="hidden md:inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-3 py-2 font-display text-xs font-bold text-slate-700 transition-colors cursor-pointer"
+            >
+              <Package className="h-3.5 w-3.5 text-[#00685b]" />
+              <span>Packages</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleNavClick('/admin/services')}
+              className="hidden md:inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-3 py-2 font-display text-xs font-bold text-slate-700 transition-colors cursor-pointer"
+            >
+              <Briefcase className="h-3.5 w-3.5 text-[#00685b]" />
+              <span>Services</span>
+            </button>
+
             <button
               type="button"
               onClick={() => handleNavClick('/admin/projects/new')}
@@ -235,7 +276,7 @@ export default function AdminLayout({
 
         {/* Mobile Drawer */}
         {mobileMenuOpen && (
-          <div className="lg:hidden bg-white border-b border-slate-200 px-4 py-4 space-y-2 shadow-md">
+          <div className="lg:hidden bg-white border-b border-slate-200 px-4 py-4 space-y-1.5 shadow-md">
             {navItems.map((item) => {
               const isActive = activeSection === item.id;
               return (
