@@ -1,0 +1,6 @@
+Contact: mailto:qbench.official@gmail.com
+Contact: mailto:contact@qbench.in
+Expires: 2027-10-05T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://www.qbench.in/.well-known/security.txt
+Policy: https://github.com/qbench/qbench/blob/main/SECURITY.md

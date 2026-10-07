@@ -233,7 +233,14 @@ create policy "Public can view categories"
 on public.categories
 for select
 to anon, authenticated
-using (true);
+using (is_active = true);
+
+drop policy if exists "Admins can view all categories" on public.categories;
+create policy "Admins can view all categories"
+on public.categories
+for select
+to authenticated
+using (public.is_qbench_admin());
 
 drop policy if exists "Admins can insert categories" on public.categories;
 create policy "Admins can insert categories"
@@ -300,7 +307,22 @@ create policy "Public can view portfolio_images"
 on public.portfolio_images
 for select
 to anon, authenticated
-using (true);
+using (
+  project_id is null
+  or exists (
+    select 1
+    from public.projects p
+    where p.id = portfolio_images.project_id
+      and p.status = 'published'
+  )
+);
+
+drop policy if exists "Admins can view all portfolio_images" on public.portfolio_images;
+create policy "Admins can view all portfolio_images"
+on public.portfolio_images
+for select
+to authenticated
+using (public.is_qbench_admin());
 
 drop policy if exists "Admins can insert portfolio_images" on public.portfolio_images;
 create policy "Admins can insert portfolio_images"
@@ -388,12 +410,12 @@ values (
   'portfolio-images',
   true,
   10485760,
-  array['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+  array['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/svg+xml']
 )
 on conflict (id) do update set
   public = true,
   file_size_limit = 10485760,
-  allowed_mime_types = array['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+  allowed_mime_types = array['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/svg+xml'];
 
 drop policy if exists "Public read access for portfolio-images" on storage.objects;
 create policy "Public read access for portfolio-images"

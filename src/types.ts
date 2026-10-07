@@ -1,4 +1,4 @@
-export type NavSection = 'home' | 'about' | 'services' | 'portfolio' | 'process' | 'contact' | 'packages' | 'admin';
+export type NavSection = 'home' | 'about' | 'services' | 'portfolio' | 'process' | 'contact' | 'packages' | 'nfc-access' | 'admin';
 
 export type ServiceTab = 'branding' | 'social-media' | 'video-editing' | 'digital-marketing' | 'uiux' | 'webdev' | 'motion' | 'growth' | 'business-support';
 

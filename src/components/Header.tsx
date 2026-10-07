@@ -18,6 +18,7 @@ export default function Header({ activeSection, onNavigate }: HeaderProps) {
     { id: 'packages', label: 'Packages' },
     { id: 'portfolio', label: 'Portfolio' },
     { id: 'process', label: 'Process' },
+    { id: 'nfc-access', label: 'NFC Access' },
     { id: 'contact', label: 'Contact' },
   ];
 
