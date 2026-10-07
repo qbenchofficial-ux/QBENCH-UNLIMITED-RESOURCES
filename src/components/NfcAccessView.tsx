@@ -19,7 +19,6 @@ import {
   Lock,
   Radio,
   Info,
-  ExternalLink,
   CheckCircle2,
   Cpu,
   QrCode,
@@ -28,6 +27,7 @@ import {
   Copy,
   Upload,
   KeyRound,
+  ArrowLeft,
 } from 'lucide-react';
 import type { NavSection } from '../types';
 import {
@@ -35,6 +35,13 @@ import {
   restoreSecureNfcBackupToken,
   type SecureNfcBackupEnvelope,
 } from '../utils/nfcQrBackup';
+import {
+  queryAndroidNfcAdapterState,
+  launchAndroidNfcSettingsIntent,
+  getNativeAndroidNfcBridge,
+  STORAGE_KEY_NFC_SUPPORTED,
+  STORAGE_KEY_NFC_ENABLED,
+} from '../utils/androidNfcBridge';
 
 export type NfcCompatibilityCategory =
   | 'Standard NFC Tag'
@@ -78,14 +85,15 @@ interface ScanErrorDetail {
 const SCAN_ERROR_MAP: Record<ScanErrorCode, ScanErrorDetail> = {
   NFC_NOT_SUPPORTED: {
     code: 'NFC_NOT_SUPPORTED',
-    title: 'NFC Not Supported',
-    message: 'This device does not support NFC.',
+    title: 'NFC NOT SUPPORTED',
+    message:
+      'This device does not have NFC hardware and cannot scan NFC cards.',
   },
   NFC_DISABLED: {
     code: 'NFC_DISABLED',
-    title: 'NFC Disabled',
-    message: 'NFC is turned off. Please enable NFC in your phone settings.',
-    extraBanner: 'Turn on NFC to scan an NFC card.',
+    title: 'NFC IS OFF',
+    message: 'NFC is currently disabled on your phone.',
+    extraBanner: 'Turn on NFC in Settings to scan your access card.',
   },
   CARD_NOT_DETECTED: {
     code: 'CARD_NOT_DETECTED',
@@ -94,23 +102,22 @@ const SCAN_ERROR_MAP: Record<ScanErrorCode, ScanErrorDetail> = {
   },
   UNSUPPORTED_CARD: {
     code: 'UNSUPPORTED_CARD',
-    title: 'Unsupported Card',
-    message: 'This card technology is not supported by this app.',
-    extraBanner:
-      'This card uses a security system that cannot be copied or emulated by this app.',
+    title: 'PROTECTED CARD',
+    message:
+      'This access card uses security technology that cannot be copied or emulated by this app.',
+    extraBanner: 'This card technology is not supported by this app.',
   },
   SECURE_CARD: {
     code: 'SECURE_CARD',
-    title: 'Secure Card',
+    title: 'PROTECTED CARD',
     message:
-      'This access card uses protected security technology and cannot be copied or emulated.',
+      'This access card uses security technology that cannot be copied or emulated by this app.',
     extraBanner:
       'This card uses a security system that cannot be copied or emulated by this app.',
   },
 };
 
 const STORAGE_KEY_SAVED_CARDS = 'qbench_nfc_saved_access_cards_v1';
-const STORAGE_KEY_NFC_ENABLED = 'qbench_nfc_hardware_enabled_v1';
 
 const INITIAL_SAVED_CARDS: NfcDetectedCard[] = [
   {
@@ -203,7 +210,7 @@ const HARDWARE_TAG_PRESETS: SampleHardwareTagPreset[] = [
   {
     id: 'preset-secure-desfire',
     label: 'Secure Encrypted Access Card (MIFARE DESFire EV3 / HID Seos)',
-    subtitle: 'Protected cryptographic access card (triggers security policy notice)',
+    subtitle: 'Protected cryptographic access card (triggers PROTECTED CARD state)',
     card: {
       name: 'Restricted Security Pass',
       cardType: 'ISO 14443-4 (IsoDep / MIFARE DESFire EV3)',
@@ -254,11 +261,14 @@ function maskSerialNumber(serial?: string): string {
 }
 
 function triggerHapticFeedback(pattern: number | number[] = [40, 60, 90]) {
-  if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+  if (
+    typeof navigator !== 'undefined' &&
+    typeof navigator.vibrate === 'function'
+  ) {
     try {
       navigator.vibrate(pattern);
     } catch {
-      // Ignore if blocked by browser autoplay/gesture policy
+      // Ignore if blocked by browser gesture policy
     }
   }
 }
@@ -298,15 +308,28 @@ export default function NfcAccessView({
     return typeof window !== 'undefined' && 'NDEFReader' in window;
   });
 
-  // Device support simulation toggle (so user can verify "NFC Not Supported" error state on any device)
-  const [nfcHardwareSupported, setNfcHardwareSupported] = useState<boolean>(true);
+  // 1. Check `NfcAdapter.getDefaultAdapter(context)` -> `nfcHardwareSupported`
+  const [nfcHardwareSupported, setNfcHardwareSupported] = useState<boolean>(
+    () => {
+      const initial = queryAndroidNfcAdapterState();
+      return initial.isSupported;
+    }
+  );
 
-  // Phone NFC Enabled/Disabled setting
+  // 2. Check `nfcAdapter.isEnabled` -> `nfcEnabled`
   const [nfcEnabled, setNfcEnabled] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    const saved = window.localStorage.getItem(STORAGE_KEY_NFC_ENABLED);
-    return saved === null ? true : saved === 'true';
+    const initial = queryAndroidNfcAdapterState();
+    return initial.isEnabled;
   });
+
+  // Tracks whether the user opened Android NFC Settings and returned to the app (`onResume()`)
+  const [awaitingSettingsReturn, setAwaitingSettingsReturn] =
+    useState<boolean>(false);
+  const [verifiedReadyAfterSettings, setVerifiedReadyAfterSettings] =
+    useState<boolean>(false);
+  const [lastLifecycleCheckLabel, setLastLifecycleCheckLabel] = useState<string>(
+    'Initial check: NfcAdapter.getDefaultAdapter(context) & nfcAdapter.isEnabled'
+  );
 
   // Saved NFC Access Cards
   const [savedCards, setSavedCards] = useState<NfcDetectedCard[]>(() => {
@@ -335,23 +358,31 @@ export default function NfcAccessView({
   const [selectedPresetId, setSelectedPresetId] = useState<string>(
     HARDWARE_TAG_PRESETS[0].id
   );
-  const [rescanTargetCardId, setRescanTargetCardId] = useState<string | null>(null);
+  const [rescanTargetCardId, setRescanTargetCardId] = useState<string | null>(
+    null
+  );
 
   // Modals for My NFC Cards: View Details, Rename, Phone NFC Settings sheet
   const [viewingCard, setViewingCard] = useState<NfcDetectedCard | null>(null);
-  const [renamingCard, setRenamingCard] = useState<NfcDetectedCard | null>(null);
+  const [renamingCard, setRenamingCard] = useState<NfcDetectedCard | null>(
+    null
+  );
   const [renameInput, setRenameInput] = useState<string>('');
   const [settingsModalOpen, setSettingsModalOpen] = useState<boolean>(false);
   const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
 
   // Secure QR Code Export & Restore Modal States
   const [qrExportModalOpen, setQrExportModalOpen] = useState<boolean>(false);
-  const [qrExportTargetCards, setQrExportTargetCards] = useState<NfcDetectedCard[]>([]);
+  const [qrExportTargetCards, setQrExportTargetCards] = useState<
+    NfcDetectedCard[]
+  >([]);
   const [qrExportLabel, setQrExportLabel] = useState<string>('');
   const [qrPassphrase, setQrPassphrase] = useState<string>('');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [qrBackupToken, setQrBackupToken] = useState<string>('');
-  const [qrEnvelope, setQrEnvelope] = useState<SecureNfcBackupEnvelope | null>(null);
+  const [qrEnvelope, setQrEnvelope] = useState<SecureNfcBackupEnvelope | null>(
+    null
+  );
   const [qrGenerating, setQrGenerating] = useState<boolean>(false);
   const [qrCopied, setQrCopied] = useState<boolean>(false);
   const [qrShareStatus, setQrShareStatus] = useState<string | null>(null);
@@ -359,13 +390,21 @@ export default function NfcAccessView({
   // Restore from QR Backup Token Modal States
   const [qrImportModalOpen, setQrImportModalOpen] = useState<boolean>(false);
   const [importTokenInput, setImportTokenInput] = useState<string>('');
-  const [importPassphraseInput, setImportPassphraseInput] = useState<string>('');
+  const [importPassphraseInput, setImportPassphraseInput] =
+    useState<string>('');
   const [importError, setImportError] = useState<string | null>(null);
-  const [importSuccessMessage, setImportSuccessMessage] = useState<string | null>(null);
+  const [importSuccessMessage, setImportSuccessMessage] = useState<
+    string | null
+  >(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const scanTimerRef = useRef<number | null>(null);
   const scannerSectionRef = useRef<HTMLDivElement | null>(null);
+  const awaitingSettingsReturnRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    awaitingSettingsReturnRef.current = awaitingSettingsReturn;
+  }, [awaitingSettingsReturn]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -379,6 +418,19 @@ export default function NfcAccessView({
       }
     }
   }, [savedCards]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(
+          STORAGE_KEY_NFC_SUPPORTED,
+          String(nfcHardwareSupported)
+        );
+      } catch {
+        // Ignore storage errors
+      }
+    }
+  }, [nfcHardwareSupported]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -402,6 +454,14 @@ export default function NfcAccessView({
       window.clearTimeout(scanTimerRef.current);
       scanTimerRef.current = null;
     }
+    const nativeBridge = getNativeAndroidNfcBridge();
+    if (nativeBridge && typeof nativeBridge.stopReaderMode === 'function') {
+      try {
+        nativeBridge.stopReaderMode();
+      } catch {
+        // Ignore
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -410,30 +470,93 @@ export default function NfcAccessView({
     };
   }, [stopActiveReaderSession]);
 
-  const handleOpenAndroidNfcSettings = () => {
-    setSettingsNotice(null);
-    const isAndroid =
-      typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
+  /**
+   * Re-checks `NfcAdapter.getDefaultAdapter(context)` and `nfcAdapter.isEnabled`
+   * when the user returns from Android NFC Settings (`onResume()` / `visibilitychange` / `focus`).
+   * Never assumes NFC was enabled—verifies the actual current state.
+   */
+  const handleReverifyNfcOnResume = useCallback(
+    (overrideSupported?: boolean, overrideEnabled?: boolean, sourceLabel = 'onResume()') => {
+      const snapshot = queryAndroidNfcAdapterState(
+        overrideSupported,
+        overrideEnabled
+      );
 
-    if (isAndroid) {
-      try {
-        // Attempt official Android NFC Settings intent URI
-        window.location.href =
-          'intent:#Intent;action=android.settings.NFC_SETTINGS;end';
-        setSettingsNotice(
-          'Launched Android System NFC Settings (android.settings.NFC_SETTINGS).'
+      setNfcHardwareSupported(snapshot.isSupported);
+      setNfcEnabled(snapshot.isEnabled);
+
+      if (!snapshot.isSupported) {
+        stopActiveReaderSession();
+        setScanStage('idle');
+        setVerifiedReadyAfterSettings(false);
+        setActiveError(null);
+        setLastLifecycleCheckLabel(
+          `${sourceLabel}: NfcAdapter.getDefaultAdapter(context) == null → NFC NOT SUPPORTED`
         );
         return;
-      } catch {
-        // Fallback to interactive settings modal
       }
-    }
 
-    setSettingsModalOpen(true);
-    setSettingsNotice(
-      'Android Intent: android.settings.NFC_SETTINGS — Use the toggle below or open Settings → Connected devices → Connection preferences → NFC on your phone.'
-    );
-  };
+      if (snapshot.isEnabled) {
+        if (awaitingSettingsReturnRef.current) {
+          setVerifiedReadyAfterSettings(true);
+          setAwaitingSettingsReturn(false);
+          triggerHapticFeedback([30, 50]);
+        }
+        setActiveError(null);
+        setLastLifecycleCheckLabel(
+          `${sourceLabel}: nfcAdapter.isEnabled == true → NFC READY ✓ (Scanner prepared)`
+        );
+      } else {
+        stopActiveReaderSession();
+        setScanStage('idle');
+        setVerifiedReadyAfterSettings(false);
+        setLastLifecycleCheckLabel(
+          `${sourceLabel}: nfcAdapter.isEnabled == false → NFC IS OFF`
+        );
+      }
+    },
+    [stopActiveReaderSession]
+  );
+
+  // Register Android Activity lifecycle (`onResume` / `onPause`) & browser visibility/focus listeners
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // Scenario 11: App goes to background during scanning → pause reader safely without crashing
+        if (scanStage === 'scanning') {
+          stopActiveReaderSession();
+          setScanStage('idle');
+          setLastLifecycleCheckLabel(
+            'onPause(): App moved to background during scan — NFC reader session paused safely.'
+          );
+        }
+      } else if (document.visibilityState === 'visible') {
+        // Scenario 5 & 12: App returns to foreground / returns from Android NFC Settings
+        handleReverifyNfcOnResume(undefined, undefined, 'onResume()');
+      }
+    };
+
+    const handleWindowFocus = () => {
+      if (awaitingSettingsReturnRef.current) {
+        handleReverifyNfcOnResume(undefined, undefined, 'onResume()');
+      }
+    };
+
+    window.onAndroidNfcResume = () => {
+      handleReverifyNfcOnResume(undefined, undefined, 'Activity.onResume()');
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      delete window.onAndroidNfcResume;
+    };
+  }, [scanStage, stopActiveReaderSession, handleReverifyNfcOnResume]);
 
   const completeCardDetection = useCallback(
     (cardData: NfcDetectedCard, errorCode?: ScanErrorCode) => {
@@ -453,7 +576,101 @@ export default function NfcAccessView({
     [stopActiveReaderSession]
   );
 
-  // Step-by-step Scan Card handler following all 9 specification steps
+  // Listen for native Android `NfcAdapter.ReaderCallback` tag discovery events
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    window.onAndroidNfcTagDiscovered = (payloadJson: string) => {
+      try {
+        const parsed = JSON.parse(payloadJson || '{}');
+        const isProtected = Boolean(parsed.isProtected);
+        const isReadOnly = Boolean(parsed.isReadOnly);
+        const cardType = String(parsed.cardType || 'Standard NFC Tag');
+        const maskedCardId = String(parsed.maskedCardId || '••••••••');
+
+        const card: NfcDetectedCard = {
+          id: rescanTargetCardId || `nfc-${Date.now()}`,
+          name: isProtected ? 'Protected Access Card' : 'Access Card',
+          cardType,
+          compatibilityCategory: isProtected
+            ? 'Secure / Encrypted Card'
+            : isReadOnly
+            ? 'Read-Only Tag'
+            : 'Standard NFC Tag',
+          maskedCardId,
+          status: isProtected
+            ? 'Unsupported'
+            : isReadOnly
+            ? 'Read Only'
+            : 'Compatible',
+          activeState: isProtected
+            ? 'Restricted'
+            : isReadOnly
+            ? 'Read Only'
+            : 'Active',
+          lastScanned: 'Today',
+          lastScannedIso: new Date().toISOString(),
+          ndefRecordsCount: isProtected ? 0 : 1,
+          ndefSummary: isProtected
+            ? 'This access card uses security technology that cannot be copied or emulated by this app.'
+            : `Detected NFC technology: ${cardType}`,
+          isEncryptedOrProtected: isProtected,
+        };
+
+        completeCardDetection(
+          card,
+          isProtected ? 'SECURE_CARD' : undefined
+        );
+      } catch {
+        // Ignore malformed bridge payload
+      }
+    };
+
+    return () => {
+      delete window.onAndroidNfcTagDiscovered;
+    };
+  }, [rescanTargetCardId, completeCardDetection]);
+
+  /**
+   * Opens the Android system NFC settings page (`android.settings.NFC_SETTINGS`)
+   * when the user taps "Enable NFC" or "Open NFC Settings".
+   * Respects Android security restrictions: NEVER silently enables NFC.
+   */
+  const handleOpenAndroidNfcSettings = () => {
+    stopActiveReaderSession();
+    setScanStage('idle');
+    setSettingsNotice(null);
+    setAwaitingSettingsReturn(true);
+    awaitingSettingsReturnRef.current = true;
+
+    const result = launchAndroidNfcSettingsIntent();
+
+    // Always open the interactive Android System NFC Settings sheet in the web preview
+    // so the user can test enabling NFC or returning with NFC still disabled, and trigger `onResume()`.
+    setSettingsModalOpen(true);
+    setSettingsNotice(
+      result.launchedNativeIntent
+        ? `Launched Android System Intent (${result.intentAction}). When you return to the app, onResume() will automatically re-check nfcAdapter.isEnabled.`
+        : `Android System Intent: ${result.intentAction} — Toggle NFC below and tap "Return to App (onResume)" to verify automatic NFC status re-checking.`
+    );
+  };
+
+  /**
+   * Simulates returning from the Android System NFC Settings screen (`onResume()`).
+   * Does NOT assume NFC was enabled—checks the actual `nfcEnabled` state.
+   */
+  const handleReturnFromAndroidSettings = (newNfcEnabledState?: boolean) => {
+    const targetEnabled =
+      typeof newNfcEnabledState === 'boolean' ? newNfcEnabledState : nfcEnabled;
+    setSettingsModalOpen(false);
+    handleReverifyNfcOnResume(
+      nfcHardwareSupported,
+      targetEnabled,
+      'onResume() after Android NFC Settings'
+    );
+  };
+
+  // Step-by-step Scan NFC Card handler
   const handleStartScan = async (targetCardForRescan?: NfcDetectedCard) => {
     stopActiveReaderSession();
     setActiveError(null);
@@ -465,25 +682,32 @@ export default function NfcAccessView({
       setRescanTargetCardId(null);
     }
 
-    // 1. Check whether NFC is supported
+    // 1. Check whether the device supports NFC (`NfcAdapter.getDefaultAdapter(context)`)
     if (!nfcHardwareSupported) {
       setScanStage('idle');
       setActiveError(SCAN_ERROR_MAP.NFC_NOT_SUPPORTED);
       return;
     }
 
-    // 2. Check whether NFC is enabled
-    // 3. If NFC is disabled, display: “NFC is turned off. Please enable NFC in your phone settings.”
+    // 2. Check whether NFC is currently enabled (`nfcAdapter.isEnabled`)
     if (!nfcEnabled) {
       setScanStage('idle');
       setActiveError(SCAN_ERROR_MAP.NFC_DISABLED);
       return;
     }
 
-    // 4. Start an NFC reader session
-    // 5. Ask the user to place the compatible card near the NFC antenna
+    // 3. Start NFC reader session
     setScanStage('scanning');
     triggerHapticFeedback(25);
+
+    const nativeBridge = getNativeAndroidNfcBridge();
+    if (nativeBridge && typeof nativeBridge.startReaderMode === 'function') {
+      try {
+        nativeBridge.startReaderMode();
+      } catch {
+        // Fall through to Web NFC / interactive reader
+      }
+    }
 
     // If Web NFC API (Chrome on Android) is available, start real NDEFReader session
     if (hasNativeWebNfc) {
@@ -505,9 +729,6 @@ export default function NfcAccessView({
         await reader.scan({ signal: controller.signal });
 
         reader.onreading = (event: any) => {
-          // 6. Detect the NFC card/tag
-          // 7. Read only information that the Android NFC framework legally exposes to the app
-          //    (Never expose cryptographic keys, sector secrets, or raw credentials)
           const serialNumber: string = event?.serialNumber || '';
           const records = Array.isArray(event?.message?.records)
             ? event.message.records
@@ -520,7 +741,7 @@ export default function NfcAccessView({
           const detected: NfcDetectedCard = {
             id: targetCardForRescan?.id || `nfc-${Date.now()}`,
             name: targetCardForRescan?.name || 'Access Card',
-            cardType: `Android Web NFC · NDEF (${recordTypes || 'ISO 14443'})`,
+            cardType: `Android NFC · NDEF (${recordTypes || 'ISO 14443'})`,
             compatibilityCategory:
               records.length > 0
                 ? 'NDEF-Compatible Tag'
@@ -534,7 +755,7 @@ export default function NfcAccessView({
             ndefSummary:
               records.length > 0
                 ? `${records.length} public NDEF record(s) exposed by Android NFC framework (${recordTypes}).`
-                : 'Tag UID detected via Android NFC reader session. No unencrypted NDEF payload present.',
+                : 'Tag identifier detected via Android NFC reader session. No unencrypted NDEF payload present.',
             isEncryptedOrProtected: false,
           };
 
@@ -542,7 +763,6 @@ export default function NfcAccessView({
         };
 
         reader.onreadingerror = () => {
-          // Protected / unreadable tag encountered
           const secureCard: NfcDetectedCard = {
             id: `nfc-sec-${Date.now()}`,
             name: 'Protected Access Card',
@@ -555,7 +775,7 @@ export default function NfcAccessView({
             lastScannedIso: new Date().toISOString(),
             ndefRecordsCount: 0,
             ndefSummary:
-              'This card uses a security system that cannot be copied or emulated by this app.',
+              'This access card uses security technology that cannot be copied or emulated by this app.',
             isEncryptedOrProtected: true,
           };
           completeCardDetection(secureCard, 'SECURE_CARD');
@@ -563,15 +783,14 @@ export default function NfcAccessView({
       } catch (err: any) {
         if (err?.name === 'NotAllowedError') {
           setScanStage('idle');
+          setNfcEnabled(false);
           setActiveError(SCAN_ERROR_MAP.NFC_DISABLED);
           return;
-        } else if (err?.name === 'NotSupportedError') {
-          // Continue with interactive antenna detection below if desktop/webview
         }
       }
     }
 
-    // Interactive hardware tap detection timer (2.2s smooth wave scan)
+    // Interactive hardware tap detection timer (2.0s smooth wave scan)
     scanTimerRef.current = window.setTimeout(() => {
       const preset =
         HARDWARE_TAG_PRESETS.find((p) => p.id === selectedPresetId) ||
@@ -583,7 +802,8 @@ export default function NfcAccessView({
         name: targetCardForRescan?.name || preset.card.name || 'Access Card',
         cardType: preset.card.cardType,
         compatibilityCategory: preset.card.compatibilityCategory,
-        maskedCardId: targetCardForRescan?.maskedCardId || preset.card.maskedCardId,
+        maskedCardId:
+          targetCardForRescan?.maskedCardId || preset.card.maskedCardId,
         status: preset.card.status,
         activeState: preset.card.activeState,
         lastScanned: 'Today',
@@ -595,20 +815,31 @@ export default function NfcAccessView({
       };
 
       completeCardDetection(detected, preset.triggersError);
-    }, 2200);
+    }, 2000);
   };
 
   const handleCancelScan = () => {
     stopActiveReaderSession();
     setScanStage('idle');
     setRescanTargetCardId(null);
+    setActiveError(null);
   };
 
-  // 9. Allow the user to save the card as an access-card profile
+  const handleBackNavigation = () => {
+    stopActiveReaderSession();
+    setScanStage('idle');
+    setActiveError(null);
+    if (onNavigate) {
+      onNavigate('home');
+    } else if (typeof window !== 'undefined' && window.history.length > 1) {
+      window.history.back();
+    }
+  };
+
+  // Save compatible NFC tag/card profile
   const handleSaveDetectedCard = () => {
     if (!detectedCard) return;
 
-    // Prevent saving encrypted/unsupported security cards that cannot be copied or emulated
     if (
       detectedCard.isEncryptedOrProtected ||
       detectedCard.status === 'Unsupported'
@@ -617,7 +848,8 @@ export default function NfcAccessView({
       return;
     }
 
-    const finalName = customCardName.trim() || detectedCard.name || 'Access Card';
+    const finalName =
+      customCardName.trim() || detectedCard.name || 'Access Card';
     const nowIso = new Date().toISOString();
 
     const cardToSave: NfcDetectedCard = {
@@ -703,6 +935,14 @@ export default function NfcAccessView({
     }
   };
 
+  // Derive the 3 primary NFC hardware states when not displaying a detected/saved card
+  const currentHardwareState: 'NFC_READY' | 'NFC_OFF' | 'NFC_NOT_SUPPORTED' =
+    !nfcHardwareSupported
+      ? 'NFC_NOT_SUPPORTED'
+      : nfcEnabled
+      ? 'NFC_READY'
+      : 'NFC_OFF';
+
   return (
     <div
       id="nfc-access-screen"
@@ -729,37 +969,56 @@ export default function NfcAccessView({
           </p>
         </div>
 
-        {/* Top Quick Status Bar */}
+        {/* Top Quick Status Bar with semantic status colors (Enabled = success, Disabled = warning, Unsupported = error/info) */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-2xs">
-            <span className="text-xs font-semibold text-slate-500">
+          <div
+            className={`flex items-center gap-2.5 rounded-xl border px-4 py-2.5 shadow-2xs ${
+              currentHardwareState === 'NFC_READY'
+                ? 'border-emerald-200 bg-emerald-50/70'
+                : currentHardwareState === 'NFC_OFF'
+                ? 'border-amber-200 bg-amber-50/80'
+                : 'border-red-200 bg-red-50/70'
+            }`}
+          >
+            <span className="text-xs font-semibold text-slate-600">
               NFC Status:
             </span>
-            {nfcEnabled && nfcHardwareSupported ? (
+            {currentHardwareState === 'NFC_READY' && (
               <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700">
                 <span aria-hidden="true">🟢</span>
-                <span>NFC ON (Enabled)</span>
+                <span>
+                  {verifiedReadyAfterSettings ? 'NFC READY ✓' : 'NFC READY (Enabled)'}
+                </span>
               </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-600">
+            )}
+            {currentHardwareState === 'NFC_OFF' && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-700">
+                <span aria-hidden="true">🟠</span>
+                <span>NFC IS OFF (Disabled)</span>
+              </span>
+            )}
+            {currentHardwareState === 'NFC_NOT_SUPPORTED' && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-red-700">
                 <span aria-hidden="true">🔴</span>
-                <span>NFC OFF (Disabled)</span>
+                <span>NFC NOT SUPPORTED</span>
               </span>
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={handleOpenAndroidNfcSettings}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 font-display text-xs font-bold text-slate-800 transition-colors cursor-pointer shadow-2xs"
-          >
-            <Settings className="h-4 w-4 text-[#00685b]" />
-            <span>Open NFC Settings</span>
-          </button>
+          {currentHardwareState !== 'NFC_NOT_SUPPORTED' && (
+            <button
+              type="button"
+              onClick={handleOpenAndroidNfcSettings}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 font-display text-xs font-bold text-slate-800 transition-colors cursor-pointer shadow-2xs"
+            >
+              <Settings className="h-4 w-4 text-[#00685b]" />
+              <span>Open NFC Settings</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Main Two-Column Architecture: Left = 1. Dark/Modern NFC Card Scanner & 2. Card Detected Screen | Right = 5. Phone NFC Settings & 4. NFC Compatibility */}
+      {/* Main Two-Column Architecture */}
       <div
         ref={scannerSectionRef}
         className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start"
@@ -772,7 +1031,11 @@ export default function NfcAccessView({
               className="absolute inset-0 pointer-events-none opacity-35"
               style={{
                 background:
-                  'radial-gradient(circle at 50% 32%, rgba(0, 168, 143, 0.28), transparent 68%)',
+                  currentHardwareState === 'NFC_READY'
+                    ? 'radial-gradient(circle at 50% 32%, rgba(0, 168, 143, 0.28), transparent 68%)'
+                    : currentHardwareState === 'NFC_OFF'
+                    ? 'radial-gradient(circle at 50% 32%, rgba(245, 158, 11, 0.20), transparent 68%)'
+                    : 'radial-gradient(circle at 50% 32%, rgba(239, 68, 68, 0.18), transparent 68%)',
               }}
             />
 
@@ -785,290 +1048,482 @@ export default function NfcAccessView({
                 </span>
               </div>
 
-              {/* NFC Status Indicator: NFC ON / NFC OFF */}
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNfcEnabled((prev) => !prev);
-                    setActiveError(null);
-                  }}
-                  title="Toggle phone NFC state"
-                  className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono font-bold transition-colors cursor-pointer border ${
-                    nfcEnabled && nfcHardwareSupported
-                      ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-300'
-                      : 'bg-red-500/15 border-red-400/40 text-red-300'
-                  }`}
-                >
-                  {nfcEnabled && nfcHardwareSupported ? (
-                    <>
-                      <Wifi className="h-3.5 w-3.5 text-emerald-400" />
-                      <span>NFC ON</span>
-                    </>
-                  ) : (
-                    <>
-                      <WifiOff className="h-3.5 w-3.5 text-red-400" />
-                      <span>NFC OFF</span>
-                    </>
-                  )}
-                </button>
+              {/* Status Badge in Scanner Header */}
+              <div className="flex items-center gap-2.5">
+                {currentHardwareState === 'NFC_READY' && (
+                  <span
+                    id="nfc-status-pill-ready"
+                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono font-bold border bg-emerald-500/15 border-emerald-400/40 text-emerald-300"
+                  >
+                    <Wifi className="h-3.5 w-3.5 text-emerald-400" />
+                    <span>
+                      {verifiedReadyAfterSettings ? 'NFC READY ✓' : 'NFC READY'}
+                    </span>
+                  </span>
+                )}
+
+                {currentHardwareState === 'NFC_OFF' && (
+                  <span
+                    id="nfc-status-pill-off"
+                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono font-bold border bg-amber-500/15 border-amber-400/40 text-amber-300"
+                  >
+                    <WifiOff className="h-3.5 w-3.5 text-amber-400" />
+                    <span>NFC IS OFF</span>
+                  </span>
+                )}
+
+                {currentHardwareState === 'NFC_NOT_SUPPORTED' && (
+                  <span
+                    id="nfc-status-pill-unsupported"
+                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-mono font-bold border bg-red-500/15 border-red-400/40 text-red-300"
+                  >
+                    <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+                    <span>NFC NOT SUPPORTED</span>
+                  </span>
+                )}
               </div>
             </div>
 
             {/* Scanner Body */}
             <div className="relative z-10 p-6 sm:p-10">
               <AnimatePresence mode="wait">
-                {/* STATE A: IDLE OR SCANNING */}
-                {(scanStage === 'idle' || scanStage === 'scanning') && (
-                  <motion.div
-                    key="scanner-stage-active"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    transition={{ duration: 0.25 }}
-                    className="flex flex-col items-center text-center space-y-7"
-                  >
-                    <div className="space-y-2 max-w-md">
-                      <h2 className="font-display text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                        Scan your access card
-                      </h2>
-                      <p className="font-sans text-sm text-slate-300">
-                        “Hold your NFC card against the back of your phone.”
-                      </p>
-                    </div>
+                {/* =========================================================
+                    STATE 3 — NFC NOT SUPPORTED
+                    `NfcAdapter.getDefaultAdapter(context) == null`
+                    Do NOT display the Enable NFC button in this state.
+                ========================================================= */}
+                {(scanStage === 'idle' || scanStage === 'scanning') &&
+                  currentHardwareState === 'NFC_NOT_SUPPORTED' && (
+                    <motion.div
+                      key="nfc-screen-state-not-supported"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.25 }}
+                      className="flex flex-col items-center text-center space-y-6 py-4"
+                    >
+                      <div className="inline-flex items-center gap-2 rounded-lg border border-red-400/40 bg-red-500/15 px-3.5 py-1.5 text-xs font-tech font-extrabold uppercase tracking-widest text-red-300">
+                        <AlertCircle className="h-4 w-4 text-red-400" />
+                        <span>NFC NOT SUPPORTED</span>
+                      </div>
 
-                    {/* Central Animated NFC Card & Waves Illustration */}
-                    <div className="relative flex items-center justify-center w-64 h-64 sm:w-72 sm:h-72 my-2">
-                      {/* Outer Pulsing Rings when scanning */}
-                      {scanStage === 'scanning' && (
-                        <>
+                      {/* Hardware Unsupported Visual */}
+                      <div className="relative flex items-center justify-center w-52 h-52 rounded-full border border-red-400/25 bg-red-950/25">
+                        <div className="flex flex-col items-center space-y-3">
+                          <div className="h-14 w-14 rounded-2xl bg-red-500/15 border border-red-400/35 flex items-center justify-center text-red-300">
+                            <WifiOff className="h-7 w-7" />
+                          </div>
+                          <span className="font-mono text-[11px] uppercase tracking-widest text-red-300/90">
+                            No NFC Adapter Found
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 max-w-md">
+                        <h2 className="font-display text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                          NFC NOT SUPPORTED
+                        </h2>
+                        <p className="font-sans text-sm text-slate-300 leading-relaxed">
+                          This device does not have NFC hardware and cannot scan
+                          NFC cards.
+                        </p>
+                      </div>
+
+                      <div className="w-full max-w-xs pt-2">
+                        <button
+                          id="nfc-unsupported-back-btn"
+                          type="button"
+                          onClick={handleBackNavigation}
+                          className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 hover:bg-white/15 px-6 py-3.5 font-display text-sm font-bold text-white transition-colors cursor-pointer"
+                        >
+                          <ArrowLeft className="h-4 w-4" />
+                          <span>Back</span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                {/* =========================================================
+                    STATE 2 — NFC AVAILABLE BUT DISABLED (`NFC IS OFF`)
+                    `NfcAdapter.getDefaultAdapter(context) != null && !nfcAdapter.isEnabled`
+                    Shows:
+                    - NFC IS OFF
+                    - NFC is currently disabled on your phone.
+                    - Turn on NFC in Settings to scan your access card.
+                    - Primary Button: Enable NFC (opens Android NFC Settings)
+                    - Secondary Button: Cancel
+                ========================================================= */}
+                {(scanStage === 'idle' || scanStage === 'scanning') &&
+                  currentHardwareState === 'NFC_OFF' && (
+                    <motion.div
+                      key="nfc-screen-state-disabled"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.25 }}
+                      className="flex flex-col items-center text-center space-y-6 py-4"
+                    >
+                      <div className="inline-flex items-center gap-2 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3.5 py-1.5 text-xs font-tech font-extrabold uppercase tracking-widest text-amber-300">
+                        <WifiOff className="h-4 w-4 text-amber-400" />
+                        <span>NFC IS OFF</span>
+                      </div>
+
+                      {/* Disabled State Card & Antenna Visual */}
+                      <div className="relative flex items-center justify-center w-56 h-56 rounded-full border border-amber-400/30 bg-amber-950/20">
+                        <div className="flex flex-col items-center justify-center space-y-3">
+                          <WifiOff className="h-9 w-9 text-amber-400" />
+                          <div className="w-32 h-20 rounded-xl bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 border border-amber-400/30 p-3 flex flex-col justify-between opacity-80">
+                            <div className="flex items-center justify-between">
+                              <div className="w-5 h-4 rounded-xs bg-amber-300/60 border border-amber-200/40" />
+                              <Radio className="h-3.5 w-3.5 text-amber-300/70" />
+                            </div>
+                            <div className="text-left">
+                              <div className="text-[8px] font-mono uppercase tracking-widest text-amber-200/70">
+                                QBENCH ACCESS
+                              </div>
+                              <div className="text-[10px] font-mono font-bold text-slate-300 tracking-wider">
+                                •••• ••••
+                              </div>
+                            </div>
+                          </div>
+                          <span className="font-mono text-[11px] uppercase tracking-widest text-amber-300">
+                            NFC Radio Disabled
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 max-w-md">
+                        <h2 className="font-display text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                          NFC IS OFF
+                        </h2>
+                        <p className="font-sans text-sm text-slate-200">
+                          NFC is currently disabled on your phone.
+                        </p>
+                        <p className="font-display text-sm font-bold text-amber-300">
+                          Turn on NFC in Settings to scan your access card.
+                        </p>
+                      </div>
+
+                      {/* Warning Details Banner */}
+                      <div
+                        role="alert"
+                        className="w-full max-w-md rounded-2xl border border-amber-400/35 bg-amber-950/40 p-4 text-left"
+                      >
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+                          <div className="space-y-1 text-xs">
+                            <p className="font-bold text-amber-200">
+                              Android System Settings Required
+                            </p>
+                            <p className="text-amber-100/85 leading-relaxed">
+                              For your security, Android apps cannot silently
+                              enable NFC. Tap{' '}
+                              <strong className="text-white">Enable NFC</strong>{' '}
+                              to open Android NFC Settings, turn on NFC, and
+                              return to the app.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Primary Button: Enable NFC | Secondary Button: Cancel */}
+                      <div className="flex flex-wrap items-center justify-center gap-3 w-full max-w-md pt-2">
+                        <button
+                          id="nfc-enable-nfc-btn"
+                          type="button"
+                          onClick={handleOpenAndroidNfcSettings}
+                          className="flex-1 min-w-[180px] inline-flex items-center justify-center gap-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 px-6 py-3.5 font-display text-sm font-bold text-slate-950 shadow-lg transition-all cursor-pointer"
+                        >
+                          <Settings className="h-4 w-4" />
+                          <span>Enable NFC</span>
+                        </button>
+
+                        <button
+                          id="nfc-disabled-cancel-btn"
+                          type="button"
+                          onClick={() => {
+                            setActiveError(null);
+                            if (onNavigate) {
+                              onNavigate('home');
+                            }
+                          }}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 hover:bg-white/15 px-6 py-3.5 font-display text-sm font-semibold text-white transition-colors cursor-pointer"
+                        >
+                          <X className="h-4 w-4" />
+                          <span>Cancel</span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                {/* =========================================================
+                    STATE 1 — NFC AVAILABLE & ENABLED (`NFC READY` / `NFC READY ✓`)
+                    `NfcAdapter.getDefaultAdapter(context) != null && nfcAdapter.isEnabled`
+                    Shows:
+                    - NFC READY (or NFC READY ✓ after returning from Android Settings)
+                    - NFC is enabled and ready to scan.
+                    - [ Scan NFC Card ]
+                ========================================================= */}
+                {(scanStage === 'idle' || scanStage === 'scanning') &&
+                  currentHardwareState === 'NFC_READY' && (
+                    <motion.div
+                      key="nfc-screen-state-ready"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      transition={{ duration: 0.25 }}
+                      className="flex flex-col items-center text-center space-y-6"
+                    >
+                      {/* NFC READY / NFC READY ✓ Status Banner */}
+                      <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-3.5 py-1.5 text-xs font-tech font-extrabold uppercase tracking-widest text-emerald-300">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                        <span>
+                          {verifiedReadyAfterSettings
+                            ? 'NFC READY ✓'
+                            : 'NFC READY'}
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5 max-w-md">
+                        <h2 className="font-display text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                          {scanStage === 'scanning'
+                            ? 'Scanning NFC Card...'
+                            : verifiedReadyAfterSettings
+                            ? 'NFC READY ✓'
+                            : 'NFC READY'}
+                        </h2>
+                        <p className="font-sans text-sm text-emerald-200 font-medium">
+                          NFC is enabled and ready to scan.
+                        </p>
+                        <p className="font-sans text-xs text-slate-300">
+                          “Hold your NFC card against the back of your phone.”
+                        </p>
+                      </div>
+
+                      {/* Central Subtle Animated NFC Card & Waves Illustration */}
+                      <div className="relative flex items-center justify-center w-64 h-64 sm:w-72 sm:h-72 my-1">
+                        {/* Subtle ambient pulse in NFC READY idle state */}
+                        {scanStage === 'idle' && (
                           <motion.div
-                            className="absolute inset-0 rounded-full border-2 border-[#45b88a]/50"
-                            initial={{ scale: 0.75, opacity: 0.85 }}
-                            animate={{ scale: 1.35, opacity: 0 }}
-                            transition={{
-                              duration: 1.8,
-                              repeat: Infinity,
-                              ease: 'easeOut',
-                            }}
-                          />
-                          <motion.div
-                            className="absolute inset-4 rounded-full border border-[#45b88a]/40"
-                            initial={{ scale: 0.8, opacity: 0.7 }}
-                            animate={{ scale: 1.25, opacity: 0 }}
-                            transition={{
-                              duration: 1.8,
-                              delay: 0.55,
-                              repeat: Infinity,
-                              ease: 'easeOut',
-                            }}
-                          />
-                          <motion.div
-                            className="absolute inset-8 rounded-full bg-emerald-500/10"
+                            className="absolute inset-6 rounded-full border border-[#45b88a]/30"
                             animate={{
-                              scale: [0.95, 1.08, 0.95],
-                              opacity: [0.3, 0.6, 0.3],
+                              scale: [0.96, 1.06, 0.96],
+                              opacity: [0.25, 0.55, 0.25],
                             }}
                             transition={{
-                              duration: 2,
+                              duration: 2.8,
                               repeat: Infinity,
                               ease: 'easeInOut',
                             }}
                           />
-                        </>
-                      )}
-
-                      {/* Stationary Outer Ring */}
-                      <div
-                        className={`relative z-10 flex flex-col items-center justify-center w-52 h-52 rounded-full border transition-all duration-500 ${
-                          scanStage === 'scanning'
-                            ? 'border-[#45b88a] bg-[#102220]/90 shadow-[0_0_50px_rgba(69,184,138,0.28)]'
-                            : 'border-white/15 bg-white/[0.04]'
-                        }`}
-                      >
-                        {/* Animated NFC Waves above Card */}
-                        <motion.div
-                          animate={
-                            scanStage === 'scanning'
-                              ? { y: [0, -4, 0], opacity: [0.6, 1, 0.6] }
-                              : { opacity: 0.75 }
-                          }
-                          transition={{
-                            duration: 1.4,
-                            repeat: Infinity,
-                            ease: 'easeInOut',
-                          }}
-                          className="mb-2"
-                        >
-                          <Wifi className="h-9 w-9 text-[#45b88a]" />
-                        </motion.div>
-
-                        {/* Premium NFC Access Card Illustration */}
-                        <motion.div
-                          animate={
-                            scanStage === 'scanning'
-                              ? {
-                                  rotateX: [0, 8, 0],
-                                  rotateY: [-6, 6, -6],
-                                  y: [0, -5, 0],
-                                }
-                              : { rotateX: 0, rotateY: 0, y: 0 }
-                          }
-                          transition={{
-                            duration: 2.2,
-                            repeat: Infinity,
-                            ease: 'easeInOut',
-                          }}
-                          className="w-32 h-20 rounded-xl bg-gradient-to-br from-[#00685b] via-[#0c8575] to-[#123532] border border-emerald-300/30 p-3 flex flex-col justify-between shadow-lg"
-                        >
-                          <div className="flex items-center justify-between">
-                            {/* Smart Card Chip */}
-                            <div className="w-5 h-4 rounded-xs bg-amber-300/90 border border-amber-200/60" />
-                            <Radio className="h-3.5 w-3.5 text-emerald-200" />
-                          </div>
-                          <div className="text-left">
-                            <div className="text-[8px] font-mono uppercase tracking-widest text-emerald-200/80">
-                              QBENCH ACCESS
-                            </div>
-                            <div className="text-[10px] font-mono font-bold text-white tracking-wider">
-                              •••• ••••
-                            </div>
-                          </div>
-                        </motion.div>
-
-                        <span className="mt-3 font-mono text-[11px] uppercase tracking-widest text-emerald-300/90">
-                          {scanStage === 'scanning'
-                            ? 'Hold Card Near Antenna...'
-                            : 'Ready to Scan'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Active Error State Alert Banner (Section 7 Error States) */}
-                    {activeError && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        role="alert"
-                        className="w-full max-w-lg rounded-2xl border border-red-400/35 bg-red-950/50 p-4 text-left space-y-2"
-                      >
-                        <div className="flex items-start gap-3">
-                          <AlertCircle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
-                          <div className="space-y-1">
-                            <h3 className="font-display text-sm font-bold text-red-200">
-                              {activeError.title}
-                            </h3>
-                            <p className="font-sans text-xs text-red-100/90 leading-relaxed">
-                              {activeError.message}
-                            </p>
-                            {activeError.extraBanner && (
-                              <p className="font-sans text-xs text-amber-200/90 pt-1 border-t border-red-400/20 mt-2">
-                                {activeError.extraBanner}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        {activeError.code === 'NFC_DISABLED' && (
-                          <div className="pt-2 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setNfcEnabled(true);
-                                setActiveError(null);
-                              }}
-                              className="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white transition-colors cursor-pointer"
-                            >
-                              Enable NFC Now
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleOpenAndroidNfcSettings}
-                              className="rounded-lg border border-white/20 bg-white/10 hover:bg-white/15 px-3 py-1.5 text-xs font-semibold text-white transition-colors cursor-pointer"
-                            >
-                              Open NFC Settings
-                            </button>
-                          </div>
                         )}
-                      </motion.div>
-                    )}
 
-                    {/* Card Simulation Profile Selector (for testing all 5 compatibility types) */}
-                    <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <label
-                          htmlFor="nfc-tag-profile-select"
-                          className="font-tech text-[11px] font-bold uppercase tracking-wider text-emerald-300 flex items-center gap-1.5"
+                        {/* Active Circular Scanning Pulse when scanning */}
+                        {scanStage === 'scanning' && (
+                          <>
+                            <motion.div
+                              className="absolute inset-0 rounded-full border-2 border-[#45b88a]/50"
+                              initial={{ scale: 0.75, opacity: 0.85 }}
+                              animate={{ scale: 1.35, opacity: 0 }}
+                              transition={{
+                                duration: 1.8,
+                                repeat: Infinity,
+                                ease: 'easeOut',
+                              }}
+                            />
+                            <motion.div
+                              className="absolute inset-4 rounded-full border border-[#45b88a]/40"
+                              initial={{ scale: 0.8, opacity: 0.7 }}
+                              animate={{ scale: 1.25, opacity: 0 }}
+                              transition={{
+                                duration: 1.8,
+                                delay: 0.55,
+                                repeat: Infinity,
+                                ease: 'easeOut',
+                              }}
+                            />
+                            <motion.div
+                              className="absolute inset-8 rounded-full bg-emerald-500/10"
+                              animate={{
+                                scale: [0.95, 1.08, 0.95],
+                                opacity: [0.3, 0.6, 0.3],
+                              }}
+                              transition={{
+                                duration: 2,
+                                repeat: Infinity,
+                                ease: 'easeInOut',
+                              }}
+                            />
+                          </>
+                        )}
+
+                        {/* Inner Scanner Ring */}
+                        <div
+                          className={`relative z-10 flex flex-col items-center justify-center w-52 h-52 rounded-full border transition-all duration-500 ${
+                            scanStage === 'scanning'
+                              ? 'border-[#45b88a] bg-[#102220]/90 shadow-[0_0_50px_rgba(69,184,138,0.28)]'
+                              : 'border-emerald-400/30 bg-emerald-950/20'
+                          }`}
                         >
-                          <Cpu className="h-3.5 w-3.5" />
-                          <span>Detected Tag Type (Hardware / Test Profile)</span>
-                        </label>
-                        <span className="text-[11px] text-slate-400">
-                          {hasNativeWebNfc
-                            ? 'Android Web NFC Active'
-                            : 'Interactive Reader Mode'}
-                        </span>
+                          {/* Subtle Animated NFC Waves Icon */}
+                          <motion.div
+                            animate={
+                              scanStage === 'scanning'
+                                ? { y: [0, -4, 0], opacity: [0.6, 1, 0.6] }
+                                : { y: [0, -2, 0], opacity: [0.7, 1, 0.7] }
+                            }
+                            transition={{
+                              duration: scanStage === 'scanning' ? 1.3 : 2.4,
+                              repeat: Infinity,
+                              ease: 'easeInOut',
+                            }}
+                            className="mb-2"
+                          >
+                            <Wifi className="h-9 w-9 text-[#45b88a]" />
+                          </motion.div>
+
+                          {/* Clean NFC Card Illustration */}
+                          <motion.div
+                            animate={
+                              scanStage === 'scanning'
+                                ? {
+                                    rotateX: [0, 8, 0],
+                                    rotateY: [-6, 6, -6],
+                                    y: [0, -5, 0],
+                                  }
+                                : { rotateX: 0, rotateY: 0, y: 0 }
+                            }
+                            transition={{
+                              duration: 2.2,
+                              repeat: Infinity,
+                              ease: 'easeInOut',
+                            }}
+                            className="w-32 h-20 rounded-xl bg-gradient-to-br from-[#00685b] via-[#0c8575] to-[#123532] border border-emerald-300/30 p-3 flex flex-col justify-between shadow-lg"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="w-5 h-4 rounded-xs bg-amber-300/90 border border-amber-200/60" />
+                              <Radio className="h-3.5 w-3.5 text-emerald-200" />
+                            </div>
+                            <div className="text-left">
+                              <div className="text-[8px] font-mono uppercase tracking-widest text-emerald-200/80">
+                                QBENCH ACCESS
+                              </div>
+                              <div className="text-[10px] font-mono font-bold text-white tracking-wider">
+                                •••• ••••
+                              </div>
+                            </div>
+                          </motion.div>
+
+                          <span className="mt-3 font-mono text-[11px] uppercase tracking-widest text-emerald-300/90">
+                            {scanStage === 'scanning'
+                              ? 'Hold Card Near Antenna...'
+                              : 'NFC Ready to Scan'}
+                          </span>
+                        </div>
                       </div>
-                      <select
-                        id="nfc-tag-profile-select"
-                        value={selectedPresetId}
-                        onChange={(e) => setSelectedPresetId(e.target.value)}
-                        disabled={scanStage === 'scanning'}
-                        className="w-full rounded-xl border border-white/15 bg-[#122020] px-3.5 py-2.5 text-xs text-white focus:border-[#45b88a] focus:outline-none"
-                      >
-                        {HARDWARE_TAG_PRESETS.map((preset) => (
-                          <option key={preset.id} value={preset.id}>
-                            {preset.label}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[11px] text-slate-400 leading-normal">
-                        {
-                          HARDWARE_TAG_PRESETS.find(
-                            (p) => p.id === selectedPresetId
-                          )?.subtitle
-                        }
-                      </p>
-                    </div>
 
-                    {/* Primary Action Buttons: Scan Card & Cancel */}
-                    <div className="flex flex-wrap items-center justify-center gap-3 w-full max-w-md pt-2">
-                      {scanStage === 'idle' ? (
-                        <button
-                          id="nfc-scan-card-btn"
-                          type="button"
-                          onClick={() => handleStartScan()}
-                          className="flex-1 min-w-[180px] inline-flex items-center justify-center gap-2.5 rounded-xl bg-[#008978] hover:bg-[#00a08c] px-6 py-3.5 font-display text-sm font-bold text-white shadow-lg transition-all cursor-pointer"
+                      {/* Active Error Banner (e.g., Card Not Detected) */}
+                      {activeError && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          role="alert"
+                          className="w-full max-w-lg rounded-2xl border border-amber-400/35 bg-amber-950/50 p-4 text-left space-y-1.5"
                         >
-                          <Wifi className="h-4 w-4" />
-                          <span>Scan Card</span>
-                        </button>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            disabled
-                            className="flex-1 min-w-[180px] inline-flex items-center justify-center gap-2.5 rounded-xl bg-emerald-700/60 px-6 py-3.5 font-display text-sm font-bold text-emerald-100 cursor-wait"
-                          >
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                            <span>Scanning NFC Antenna...</span>
-                          </button>
-                          <button
-                            id="nfc-cancel-scan-btn"
-                            type="button"
-                            onClick={handleCancelScan}
-                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 hover:bg-white/15 px-5 py-3.5 font-display text-sm font-semibold text-white transition-colors cursor-pointer"
-                          >
-                            <X className="h-4 w-4" />
-                            <span>Cancel</span>
-                          </button>
-                        </>
+                          <div className="flex items-start gap-3">
+                            <AlertCircle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+                            <div className="space-y-1">
+                              <h3 className="font-display text-sm font-bold text-amber-200">
+                                {activeError.title}
+                              </h3>
+                              <p className="font-sans text-xs text-amber-100/90 leading-relaxed">
+                                {activeError.message}
+                              </p>
+                            </div>
+                          </div>
+                        </motion.div>
                       )}
-                    </div>
-                  </motion.div>
-                )}
 
-                {/* STATE B: 2. CARD DETECTED SCREEN */}
+                      {/* Card Simulation Profile Selector (for testing supported vs protected cards) */}
+                      <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <label
+                            htmlFor="nfc-tag-profile-select"
+                            className="font-tech text-[11px] font-bold uppercase tracking-wider text-emerald-300 flex items-center gap-1.5"
+                          >
+                            <Cpu className="h-3.5 w-3.5" />
+                            <span>
+                              Detected Tag Type (Hardware / Test Profile)
+                            </span>
+                          </label>
+                          <span className="text-[11px] text-slate-400">
+                            {hasNativeWebNfc
+                              ? 'Android NFC Active'
+                              : 'Android Reader Mode'}
+                          </span>
+                        </div>
+                        <select
+                          id="nfc-tag-profile-select"
+                          value={selectedPresetId}
+                          onChange={(e) => setSelectedPresetId(e.target.value)}
+                          disabled={scanStage === 'scanning'}
+                          className="w-full rounded-xl border border-white/15 bg-[#122020] px-3.5 py-2.5 text-xs text-white focus:border-[#45b88a] focus:outline-none"
+                        >
+                          {HARDWARE_TAG_PRESETS.map((preset) => (
+                            <option key={preset.id} value={preset.id}>
+                              {preset.label}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-[11px] text-slate-400 leading-normal">
+                          {
+                            HARDWARE_TAG_PRESETS.find(
+                              (p) => p.id === selectedPresetId
+                            )?.subtitle
+                          }
+                        </p>
+                      </div>
+
+                      {/* Primary Action Buttons: [ Scan NFC Card ] & Cancel */}
+                      <div className="flex flex-wrap items-center justify-center gap-3 w-full max-w-md pt-2">
+                        {scanStage === 'idle' ? (
+                          <button
+                            id="nfc-scan-card-btn"
+                            type="button"
+                            onClick={() => handleStartScan()}
+                            className="flex-1 min-w-[200px] inline-flex items-center justify-center gap-2.5 rounded-xl bg-[#008978] hover:bg-[#00a08c] px-6 py-3.5 font-display text-sm font-bold text-white shadow-lg transition-all cursor-pointer"
+                          >
+                            <Wifi className="h-4 w-4" />
+                            <span>Scan NFC Card</span>
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              disabled
+                              className="flex-1 min-w-[180px] inline-flex items-center justify-center gap-2.5 rounded-xl bg-emerald-700/60 px-6 py-3.5 font-display text-sm font-bold text-emerald-100 cursor-wait"
+                            >
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                              <span>Scanning NFC Antenna...</span>
+                            </button>
+                            <button
+                              id="nfc-cancel-scan-btn"
+                              type="button"
+                              onClick={handleCancelScan}
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 hover:bg-white/15 px-5 py-3.5 font-display text-sm font-semibold text-white transition-colors cursor-pointer"
+                            >
+                              <X className="h-4 w-4" />
+                              <span>Cancel</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+
+                {/* =========================================================
+                    CARD DETECTED / PROTECTED CARD SCREEN
+                ========================================================= */}
                 {scanStage === 'detected' && detectedCard && (
                   <motion.div
                     key="scanner-stage-detected"
@@ -1078,7 +1533,7 @@ export default function NfcAccessView({
                     transition={{ duration: 0.3 }}
                     className="space-y-6"
                   >
-                    {/* Header with Checkmark */}
+                    {/* Header with Checkmark or Protected Shield */}
                     <div className="flex flex-col items-center text-center space-y-3">
                       <motion.div
                         initial={{ scale: 0.5, opacity: 0 }}
@@ -1089,12 +1544,14 @@ export default function NfcAccessView({
                           damping: 18,
                         }}
                         className={`h-16 w-16 rounded-full flex items-center justify-center border-2 ${
+                          detectedCard.isEncryptedOrProtected ||
                           detectedCard.status === 'Unsupported'
                             ? 'bg-amber-500/20 border-amber-400 text-amber-300'
                             : 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
                         }`}
                       >
-                        {detectedCard.status === 'Unsupported' ? (
+                        {detectedCard.isEncryptedOrProtected ||
+                        detectedCard.status === 'Unsupported' ? (
                           <ShieldAlert className="h-8 w-8" />
                         ) : (
                           <Check className="h-8 w-8 stroke-[2.5]" />
@@ -1102,18 +1559,29 @@ export default function NfcAccessView({
                       </motion.div>
 
                       <div className="space-y-1">
-                        <span className="font-tech text-sm font-black tracking-widest uppercase text-emerald-300 block">
-                          CARD DETECTED ✓
+                        <span
+                          className={`font-tech text-sm font-black tracking-widest uppercase block ${
+                            detectedCard.isEncryptedOrProtected ||
+                            detectedCard.status === 'Unsupported'
+                              ? 'text-amber-300'
+                              : 'text-emerald-300'
+                          }`}
+                        >
+                          {detectedCard.isEncryptedOrProtected ||
+                          detectedCard.status === 'Unsupported'
+                            ? 'PROTECTED CARD'
+                            : 'CARD DETECTED ✓'}
                         </span>
                         <p className="font-sans text-xs text-slate-300">
-                          Public Android NFC metadata read complete. Cryptographic
-                          keys and authentication secrets are never accessed or
-                          exposed.
+                          {detectedCard.isEncryptedOrProtected ||
+                          detectedCard.status === 'Unsupported'
+                            ? '“This access card uses security technology that cannot be copied or emulated by this app.”'
+                            : 'Public Android NFC metadata read complete. Sensitive credentials and authentication secrets are never exposed.'}
                         </p>
                       </div>
                     </div>
 
-                    {/* Security Restriction Notice if Encrypted / Unsupported */}
+                    {/* Protected Card Security Notice */}
                     {(detectedCard.isEncryptedOrProtected ||
                       detectedCard.status === 'Unsupported') && (
                       <div
@@ -1124,12 +1592,11 @@ export default function NfcAccessView({
                           <Lock className="h-4 w-4 text-amber-300 shrink-0 mt-0.5" />
                           <div className="space-y-1">
                             <p className="font-display text-xs font-bold text-amber-200">
-                              This card uses a security system that cannot be
-                              copied or emulated by this app.
+                              PROTECTED CARD
                             </p>
-                            <p className="font-sans text-xs text-amber-100/85 leading-relaxed">
-                              This access card uses protected security technology
-                              and cannot be copied or emulated.
+                            <p className="font-sans text-xs text-amber-100/90 leading-relaxed">
+                              “This access card uses security technology that
+                              cannot be copied or emulated by this app.”
                             </p>
                             {detectedCard.providerNotice && (
                               <p className="font-sans text-[11px] text-slate-300 pt-1">
@@ -1141,7 +1608,7 @@ export default function NfcAccessView({
                       </div>
                     )}
 
-                    {/* Card Details Grid (Strictly matching Section 2) */}
+                    {/* Card Details Grid */}
                     <div className="rounded-2xl border border-white/15 bg-white/[0.04] p-5 space-y-4">
                       <div className="space-y-1.5">
                         <label
@@ -1163,7 +1630,7 @@ export default function NfcAccessView({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-white/10 text-left">
                         <div>
                           <span className="block font-tech text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            Card Type
+                            Card technology
                           </span>
                           <span className="font-mono text-xs font-semibold text-white mt-0.5 block">
                             {detectedCard.cardType}
@@ -1172,7 +1639,7 @@ export default function NfcAccessView({
 
                         <div>
                           <span className="block font-tech text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            Card ID (Masked)
+                            Card identifier
                           </span>
                           <span className="font-mono text-xs font-semibold text-emerald-300 mt-0.5 block">
                             {detectedCard.maskedCardId}
@@ -1245,7 +1712,9 @@ export default function NfcAccessView({
                   </motion.div>
                 )}
 
-                {/* STATE C: SAVED SUCCESS TRANSITION */}
+                {/* =========================================================
+                    SAVED SUCCESS TRANSITION
+                ========================================================= */}
                 {scanStage === 'saved_success' && (
                   <motion.div
                     key="scanner-stage-saved"
@@ -1270,14 +1739,14 @@ export default function NfcAccessView({
           </div>
         </div>
 
-        {/* RIGHT COLUMN (5 cols): 5. Phone NFC Settings & 4. NFC Compatibility Matrix */}
+        {/* RIGHT COLUMN (5 cols): Phone NFC Settings, Lifecycle Verification & NFC Compatibility */}
         <div className="lg:col-span-5 space-y-6">
-          {/* 5. Phone NFC Settings Panel */}
+          {/* Phone NFC Settings & Android Lifecycle (`onResume`) Panel */}
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs space-y-5">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-1">
                 <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#00685b] block">
-                  PHONE HARDWARE CONFIGURATION
+                  ANDROID NFC ADAPTER & SETTINGS
                 </span>
                 <h2 className="font-display text-xl font-extrabold text-slate-900">
                   NFC Settings
@@ -1289,39 +1758,47 @@ export default function NfcAccessView({
             <div className="rounded-xl border border-slate-200/90 bg-slate-50 p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-sans text-xs font-semibold text-slate-600">
-                  NFC Status:
+                  Hardware (`NfcAdapter.getDefaultAdapter`):
                 </span>
-                {nfcEnabled && nfcHardwareSupported ? (
-                  <span className="font-display text-sm font-bold text-emerald-700 flex items-center gap-1.5">
-                    <span aria-hidden="true">🟢</span>
-                    <span>Enabled</span>
+                {nfcHardwareSupported ? (
+                  <span className="font-mono text-xs font-bold text-emerald-700">
+                    Available
                   </span>
                 ) : (
-                  <span className="font-display text-sm font-bold text-red-600 flex items-center gap-1.5">
-                    <span aria-hidden="true">🔴</span>
-                    <span>Disabled</span>
+                  <span className="font-mono text-xs font-bold text-red-600">
+                    null (Not Supported)
                   </span>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/70 text-xs">
-                <span className="text-slate-500">
-                  Device NFC Radio Power
+              <div className="flex items-center justify-between pt-2 border-t border-slate-200/70">
+                <span className="font-sans text-xs font-semibold text-slate-600">
+                  NFC Status (`nfcAdapter.isEnabled`):
                 </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNfcEnabled((prev) => !prev);
-                    setActiveError(null);
-                  }}
-                  className={`rounded-lg px-3 py-1 font-display text-xs font-bold transition-colors cursor-pointer ${
-                    nfcEnabled
-                      ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                      : 'bg-slate-200 text-slate-800 hover:bg-slate-300'
-                  }`}
-                >
-                  {nfcEnabled ? 'Turn Off' : 'Turn On'}
-                </button>
+                {currentHardwareState === 'NFC_READY' && (
+                  <span className="font-display text-sm font-bold text-emerald-700 flex items-center gap-1.5">
+                    <span aria-hidden="true">🟢</span>
+                    <span>
+                      {verifiedReadyAfterSettings ? 'Enabled (NFC READY ✓)' : 'Enabled'}
+                    </span>
+                  </span>
+                )}
+                {currentHardwareState === 'NFC_OFF' && (
+                  <span className="font-display text-sm font-bold text-amber-700 flex items-center gap-1.5">
+                    <span aria-hidden="true">🟠</span>
+                    <span>Disabled (NFC IS OFF)</span>
+                  </span>
+                )}
+                {currentHardwareState === 'NFC_NOT_SUPPORTED' && (
+                  <span className="font-display text-sm font-bold text-red-600 flex items-center gap-1.5">
+                    <span aria-hidden="true">🔴</span>
+                    <span>Unsupported</span>
+                  </span>
+                )}
+              </div>
+
+              <div className="pt-2 border-t border-slate-200/70 text-[11px] font-mono text-slate-600">
+                {lastLifecycleCheckLabel}
               </div>
             </div>
 
@@ -1331,80 +1808,151 @@ export default function NfcAccessView({
               </div>
             )}
 
-            <button
-              id="open-nfc-settings-btn"
-              type="button"
-              onClick={handleOpenAndroidNfcSettings}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 hover:bg-slate-800 px-5 py-3 font-display text-xs font-bold text-white transition-colors cursor-pointer"
-            >
-              <Settings className="h-4 w-4" />
-              <span>Open NFC Settings</span>
-            </button>
+            {nfcHardwareSupported && (
+              <button
+                id="open-nfc-settings-btn"
+                type="button"
+                onClick={handleOpenAndroidNfcSettings}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 hover:bg-slate-800 px-5 py-3 font-display text-xs font-bold text-white transition-colors cursor-pointer"
+              >
+                <Settings className="h-4 w-4" />
+                <span>
+                  {nfcEnabled ? 'Open NFC Settings' : 'Enable NFC (Open Android Settings)'}
+                </span>
+              </button>
+            )}
 
-            {/* Quick Diagnostics / Error State Verification Controls */}
-            <div className="pt-3 border-t border-slate-100 space-y-2">
+            {/* Interactive Android Test Scenarios (1–12) */}
+            <div className="pt-3 border-t border-slate-100 space-y-2.5">
               <span className="block font-tech text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Diagnostic Error State Verification
+                Android Lifecycle & Hardware State Verification
               </span>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                 <button
+                  id="test-state-nfc-ready-btn"
                   type="button"
                   onClick={() => {
-                    setNfcHardwareSupported(false);
-                    setScanStage('idle');
-                    setActiveError(SCAN_ERROR_MAP.NFC_NOT_SUPPORTED);
+                    handleReverifyNfcOnResume(
+                      true,
+                      true,
+                      'State 1 (NFC Available & Enabled)'
+                    );
                   }}
-                  className="rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700 cursor-pointer"
+                  className={`rounded-lg border px-2.5 py-2 text-left text-[11px] font-semibold transition-colors cursor-pointer ${
+                    currentHardwareState === 'NFC_READY'
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                      : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
+                  }`}
                 >
-                  Test: NFC Not Supported
+                  1. State 1: NFC Ready (Enabled)
                 </button>
+
                 <button
+                  id="test-state-nfc-off-btn"
                   type="button"
                   onClick={() => {
-                    setNfcHardwareSupported(true);
-                    setNfcEnabled(false);
-                    setScanStage('idle');
-                    setActiveError(SCAN_ERROR_MAP.NFC_DISABLED);
+                    setAwaitingSettingsReturn(false);
+                    setVerifiedReadyAfterSettings(false);
+                    handleReverifyNfcOnResume(
+                      true,
+                      false,
+                      'State 2 (NFC Available but Disabled)'
+                    );
                   }}
-                  className="rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700 cursor-pointer"
+                  className={`rounded-lg border px-2.5 py-2 text-left text-[11px] font-semibold transition-colors cursor-pointer ${
+                    currentHardwareState === 'NFC_OFF'
+                      ? 'border-amber-300 bg-amber-50 text-amber-900'
+                      : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
+                  }`}
                 >
-                  Test: NFC Disabled
+                  2. State 2: NFC Is Off (Disabled)
                 </button>
+
                 <button
+                  id="test-state-nfc-unsupported-btn"
+                  type="button"
+                  onClick={() => {
+                    setAwaitingSettingsReturn(false);
+                    setVerifiedReadyAfterSettings(false);
+                    handleReverifyNfcOnResume(
+                      false,
+                      false,
+                      'State 3 (Phone Without NFC)'
+                    );
+                  }}
+                  className={`rounded-lg border px-2.5 py-2 text-left text-[11px] font-semibold transition-colors cursor-pointer ${
+                    currentHardwareState === 'NFC_NOT_SUPPORTED'
+                      ? 'border-red-300 bg-red-50 text-red-900'
+                      : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  3. State 3: NFC Not Supported
+                </button>
+
+                <button
+                  id="test-return-settings-enabled-btn"
+                  type="button"
+                  onClick={() => {
+                    setAwaitingSettingsReturn(true);
+                    awaitingSettingsReturnRef.current = true;
+                    handleReverifyNfcOnResume(
+                      true,
+                      true,
+                      'onResume() (Returned from Settings: Enabled)'
+                    );
+                  }}
+                  className="rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2.5 py-2 text-left text-[11px] font-semibold text-slate-700 cursor-pointer"
+                >
+                  4. onResume(): NFC Enabled ✓
+                </button>
+
+                <button
+                  id="test-return-settings-disabled-btn"
+                  type="button"
+                  onClick={() => {
+                    setAwaitingSettingsReturn(true);
+                    awaitingSettingsReturnRef.current = true;
+                    handleReverifyNfcOnResume(
+                      true,
+                      false,
+                      'onResume() (Returned from Settings: Still Off)'
+                    );
+                  }}
+                  className="rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2.5 py-2 text-left text-[11px] font-semibold text-slate-700 cursor-pointer"
+                >
+                  5. onResume(): Still Disabled
+                </button>
+
+                <button
+                  id="test-protected-card-btn"
                   type="button"
                   onClick={() => {
                     setNfcHardwareSupported(true);
                     setNfcEnabled(true);
-                    setScanStage('idle');
-                    setActiveError(SCAN_ERROR_MAP.CARD_NOT_DETECTED);
+                    const preset = HARDWARE_TAG_PRESETS[3];
+                    completeCardDetection(
+                      {
+                        id: `nfc-sec-${Date.now()}`,
+                        name: preset.card.name,
+                        cardType: preset.card.cardType,
+                        compatibilityCategory:
+                          preset.card.compatibilityCategory,
+                        maskedCardId: preset.card.maskedCardId,
+                        status: preset.card.status,
+                        activeState: preset.card.activeState,
+                        lastScanned: 'Today',
+                        lastScannedIso: new Date().toISOString(),
+                        ndefRecordsCount: 0,
+                        ndefSummary: preset.card.ndefSummary,
+                        isEncryptedOrProtected: true,
+                        providerNotice: preset.card.providerNotice,
+                      },
+                      'SECURE_CARD'
+                    );
                   }}
-                  className="rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700 cursor-pointer"
+                  className="rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2.5 py-2 text-left text-[11px] font-semibold text-slate-700 cursor-pointer"
                 >
-                  Test: Card Not Detected
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNfcHardwareSupported(true);
-                    setNfcEnabled(true);
-                    setScanStage('idle');
-                    setActiveError(SCAN_ERROR_MAP.UNSUPPORTED_CARD);
-                  }}
-                  className="rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700 cursor-pointer"
-                >
-                  Test: Unsupported Card
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNfcHardwareSupported(true);
-                    setNfcEnabled(true);
-                    setScanStage('idle');
-                    setActiveError(SCAN_ERROR_MAP.SECURE_CARD);
-                  }}
-                  className="rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700 cursor-pointer"
-                >
-                  Test: Secure Card
+                  6. Test: Protected Card
                 </button>
               </div>
             </div>
@@ -1422,7 +1970,9 @@ export default function NfcAccessView({
             <p className="font-sans text-xs text-slate-600 leading-relaxed">
               Reading an NFC card and securely emulating an access credential
               are different capabilities. This feature uses official Android NFC
-              APIs and never bypasses encryption or protected card credentials.
+              APIs (`NfcAdapter.getDefaultAdapter(context)`, `nfcAdapter.isEnabled`,
+              and `enableReaderMode`) and never bypasses encryption or protected
+              card credentials.
             </p>
 
             <ul className="space-y-2.5 text-xs text-slate-700">
@@ -1456,8 +2006,9 @@ export default function NfcAccessView({
               <li className="flex items-start gap-2.5">
                 <Lock className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Secure/encrypted cards</strong> (e.g. MIFARE DESFire
-                  EV3, HID Seos) that cannot be copied or emulated by this app
+                  <strong>Protected / Encrypted cards</strong> (e.g. MIFARE
+                  DESFire EV3, HID Seos) that cannot be copied or emulated by
+                  this app
                 </span>
               </li>
             </ul>
@@ -1465,9 +2016,8 @@ export default function NfcAccessView({
             <div className="rounded-xl border border-slate-200/80 bg-slate-50 p-3.5 text-[11px] text-slate-600 leading-relaxed flex items-start gap-2.5">
               <Info className="h-4 w-4 text-[#00685b] shrink-0 mt-0.5" />
               <span>
-                Where Android hardware or your building’s access-control system
-                does not support open tag emulation, please use your access
-                provider’s official mobile credential system.
+                Manifest permission configured: <code>android.permission.NFC</code>{' '}
+                with <code>android.hardware.nfc</code> (<code>required=&quot;false&quot;</code>).
               </span>
             </div>
           </div>
@@ -1775,7 +2325,7 @@ export default function NfcAccessView({
                 </div>
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70">
                   <span className="text-slate-400 block font-tech uppercase text-[10px]">
-                    Card ID (Masked)
+                    Card Identifier
                   </span>
                   <span className="font-mono font-bold text-slate-900 mt-0.5 block">
                     {viewingCard.maskedCardId}
@@ -1783,7 +2333,7 @@ export default function NfcAccessView({
                 </div>
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70 col-span-2">
                   <span className="text-slate-400 block font-tech uppercase text-[10px]">
-                    Card Type / Tag Technology
+                    Card Technology
                   </span>
                   <span className="font-mono font-semibold text-slate-800 mt-0.5 block">
                     {viewingCard.cardType}
@@ -1911,7 +2461,7 @@ export default function NfcAccessView({
         )}
       </AnimatePresence>
 
-      {/* MODAL: ANDROID SYSTEM NFC SETTINGS SHEET */}
+      {/* MODAL: ANDROID SYSTEM NFC SETTINGS SHEET (`android.settings.NFC_SETTINGS`) */}
       <AnimatePresence>
         {settingsModalOpen && (
           <motion.div
@@ -1919,7 +2469,7 @@ export default function NfcAccessView({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
-            onClick={() => setSettingsModalOpen(false)}
+            onClick={() => handleReturnFromAndroidSettings()}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -1931,13 +2481,18 @@ export default function NfcAccessView({
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2.5">
                   <Settings className="h-5 w-5 text-[#00685b]" />
-                  <h3 className="font-display text-lg font-extrabold text-slate-900">
-                    Phone NFC Settings
-                  </h3>
+                  <div>
+                    <span className="font-tech text-[10px] font-bold uppercase tracking-widest text-[#00685b] block">
+                      ANDROID SYSTEM SETTINGS
+                    </span>
+                    <h3 className="font-display text-lg font-extrabold text-slate-900">
+                      Connected devices → NFC
+                    </h3>
+                  </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setSettingsModalOpen(false)}
+                  onClick={() => handleReturnFromAndroidSettings()}
                   className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 cursor-pointer"
                 >
                   <X className="h-5 w-5" />
@@ -1951,44 +2506,56 @@ export default function NfcAccessView({
                       Use NFC
                     </span>
                     <span className="text-[11px] text-slate-500">
-                      Allow data exchange when phone touches another device or
-                      NFC reader
+                      Allow data exchange when the phone touches another device
+                      or NFC card
                     </span>
                   </div>
                   <button
+                    id="android-settings-nfc-toggle-btn"
                     type="button"
                     onClick={() => {
                       setNfcHardwareSupported(true);
                       setNfcEnabled((prev) => !prev);
-                      setActiveError(null);
                     }}
                     className={`px-3.5 py-2 rounded-xl font-display text-xs font-bold cursor-pointer transition-colors ${
                       nfcEnabled
                         ? 'bg-emerald-600 text-white'
-                        : 'bg-red-100 text-red-700'
+                        : 'bg-amber-100 text-amber-800 border border-amber-300'
                     }`}
                   >
-                    {nfcEnabled ? '🟢 Enabled' : '🔴 Disabled'}
+                    {nfcEnabled ? '🟢 ON' : '🟠 OFF'}
                   </button>
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/70 space-y-1">
                   <span className="font-mono text-[11px] font-bold text-slate-700 block">
-                    Android System Intent:
+                    Android Settings Intent Action:
                   </span>
                   <code className="block font-mono text-[11px] text-[#00685b]">
-                    android.settings.NFC_SETTINGS
+                    android.provider.Settings.ACTION_NFC_SETTINGS (android.settings.NFC_SETTINGS)
                   </code>
+                  <p className="text-[11px] text-slate-500 pt-1">
+                    When you return to QBENCH, <code>onResume()</code> re-checks{' '}
+                    <code>nfcAdapter.isEnabled</code> automatically.
+                  </p>
                 </div>
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => setSettingsModalOpen(false)}
-                  className="rounded-xl bg-[#00685b] px-5 py-2.5 font-display text-xs font-bold text-white cursor-pointer"
+                  onClick={() => handleReturnFromAndroidSettings(false)}
+                  className="rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 font-display text-xs font-semibold text-slate-700 cursor-pointer"
                 >
-                  Done
+                  Return with NFC Off
+                </button>
+                <button
+                  id="return-from-settings-btn"
+                  type="button"
+                  onClick={() => handleReturnFromAndroidSettings(true)}
+                  className="rounded-xl bg-[#00685b] hover:bg-[#005348] px-5 py-2.5 font-display text-xs font-bold text-white cursor-pointer"
+                >
+                  Enable NFC &amp; Return to App
                 </button>
               </div>
             </motion.div>
@@ -2163,11 +2730,13 @@ export default function NfcAccessView({
                           title: `QBENCH NFC Card Backup — ${qrExportLabel}`,
                           text: `QBENCH Secure NFC Card Backup (${qrExportLabel})\nToken:\n${qrBackupToken}`,
                         });
-                        setQrShareStatus('Shared successfully via device share sheet.');
+                        setQrShareStatus(
+                          'Shared successfully via device share sheet.'
+                        );
                         return;
                       }
                     } catch {
-                      // Fallback to clipboard copy if user cancels or share API is unavailable
+                      // Fallback to clipboard copy
                     }
                     if (navigator.clipboard && qrBackupToken) {
                       await navigator.clipboard.writeText(qrBackupToken);
@@ -2191,7 +2760,9 @@ export default function NfcAccessView({
                     if (!qrBackupToken) return;
                     await navigator.clipboard.writeText(qrBackupToken);
                     setQrCopied(true);
-                    setQrShareStatus('Copied signed QR backup token to clipboard.');
+                    setQrShareStatus(
+                      'Copied signed QR backup token to clipboard.'
+                    );
                     setTimeout(() => setQrCopied(false), 2000);
                   }}
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2.5 font-display text-xs font-bold text-slate-700 transition-colors cursor-pointer"
