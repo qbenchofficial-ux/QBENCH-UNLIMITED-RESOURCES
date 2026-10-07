@@ -56,6 +56,9 @@ export default defineConfig(({ mode }) => {
         ],
 
         workbox: {
+          // Allow precaching main bundles up to 5 MiB so vite-plugin-pwa does not fail when the bundle exceeds 2 MiB.
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+
           // Precache the application shell and static assets.
           globPatterns: [
             '**/*.{js,css,html,ico,png,svg,webp,jpg,jpeg,woff,woff2,ttf,json}',
