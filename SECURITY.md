@@ -155,7 +155,7 @@ Media assets are stored in two dedicated Supabase Storage buckets configured in 
 
 ### In Scope
 
-- QBENCH public web application and SPA routes (`/`, `/portfolio`, `/services`, `/packages`, `/contact`, `/nfc-access`)
+- QBENCH public web application and SPA routes (`/`, `/portfolio`, `/services`, `/packages`, `/contact`)
 - QBENCH Admin Portal & Creative Management System (`/admin/*`)
 - Supabase authentication, `public.is_qbench_admin()` RPC, and PostgreSQL Row Level Security (RLS) policies across `projects`, `categories`, `portfolio_images`, `project_videos`, `project_inquiries`, `site_settings`, and `admin_profiles`
 - Supabase Storage access controls (`portfolio-images` and `portfolio-videos` buckets) and SVG sanitization (`sanitizeSvgFile`)

@@ -73,13 +73,6 @@ export default function SEOHead({ section, activeServiceTab }: SEOHeadProps) {
         'Transparent creative and digital packages for branding, social media, motion graphics, video production, and custom web development.';
       break;
 
-    case 'nfc-access':
-      pathSlug = 'nfc-access';
-      title = `NFC Access Card Manager | ${agencyName} — Smart Access & Tag Scanner`;
-      description =
-        'Scan and manage compatible NFC access cards using your phone’s built-in NFC hardware with QBENCH Smart Access.';
-      break;
-
     case 'contact':
       pathSlug =
         typeof window !== 'undefined' &&

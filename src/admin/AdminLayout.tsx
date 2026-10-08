@@ -19,7 +19,6 @@ import {
   Package,
   Briefcase,
   FileText,
-  CreditCard,
 } from 'lucide-react';
 
 export type AdminCmsSection =
@@ -33,7 +32,6 @@ export type AdminCmsSection =
   | 'categories'
   | 'media'
   | 'inquiries'
-  | 'nfc-access'
   | 'settings';
 
 interface AdminLayoutProps {
@@ -118,12 +116,6 @@ export default function AdminLayout({
       label: 'Client Inquiries',
       path: '/admin/inquiries',
       icon: <MessageSquare className="h-4 w-4" />,
-    },
-    {
-      id: 'nfc-access',
-      label: 'NFC Access Card',
-      path: '/admin/nfc-access',
-      icon: <CreditCard className="h-4 w-4" />,
     },
     {
       id: 'settings',

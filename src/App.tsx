@@ -15,7 +15,6 @@ import PortfolioView from './components/PortfolioView';
 import ProcessView from './components/ProcessView';
 import ContactView from './components/ContactView';
 import PackagesView from './components/PackagesView';
-import NfcAccessView from './components/NfcAccessView';
 import AdminControlView from './components/AdminControlView';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import SkeletonRouter from './components/SkeletonLoader';
@@ -49,15 +48,6 @@ function resolveSectionFromLocation(): NavSection {
     params.get('view') === 'admin'
   ) {
     return 'admin';
-  }
-  if (
-    pathname === '/nfc-access' ||
-    pathname === '/nfc' ||
-    pathname === '/access-card' ||
-    hash === 'nfc-access' ||
-    hash === 'nfc'
-  ) {
-    return 'nfc-access';
   }
   if (pathname.startsWith('/portfolio') || hash === 'portfolio') {
     return 'portfolio';
@@ -97,8 +87,6 @@ function sectionToPathname(section: NavSection): string {
       return '/portfolio';
     case 'process':
       return '/process';
-    case 'nfc-access':
-      return '/nfc-access';
     case 'contact':
       return '/contact';
     case 'about':
@@ -377,12 +365,6 @@ export default function App() {
                   {activeSection === 'packages' && (
                     <div id="view-packages-screen">
                       <PackagesView onNavigate={handleNavigate} />
-                    </div>
-                  )}
-
-                  {activeSection === 'nfc-access' && (
-                    <div id="view-nfc-access-screen">
-                      <NfcAccessView onNavigate={handleNavigate} />
                     </div>
                   )}
 

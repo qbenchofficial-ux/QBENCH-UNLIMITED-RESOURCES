@@ -193,14 +193,6 @@ export default function Footer({ onNavigate }: FooterProps) {
               </li>
               <li>
                 <button 
-                  onClick={() => onNavigate('nfc-access')}
-                  className="font-sans text-[11px] text-white/60 hover:text-[#45b88a] cursor-pointer block leading-none transition-colors"
-                >
-                  NFC Access
-                </button>
-              </li>
-              <li>
-                <button 
                   onClick={() => onNavigate('contact')}
                   className="font-sans text-[11px] text-white/60 hover:text-[#45b88a] cursor-pointer block leading-none transition-colors"
                 >

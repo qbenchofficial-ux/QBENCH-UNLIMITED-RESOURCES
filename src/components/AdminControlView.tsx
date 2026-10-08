@@ -21,7 +21,6 @@ import CategoriesManager from '../admin/CategoriesManager';
 import MediaLibrary from '../admin/MediaLibrary';
 import InquiriesManager from '../admin/InquiriesManager';
 import Settings from '../admin/Settings';
-import NfcAccessView from './NfcAccessView';
 import type { Project, ProjectFormData } from '../types/project';
 import type { NavSection } from '../types';
 import { Loader2 } from 'lucide-react';
@@ -68,9 +67,6 @@ function parseAdminPathname(pathname: string): ParsedAdminRoute {
   }
   if (clean === '/admin/inquiries') {
     return { section: 'inquiries' };
-  }
-  if (clean === '/admin/nfc-access') {
-    return { section: 'nfc-access' };
   }
   if (clean === '/admin/settings') {
     return { section: 'settings' };
@@ -440,10 +436,6 @@ export default function AdminControlView({
           onRefresh={refresh}
           onNotify={notify}
         />
-      )}
-
-      {parsedRoute.section === 'nfc-access' && (
-        <NfcAccessView embeddedInAdmin />
       )}
 
       {parsedRoute.section === 'settings' && (
