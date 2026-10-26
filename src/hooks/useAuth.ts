@@ -218,7 +218,11 @@ export function useAuth(): UseAuthResult {
           setUser(null);
           setAdminProfile(null);
           setLoading(false);
-        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        } else if (
+          event === 'SIGNED_IN' ||
+          event === 'TOKEN_REFRESHED' ||
+          event === 'PASSWORD_RECOVERY'
+        ) {
           // Keep authentication state synchronized while preventing race conditions
           setLoading(true);
           try {

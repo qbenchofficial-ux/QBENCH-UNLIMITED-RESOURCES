@@ -139,9 +139,23 @@ export default function AdminControlView({
   // Enforce route protection: redirect unauthenticated users visiting protected /admin/* routes to /admin/login
   useEffect(() => {
     if (authLoading) return;
+
+    const hasRecoveryToken =
+      typeof window !== 'undefined' &&
+      (window.location.hash.includes('type=recovery') ||
+        window.location.search.includes('type=recovery'));
+
+    if (hasRecoveryToken && parsedRoute.section !== 'login') {
+      navigateRoute('/admin/login');
+      return;
+    }
+
     if (!adminProfile && parsedRoute.section !== 'login') {
       navigateRoute('/admin/login');
     } else if (adminProfile && parsedRoute.section === 'login') {
+      if (hasRecoveryToken) {
+        return;
+      }
       navigateRoute('/admin');
     }
   }, [authLoading, adminProfile, parsedRoute.section, navigateRoute]);
