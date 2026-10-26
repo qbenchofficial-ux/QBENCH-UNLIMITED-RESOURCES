@@ -275,22 +275,46 @@ function resolveDynamicPackageFields(params: EmailParams) {
   };
 }
 
+function maskEmailAddress(emailStr: string): string {
+  const trimmed = (emailStr || '').trim();
+  const atIndex = trimmed.indexOf('@');
+  if (atIndex <= 0) return 'invalid-email';
+  const local = trimmed.slice(0, atIndex);
+  const domain = trimmed.slice(atIndex + 1);
+  if (!domain) return 'invalid-email';
+  const visibleLocal =
+    local.length <= 2
+      ? `${local[0] || '*'}*`
+      : `${local.slice(0, 2)}${'*'.repeat(Math.min(local.length - 2, 4))}`;
+  return `${visibleLocal}@${domain}`;
+}
+
 async function sendEmailJsWithFallback(options: {
   type: 'admin' | 'customer' | 'auto_reply';
   serviceId: string;
   templateId: string;
   publicKey: string;
   templateParams: Record<string, any>;
-}): Promise<void> {
+}): Promise<{ status: number; text: string; via: 'browser' | 'server_relay' }> {
   const { type, serviceId, templateId, publicKey, templateParams } = options;
 
   try {
-    await emailjs.send(serviceId, templateId, templateParams, {
-      publicKey
-    });
-    return;
-  } catch (browserErr) {
-    console.warn(`QBENCH: Browser EmailJS (${type}) encountered an issue, trying server relay...`, browserErr);
+    const result = await emailjs.send(serviceId, templateId, templateParams, publicKey);
+    if (!result || result.status !== 200) {
+      throw new Error(
+        `EmailJS (${type}) browser send returned non-200 status: ${result?.status ?? 'unknown'} (${result?.text ?? ''})`
+      );
+    }
+    return {
+      status: result.status,
+      text: result.text || 'OK',
+      via: 'browser'
+    };
+  } catch (browserErr: any) {
+    console.warn(
+      `[QBENCH] Browser EmailJS (${type}) encountered an issue, trying server relay (/api/emailjs-send)...`,
+      browserErr?.text || browserErr?.message || browserErr
+    );
   }
 
   const relayResp = await fetch('/api/emailjs-send', {
@@ -308,9 +332,20 @@ async function sendEmailJsWithFallback(options: {
   });
 
   const relayData = await relayResp.json().catch(() => ({}));
-  if (!relayResp.ok || !relayData?.success) {
-    throw new Error(relayData?.error || `EmailJS (${type}) failed with HTTP ${relayResp.status}`);
+  const relayStatus = Number(relayData?.status || relayResp.status || 0);
+  if (!relayResp.ok || !relayData?.success || relayStatus !== 200) {
+    throw new Error(
+      relayData?.error ||
+        relayData?.text ||
+        `EmailJS (${type}) failed with HTTP ${relayStatus || relayResp.status}`
+    );
   }
+
+  return {
+    status: relayStatus,
+    text: String(relayData?.text || relayData?.response || 'OK'),
+    via: 'server_relay'
+  };
 }
 
 async function postToGoogleSheetsWebhook(webhookUrl: string, payload: Record<string, any>): Promise<void> {
@@ -384,12 +419,13 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
   const name = (params.name || '').trim();
   const company = (params.company || '').trim();
   const email = (params.email || '').trim();
+  const customerEmail = email;
   const phone = (params.phone || '').trim();
   const message = (params.message || '').trim();
 
   const pkgFields = resolveDynamicPackageFields(params);
 
-  if (!name || !phone || !email || !pkgFields.service) {
+  if (!name || !phone || !customerEmail || !pkgFields.service) {
     const validationErr = new SupabaseInquiryError({
       message: 'Required fields (name, phone, email, service) are missing.',
       code: 'VALIDATION_ERROR',
@@ -399,12 +435,22 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
     throw validationErr;
   }
 
+  if (!customerEmail.includes('@')) {
+    const emailValidationErr = new SupabaseInquiryError({
+      message: 'Valid customer email is required',
+      code: 'VALIDATION_ERROR',
+      hint: 'Please provide a valid email address containing @.',
+    });
+    console.error('QBENCH: Form validation FAILED', emailValidationErr);
+    throw emailValidationErr;
+  }
+
   // STEP 1 (REQUIRED): Persist inquiry in Supabase `public.project_inquiries` table.
   // Do NOT hide errors or report success unless Supabase confirms the enquiry was inserted!
   await createProjectInquiry({
     name,
     company,
-    email,
+    email: customerEmail,
     phone,
     service: pkgFields.service,
     package: pkgFields.package,
@@ -437,8 +483,8 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
     company: company || 'Not specified',
     phoneNumber: phone,
     phone,
-    emailAddress: email,
-    email,
+    emailAddress: customerEmail,
+    email: customerEmail,
     service: pkgFields.service,
     package: pkgFields.package,
     package_id: pkgFields.package_id,
@@ -477,6 +523,18 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
   let customerEmailError: string | null = null;
 
   const customerTemplateId = EMAILJS_CUSTOMER_TEMPLATE_ID || EMAILJS_AUTO_REPLY_TEMPLATE_ID;
+  const resolvedBudget = params.budget || pkgFields.budget;
+  const resolvedCompany = company || 'Not specified';
+  const resolvedDescription = params.project_description || message;
+
+  console.info(
+    `[QBENCH] Email configuration:\n` +
+      `Service ID: ${EMAILJS_SERVICE_ID ? 'configured' : 'missing'}\n` +
+      `Admin Template: ${EMAILJS_ADMIN_TEMPLATE_ID ? `configured (${EMAILJS_ADMIN_TEMPLATE_ID})` : 'missing'}\n` +
+      `Customer Template: ${customerTemplateId ? `configured (${customerTemplateId})` : 'missing'}\n` +
+      `Public Key: ${EMAILJS_PUBLIC_KEY ? 'configured' : 'missing'}\n` +
+      `Customer recipient: ${maskEmailAddress(customerEmail)}`
+  );
 
   if (EMAILJS_PUBLIC_KEY && EMAILJS_SERVICE_ID) {
     if (emailJsInitializedKey !== EMAILJS_PUBLIC_KEY) {
@@ -489,101 +547,141 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
     }
 
     // Email 1 – QBENCH Admin Notification
-    // Recipient: qbench.official@gmail.com
-    // Subject: New Project Enquiry Received – QBENCH
+    // Template: template_m9zyb5s
+    // Recipient: Configured in EmailJS Admin template (with reply_to set to customerEmail).
+    // Note: Keep `email: customerEmail` for template body ({{email}}), and keep `to_email` / `recipient_email`
+    // out of customerEmail so the admin template is never accidentally routed to the customer.
     if (EMAILJS_ADMIN_TEMPLATE_ID) {
-      const adminTemplateParams = {
-        from_name: 'QBENCH Creative Agency',
+      const adminParams = {
+        from_name: name,
+        sender_name: 'QBENCH Creative Agency',
         subject: 'New Project Enquiry Received – QBENCH',
         name,
         customer_name: name,
-        email,
+        from_email: customerEmail,
+        customer_email: customerEmail,
+        email: customerEmail,
         phone,
-        company: company || 'Not specified',
+        company: resolvedCompany,
         service: pkgFields.service,
         package: pkgFields.package,
         package_id: pkgFields.package_id,
-        budget: params.budget || pkgFields.budget,
+        budget: resolvedBudget,
         price: pkgFields.price,
         timeline: pkgFields.timeline,
         category: pkgFields.category,
         start_date: pkgFields.start_date,
         message,
+        project_description: resolvedDescription,
         project_message: message,
         date: submissionDateTime,
         submission_date: submissionDateTime,
         lead_source: 'QBENCH Website',
         lead_status: 'New',
-        reply_to: email,
+        reply_to: customerEmail,
+        to_name: 'QBENCH Team',
         to_email: 'qbench.official@gmail.com',
         recipient_email: 'qbench.official@gmail.com'
       };
 
       try {
-        await sendEmailJsWithFallback({
+        const adminResult = await sendEmailJsWithFallback({
           type: 'admin',
           serviceId: EMAILJS_SERVICE_ID,
           templateId: EMAILJS_ADMIN_TEMPLATE_ID,
           publicKey: EMAILJS_PUBLIC_KEY,
-          templateParams: adminTemplateParams
+          templateParams: adminParams
         });
+
+        console.log('[QBENCH] Admin EmailJS response:', adminResult);
+
+        if (adminResult.status !== 200) {
+          throw new Error(`Admin EmailJS failed: ${adminResult.status}`);
+        }
+
         adminEmailSuccess = true;
         channelsUsed.push('Admin Notification');
-        console.info('[QBENCH] Admin Email: SUCCESS');
-      } catch (adminErr: any) {
-        adminEmailError = adminErr?.message || 'Admin notification failed';
-        console.warn('[QBENCH] Admin Email: FAILED', adminErr?.message || adminErr);
+        console.log('[QBENCH] Admin Email: SUCCESS');
+      } catch (error: any) {
+        adminEmailError = error?.message || String(error) || 'Admin notification failed';
+        console.error('[QBENCH] Admin Email: FAILED', error);
       }
+    } else {
+      adminEmailError = 'Admin EmailJS template ID is not configured';
+      console.error('[QBENCH] Admin Email: FAILED', new Error(adminEmailError));
     }
 
     // Email 2 – Customer Automatic Confirmation
-    // Recipient: Customer's submitted email address ({{email}})
-    // Subject: Thank You for Reaching Out to QBENCH
+    // Template: template_7ejoq5d
+    // Recipient: Customer's submitted email address ({{to_email}} / {{email}})
     if (customerTemplateId) {
-      const customerTemplateParams = {
-        from_name: 'QBENCH Creative Agency',
-        subject: 'Thank You for Reaching Out to QBENCH',
-        name,
-        customer_name: name,
-        to_name: name,
-        email,
-        phone,
-        company: company || 'Not specified',
-        to_email: email,
-        user_email: email,
-        recipient_email: email,
-        service: pkgFields.service,
-        package: pkgFields.package,
-        package_id: pkgFields.package_id,
-        budget: params.budget || pkgFields.budget,
-        price: pkgFields.price,
-        timeline: pkgFields.timeline,
-        category: pkgFields.category,
-        confirmation_message: 'Thank you for reaching out to QBENCH Creative Agency! We have successfully received your project enquiry. Our team will review your requirements and get back to you as soon as possible.',
-        message: 'Thank you for reaching out to QBENCH Creative Agency! We have successfully received your project enquiry.',
-        customer_message: message,
-        project_message: message,
-        date: submissionDateTime,
-        submission_date: submissionDateTime,
-        reply_to: 'qbench.official@gmail.com'
-      };
-
       try {
-        await sendEmailJsWithFallback({
+        if (!customerEmail || !customerEmail.includes('@')) {
+          throw new Error('Valid customer email is required');
+        }
+
+        const customerParams = {
+          from_name: 'QBENCH Creative Agency',
+          subject: 'Thank You for Reaching Out to QBENCH',
+          name,
+          customer_name: name,
+          to_name: name,
+          email: customerEmail,
+          to_email: customerEmail,
+          user_email: customerEmail,
+          recipient_email: customerEmail,
+          customer_email: customerEmail,
+          phone,
+          company: resolvedCompany,
+          service: pkgFields.service,
+          package: pkgFields.package,
+          package_id: pkgFields.package_id,
+          budget: resolvedBudget,
+          price: pkgFields.price,
+          timeline: pkgFields.timeline,
+          category: pkgFields.category,
+          message,
+          project_description: resolvedDescription,
+          customer_message: message,
+          project_message: message,
+          confirmation_message:
+            'Thank you for reaching out to QBENCH Creative Agency! We have successfully received your project enquiry. Our team will review your requirements and get back to you as soon as possible.',
+          date: submissionDateTime,
+          submission_date: submissionDateTime,
+          reply_to: 'qbench.official@gmail.com'
+        };
+
+        const customerResult = await sendEmailJsWithFallback({
           type: 'customer',
           serviceId: EMAILJS_SERVICE_ID,
           templateId: customerTemplateId,
           publicKey: EMAILJS_PUBLIC_KEY,
-          templateParams: customerTemplateParams
+          templateParams: customerParams
         });
+
+        console.log('[QBENCH] Customer EmailJS response:', customerResult);
+
+        if (customerResult.status !== 200) {
+          throw new Error(`Customer EmailJS failed: ${customerResult.status}`);
+        }
+
         customerEmailSuccess = true;
         channelsUsed.push('Customer Confirmation');
-        console.info('[QBENCH] Customer Email: SUCCESS');
-      } catch (customerErr: any) {
-        customerEmailError = customerErr?.message || 'Customer confirmation failed';
-        console.warn('[QBENCH] Customer Email: FAILED', customerErr?.message || customerErr);
+        console.log('[QBENCH] Customer Email: SUCCESS');
+      } catch (error: any) {
+        customerEmailError = error?.message || String(error) || 'Customer confirmation failed';
+        console.error('[QBENCH] Customer Email: FAILED', error);
       }
+    } else {
+      customerEmailError = 'Customer EmailJS template ID is not configured';
+      console.error('[QBENCH] Customer Email: FAILED', new Error(customerEmailError));
     }
+  } else {
+    const missingConfigMsg = 'EmailJS Service ID or Public Key is missing';
+    adminEmailError = missingConfigMsg;
+    customerEmailError = missingConfigMsg;
+    console.error('[QBENCH] Admin Email: FAILED', new Error(missingConfigMsg));
+    console.error('[QBENCH] Customer Email: FAILED', new Error(missingConfigMsg));
   }
 
   if (GOOGLE_SHEETS_WEBHOOK_URL) {
@@ -591,7 +689,7 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
       await postToGoogleSheetsWebhook(GOOGLE_SHEETS_WEBHOOK_URL, {
         name,
         company,
-        email,
+        email: customerEmail,
         phone,
         service: pkgFields.service,
         package: pkgFields.package,
@@ -635,8 +733,281 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
     adminEmailSuccess,
     customerEmailSuccess,
     authentication: 'SUCCESS',
-    emailDelivery,
+    emailDelivery: emailDelivery,
     deliveryChannel: channelsUsed.join(' + '),
     error: adminEmailError || customerEmailError || undefined
   };
 };
+
+export interface EmailJSDiagnosticTestResult {
+  success: boolean;
+  timestamp: string;
+  recipientEmail: string;
+  config: {
+    serviceIdConfigured: boolean;
+    serviceId: string | null;
+    adminTemplateIdConfigured: boolean;
+    adminTemplateId: string | null;
+    customerTemplateIdConfigured: boolean;
+    customerTemplateId: string | null;
+    publicKeyConfigured: boolean;
+  };
+  adminTemplateTest: {
+    attempted: boolean;
+    success: boolean;
+    status?: number;
+    text?: string;
+    via?: 'browser' | 'server_relay';
+    error?: string;
+  };
+  customerTemplateTest?: {
+    attempted: boolean;
+    success: boolean;
+    status?: number;
+    text?: string;
+    via?: 'browser' | 'server_relay';
+    error?: string;
+  };
+  message: string;
+}
+
+/**
+ * Diagnostic test function that attempts to send a dummy email to the administrator
+ * to verify that the EmailJS Service ID and Template IDs are correctly configured
+ * and reachable via EmailJS.
+ */
+export async function sendEmailJSDiagnosticTest(options?: {
+  adminEmail?: string;
+  includeCustomerTemplate?: boolean;
+}): Promise<EmailJSDiagnosticTestResult> {
+  const timestamp = new Date().toISOString();
+  const formattedDate = new Date(timestamp).toLocaleString('en-IN', {
+    dateStyle: 'medium',
+    timeStyle: 'long',
+    timeZone: 'Asia/Kolkata'
+  });
+  const recipientEmail = (options?.adminEmail || 'qbench.official@gmail.com').trim();
+  const includeCustomerTemplate = options?.includeCustomerTemplate ?? true;
+
+  const secrets = await resolveIntegrationSecrets();
+  const {
+    EMAILJS_PUBLIC_KEY,
+    EMAILJS_SERVICE_ID,
+    EMAILJS_ADMIN_TEMPLATE_ID,
+    EMAILJS_CUSTOMER_TEMPLATE_ID,
+    EMAILJS_AUTO_REPLY_TEMPLATE_ID
+  } = secrets;
+
+  const customerTemplateId = EMAILJS_CUSTOMER_TEMPLATE_ID || EMAILJS_AUTO_REPLY_TEMPLATE_ID;
+
+  const configSummary = {
+    serviceIdConfigured: Boolean(EMAILJS_SERVICE_ID),
+    serviceId: EMAILJS_SERVICE_ID || null,
+    adminTemplateIdConfigured: Boolean(EMAILJS_ADMIN_TEMPLATE_ID),
+    adminTemplateId: EMAILJS_ADMIN_TEMPLATE_ID || null,
+    customerTemplateIdConfigured: Boolean(customerTemplateId),
+    customerTemplateId: customerTemplateId || null,
+    publicKeyConfigured: Boolean(EMAILJS_PUBLIC_KEY)
+  };
+
+  console.info(
+    `[QBENCH Diagnostic] Starting EmailJS configuration & reachability test:\n` +
+      `Service ID: ${configSummary.serviceIdConfigured ? `configured (${configSummary.serviceId})` : 'missing'}\n` +
+      `Admin Template: ${configSummary.adminTemplateIdConfigured ? `configured (${configSummary.adminTemplateId})` : 'missing'}\n` +
+      `Customer Template: ${configSummary.customerTemplateIdConfigured ? `configured (${configSummary.customerTemplateId})` : 'missing'}\n` +
+      `Public Key: ${configSummary.publicKeyConfigured ? 'configured' : 'missing'}\n` +
+      `Target Admin Recipient: ${maskEmailAddress(recipientEmail)}`
+  );
+
+  if (!EMAILJS_PUBLIC_KEY || !EMAILJS_SERVICE_ID || !EMAILJS_ADMIN_TEMPLATE_ID) {
+    const missingParts: string[] = [];
+    if (!EMAILJS_SERVICE_ID) missingParts.push('Service ID');
+    if (!EMAILJS_ADMIN_TEMPLATE_ID) missingParts.push('Admin Template ID');
+    if (!EMAILJS_PUBLIC_KEY) missingParts.push('Public Key');
+    const errorMsg = `Missing required EmailJS configuration: ${missingParts.join(', ')}`;
+    console.error('[QBENCH Diagnostic] FAILED:', errorMsg);
+
+    return {
+      success: false,
+      timestamp,
+      recipientEmail,
+      config: configSummary,
+      adminTemplateTest: {
+        attempted: false,
+        success: false,
+        error: errorMsg
+      },
+      message: errorMsg
+    };
+  }
+
+  if (emailJsInitializedKey !== EMAILJS_PUBLIC_KEY) {
+    try {
+      emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+      emailJsInitializedKey = EMAILJS_PUBLIC_KEY;
+    } catch {
+      // Ignore init error
+    }
+  }
+
+  const dummyAdminParams = {
+    from_name: 'QBENCH Diagnostic Test',
+    sender_name: 'QBENCH Diagnostic Runner',
+    subject: `[DIAGNOSTIC TEST] QBENCH EmailJS Verification (${formattedDate})`,
+    name: 'QBENCH Diagnostic Administrator Test',
+    customer_name: 'QBENCH Diagnostic Administrator Test',
+    from_email: recipientEmail,
+    customer_email: recipientEmail,
+    email: recipientEmail,
+    phone: '+91 00000 00000',
+    company: 'QBENCH System Diagnostics',
+    service: 'EmailJS Reachability & Template Verification',
+    package: 'Diagnostic Probe',
+    package_id: 'diagnostic_test',
+    budget: 'N/A (Diagnostic Test)',
+    price: 'N/A',
+    timeline: 'Immediate',
+    category: 'System Diagnostics',
+    start_date: formattedDate,
+    message: `This is an automated diagnostic test email triggered at ${formattedDate} to verify that EmailJS Service ID (${EMAILJS_SERVICE_ID}) and Admin Template ID (${EMAILJS_ADMIN_TEMPLATE_ID}) are properly configured and reachable.`,
+    project_description: `Automated diagnostic test verifying EmailJS Service (${EMAILJS_SERVICE_ID}) and Admin Template (${EMAILJS_ADMIN_TEMPLATE_ID}).`,
+    project_message: 'Diagnostic verification test.',
+    date: formattedDate,
+    submission_date: formattedDate,
+    lead_source: 'QBENCH EmailJS Diagnostic',
+    lead_status: 'Diagnostic',
+    reply_to: recipientEmail,
+    to_name: 'QBENCH Administrator',
+    to_email: recipientEmail,
+    recipient_email: recipientEmail
+  };
+
+  let adminTestResult: EmailJSDiagnosticTestResult['adminTemplateTest'] = {
+    attempted: true,
+    success: false
+  };
+
+  try {
+    const res = await sendEmailJsWithFallback({
+      type: 'admin',
+      serviceId: EMAILJS_SERVICE_ID,
+      templateId: EMAILJS_ADMIN_TEMPLATE_ID,
+      publicKey: EMAILJS_PUBLIC_KEY,
+      templateParams: dummyAdminParams
+    });
+
+    adminTestResult = {
+      attempted: true,
+      success: res.status === 200,
+      status: res.status,
+      text: res.text,
+      via: res.via
+    };
+    console.log('[QBENCH Diagnostic] Admin Template Test: SUCCESS', res);
+  } catch (err: any) {
+    const errMsg = err?.message || String(err) || 'Admin template diagnostic send failed';
+    adminTestResult = {
+      attempted: true,
+      success: false,
+      error: errMsg
+    };
+    console.error('[QBENCH Diagnostic] Admin Template Test: FAILED', err);
+  }
+
+  let customerTestResult: EmailJSDiagnosticTestResult['customerTemplateTest'] | undefined;
+
+  if (includeCustomerTemplate) {
+    if (!customerTemplateId) {
+      customerTestResult = {
+        attempted: false,
+        success: false,
+        error: 'Customer Template ID is not configured'
+      };
+    } else {
+      const dummyCustomerParams = {
+        from_name: 'QBENCH Creative Agency',
+        subject: `[DIAGNOSTIC TEST] QBENCH Customer Template Verification (${formattedDate})`,
+        name: 'QBENCH Administrator (Diagnostic)',
+        customer_name: 'QBENCH Administrator (Diagnostic)',
+        to_name: 'QBENCH Administrator',
+        email: recipientEmail,
+        to_email: recipientEmail,
+        user_email: recipientEmail,
+        recipient_email: recipientEmail,
+        customer_email: recipientEmail,
+        phone: '+91 00000 00000',
+        company: 'QBENCH System Diagnostics',
+        service: 'EmailJS Reachability & Template Verification',
+        package: 'Diagnostic Probe',
+        package_id: 'diagnostic_test',
+        budget: 'N/A (Diagnostic Test)',
+        price: 'N/A',
+        timeline: 'Immediate',
+        category: 'System Diagnostics',
+        message: `This is an automated diagnostic test email triggered at ${formattedDate} to verify that Customer Template ID (${customerTemplateId}) is properly configured and reachable via Service ID (${EMAILJS_SERVICE_ID}).`,
+        project_description: `Automated diagnostic test verifying Customer Template (${customerTemplateId}).`,
+        customer_message: 'Diagnostic verification test.',
+        project_message: 'Diagnostic verification test.',
+        confirmation_message:
+          'Diagnostic verification: Customer confirmation template is reachable and accepted by EmailJS.',
+        date: formattedDate,
+        submission_date: formattedDate,
+        reply_to: recipientEmail
+      };
+
+      try {
+        const res = await sendEmailJsWithFallback({
+          type: 'customer',
+          serviceId: EMAILJS_SERVICE_ID,
+          templateId: customerTemplateId,
+          publicKey: EMAILJS_PUBLIC_KEY,
+          templateParams: dummyCustomerParams
+        });
+
+        customerTestResult = {
+          attempted: true,
+          success: res.status === 200,
+          status: res.status,
+          text: res.text,
+          via: res.via
+        };
+        console.log('[QBENCH Diagnostic] Customer Template Test: SUCCESS', res);
+      } catch (err: any) {
+        const errMsg = err?.message || String(err) || 'Customer template diagnostic send failed';
+        customerTestResult = {
+          attempted: true,
+          success: false,
+          error: errMsg
+        };
+        console.error('[QBENCH Diagnostic] Customer Template Test: FAILED', err);
+      }
+    }
+  }
+
+  const overallSuccess =
+    adminTestResult.success &&
+    (!includeCustomerTemplate || Boolean(customerTestResult?.success));
+
+  const summaryMessage = overallSuccess
+    ? `EmailJS diagnostic test succeeded! Dummy verification email(s) sent to ${recipientEmail} via Service ID (${EMAILJS_SERVICE_ID}).`
+    : `EmailJS diagnostic test encountered an issue. Admin template (${EMAILJS_ADMIN_TEMPLATE_ID}): ${
+        adminTestResult.success ? 'OK' : adminTestResult.error || 'FAILED'
+      }${
+        includeCustomerTemplate && customerTestResult
+          ? ` | Customer template (${customerTemplateId || 'missing'}): ${
+              customerTestResult.success ? 'OK' : customerTestResult.error || 'FAILED'
+            }`
+          : ''
+      }`;
+
+  return {
+    success: overallSuccess,
+    timestamp,
+    recipientEmail,
+    config: configSummary,
+    adminTemplateTest: adminTestResult,
+    customerTemplateTest: customerTestResult,
+    message: summaryMessage
+  };
+}
+

@@ -186,12 +186,15 @@ app.post('/api/emailjs-send', async (req, res) => {
     'https://ais-dev-somwyso2xv5jhu4pxvfzyv-572791785868.asia-east1.run.app';
 
   try {
+    const safeTemplateParams =
+      templateParams && typeof templateParams === 'object' ? { ...templateParams } : {};
+
     const payload: Record<string, any> = {
       lib_version: '4.4.1',
       user_id: resolvedPublicKey,
       service_id: resolvedServiceId,
       template_id: resolvedTemplateId,
-      template_params: templateParams || {}
+      template_params: safeTemplateParams
     };
 
     const privateKey = clean(process.env.EMAILJS_PRIVATE_KEY);
@@ -211,17 +214,25 @@ app.post('/api/emailjs-send', async (req, res) => {
     });
 
     const text = await resp.text().catch(() => '');
-    if (resp.ok) {
-      return res.status(200).json({ success: true, status: resp.status, response: text });
+    if (resp.status === 200) {
+      return res.status(200).json({
+        success: true,
+        status: resp.status,
+        text: text || 'OK',
+        response: text || 'OK',
+        templateId: resolvedTemplateId
+      });
     }
-    return res.status(resp.status).json({
+    return res.status(resp.status || 502).json({
       success: false,
       status: resp.status,
+      text,
       error: text || `EmailJS returned HTTP ${resp.status}`
     });
   } catch (err: any) {
     return res.status(500).json({
       success: false,
+      status: 500,
       error: err?.message || 'Server EmailJS relay failed.'
     });
   }
@@ -1542,7 +1553,10 @@ app.get('/api/admin-overview', (req, res) => {
       process.env.VITE_EMAILJS_TEMPLATE_ID
   );
   const emailJsAutoReplyTemplate = clean(
-    process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID || process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
+    process.env.EMAILJS_CUSTOMER_TEMPLATE_ID ||
+      process.env.VITE_EMAILJS_CUSTOMER_TEMPLATE_ID ||
+      process.env.EMAILJS_AUTO_REPLY_TEMPLATE_ID ||
+      process.env.VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID
   );
   const sheetsConfig = getSheetsWebhookConfig();
   const waConfig = getWhatsAppConfig();
@@ -1556,6 +1570,7 @@ app.get('/api/admin-overview', (req, res) => {
         configured: Boolean(emailJsPublicKey && emailJsServiceId && emailJsAdminTemplate && emailJsAutoReplyTemplate),
         serviceId: emailJsServiceId || null,
         adminTemplateId: emailJsAdminTemplate || null,
+        customerTemplateId: emailJsAutoReplyTemplate || null,
         autoReplyTemplateId: emailJsAutoReplyTemplate || null
       },
       googleSheets: {

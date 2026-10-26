@@ -8,6 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_EMAILJS_PUBLIC_KEY?: string;
   readonly VITE_EMAILJS_SERVICE_ID?: string;
   readonly VITE_EMAILJS_ADMIN_TEMPLATE_ID?: string;
+  readonly VITE_EMAILJS_CUSTOMER_TEMPLATE_ID?: string;
   readonly VITE_EMAILJS_AUTO_REPLY_TEMPLATE_ID?: string;
   readonly VITE_GOOGLE_SHEETS_WEBHOOK_URL?: string;
 }
