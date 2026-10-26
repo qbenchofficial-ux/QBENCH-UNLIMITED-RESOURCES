@@ -1,0 +1,35 @@
+Item ID,Item Name,Description,Rate,Account,Account Code,Tax Name,Tax Percentage,Tax Type,Product Type,Product Name,Source,Reference ID,Last Sync Time,Status,Usage unit,Unit Name,Purchase Rate,Purchase Account,Purchase Account Code,Purchase Description,Vendor,Item Type,Sellable,Purchasable,Track Inventory
+3835950000000037178,Montage Video,Cinematic montage video with transitions and music sync,INR 3000.00,Sales,,,,,service,Montage Video,2,,,Active,Project,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037186,Animation Video,Creative motion graphics and animation production service,INR 3000.00,Sales,,,,,service,Animation Video,2,,,Active,Project,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037194,Cinematic Event Highlights,Premium cinematic event coverage and highlight editing service,INR 10000.00,Sales,,,,,service,Cinematic Event Highlights,2,,,Active,Project,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037202,Highlight Reel,Short-form cinematic reel for social media and promotions.,INR 5000.00,Sales,,,,,service,Highlight Reel,2,,,Active,Project,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037210,Promotional Reel Production,Short-form cinematic promotional reel for events and social media campaigns,INR 2000.00,Sales,,,,,service,Promotional Reel Production,2,,,Active,Project,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037218,Award Presentation Video,Professional award ceremony presentation video editing,INR 3000.00,Sales,,,,,service,Award Presentation Video,2,,,Active,Project,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037227,Social Media Campaign Package,"Includes social creatives, reels, and campaign management assets",INR 10000.00,Sales,,,,,service,Social Media Campaign Package,2,,,Active,Package,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037236,Digital Poster Design,Creative digital poster design for promotions and campaigns,INR 500.00,Sales,,,,,service,Digital Poster Design,2,,,Active,Each,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037244,Social Media Poster,Modern social media creative poster design service,INR 500.00,Sales,,,,,service,Social Media Poster,2,,,Active,Each,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037252,Award Screen Images,,INR 500.00,Sales,,,,,service,Award Screen Images,2,,,Active,,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037260,Award Screen Design,Premium LED award screen visual design for events,INR 2000.00,Sales,,,,,service,Award Screen Design,2,,,Active,Each,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037268,Lucky Draw Animation,Animated lucky draw visual video for award events and stage presentations,INR 2000.00,Sales,,,,,service,Lucky Draw Animation,2,,,Active,Project,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037276,Logo Design,Professional custom logo design with premium branding style,INR 5000.00,Sales,,,,,service,Logo Design,2,,,Active,Each,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037284,Jewellery Promotion Campaign,Luxury jewellery marketing campaign for premium brand promotions,INR 18000.00,Sales,,,,,service,Jewellery Promotion Campaign,2,,,Active,Package,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037292,Award Night Package,"Includes:
+• Award Screen Designs
+• Winner Animation
+• Lucky Draw Video
+• LED Screen Motion Graphics
+• Stage Visual Package
+• Event Presentation Videos",INR 40000.00,Sales,,,,,service,Award Night Package,2,,,Active,Package,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037300,Event Media Package,"Includes:
+• Cinematic Highlights
+• Reels
+• Posters
+• Event Montage",INR 25000.00,Sales,,,,,service,Event Media Package,2,,,Active,Package,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037308,Premium Branding Package,"Includes:
+• Logo Design
+• Brand Identity
+• Promo Video
+• Social Media Kit",INR 35000.00,Sales,,,,,service,Premium Branding Package,2,,,Active,Package,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037316,30-Second Award Reel Production,,INR 1200.00,Sales,,,,,goods,30-Second Award Reel Production,2,,,Active,Project,,INR 0.00,,,,,Sales,true,false,false
+3835950000000037324,Lucky Drow Video,,INR 800.00,Sales,,,,,goods,Lucky Drow Video,2,,,Active,Project,,INR 0.00,,,,,Sales,true,false,false
+3835950000000046138,AWARD SCREEN DESIGN,,INR 250.00,Sales,,,,,goods,AWARD SCREEN DESIGN,2,,,Active,Each,,INR 0.00,,,,,Sales,true,false,false

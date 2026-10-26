@@ -21,6 +21,7 @@ import CategoriesManager from '../admin/CategoriesManager';
 import MediaLibrary from '../admin/MediaLibrary';
 import InquiriesManager from '../admin/InquiriesManager';
 import Settings from '../admin/Settings';
+import ZohoInventoryManager from '../admin/ZohoInventoryManager';
 import type { Project, ProjectFormData } from '../types/project';
 import type { NavSection } from '../types';
 import { Loader2 } from 'lucide-react';
@@ -55,6 +56,9 @@ function parseAdminPathname(pathname: string): ParsedAdminRoute {
   }
   if (clean === '/admin/services') {
     return { section: 'services' };
+  }
+  if (clean === '/admin/zoho') {
+    return { section: 'zoho' };
   }
   if (clean === '/admin/content') {
     return { section: 'site-content' };
@@ -423,6 +427,10 @@ export default function AdminControlView({
           onRefresh={refresh}
           onNotify={notify}
         />
+      )}
+
+      {parsedRoute.section === 'zoho' && (
+        <ZohoInventoryManager onNotify={notify} />
       )}
 
       {parsedRoute.section === 'site-content' && (

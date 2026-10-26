@@ -26,8 +26,10 @@ import {
   Sliders,
   X,
   Briefcase,
-  MessageSquare
+  MessageSquare,
+  FileSpreadsheet,
 } from 'lucide-react';
+import ZohoCatalogSection from './ZohoCatalogSection';
 
 interface FeatureRow {
   name: string;
@@ -223,6 +225,7 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
   const activePackagesList = cmsPackages && cmsPackages.length > 0 ? cmsPackages : SERVICES_DATA;
 
   // active service shown in pricing sheets
+  const [packagesTabMode, setPackagesTabMode] = useState<'zoho' | 'capabilities'>('zoho');
   const [selectedServiceId, setSelectedServiceId] = useState<string>('branding');
   const [showMatrix, setShowMatrix] = useState<boolean>(false);
 
@@ -457,16 +460,57 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
         </p>
       </div>
 
-      {/* 9-Services Switchboard layout */}
-      <div className="space-y-8 mb-16">
-        <div className="flex flex-col space-y-2 text-center md:text-left">
-          <span className="font-tech text-[10px] tracking-widest text-[#00685b] font-black uppercase">
-            // PROJECT CATEGORIES
+      {/* View Switcher: Zoho Books Verified Rate Card vs 9 Capabilities Blueprint */}
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-12">
+        <button
+          type="button"
+          onClick={() => setPackagesTabMode('zoho')}
+          className={`flex items-center gap-2.5 px-6 py-3.5 rounded-2xl font-display text-xs sm:text-sm font-bold tracking-tight transition-all cursor-pointer ${
+            packagesTabMode === 'zoho'
+              ? 'bg-[#00685b] text-white shadow-lg ring-2 ring-[#00685b]/30 scale-[1.02]'
+              : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+          }`}
+        >
+          <FileSpreadsheet className="h-4 w-4" />
+          <span>Zoho Books Verified Catalog & Estimator</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-black tracking-wider ${
+            packagesTabMode === 'zoho' ? 'bg-white/20 text-white' : 'bg-[#e6f4f1] text-[#00685b]'
+          }`}>
+            20 Items • Live ERP
           </span>
-          <h2 className="font-display text-lg font-bold text-brand-text">
-            Explore pricing and inclusions across our {activePackagesList.length} core capabilities:
-          </h2>
-        </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setPackagesTabMode('capabilities')}
+          className={`flex items-center gap-2.5 px-6 py-3.5 rounded-2xl font-display text-xs sm:text-sm font-bold tracking-tight transition-all cursor-pointer ${
+            packagesTabMode === 'capabilities'
+              ? 'bg-[#00685b] text-white shadow-lg ring-2 ring-[#00685b]/30 scale-[1.02]'
+              : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+          }`}
+        >
+          <Grid className="h-4 w-4" />
+          <span>Capabilities & Tier Matrix</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-black tracking-wider ${
+            packagesTabMode === 'capabilities' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+          }`}>
+            9 Capabilities
+          </span>
+        </button>
+      </div>
+
+      {packagesTabMode === 'capabilities' ? (
+        <>
+          {/* 9-Services Switchboard layout */}
+          <div className="space-y-8 mb-16">
+            <div className="flex flex-col space-y-2 text-center md:text-left">
+              <span className="font-tech text-[10px] tracking-widest text-[#00685b] font-black uppercase">
+                // PROJECT CATEGORIES
+              </span>
+              <h2 className="font-display text-lg font-bold text-brand-text">
+                Explore pricing and inclusions across our {activePackagesList.length} core capabilities:
+              </h2>
+            </div>
 
         {/* Categories Tab selector bar */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2 bg-brand-surface-low border border-brand-outline/20 p-2 rounded-2xl">
@@ -1627,6 +1671,10 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
 
         </div>
       </section>
+      </>
+      ) : (
+        <ZohoCatalogSection onNavigate={onNavigate} />
+      )}
 
       {/* WHY CHOOSE US GRID SECTION */}
       <section id="why-choose-us-section" className="bg-white border border-brand-outline/35 rounded-3xl p-6 sm:p-10 mb-8 shadow-sm">

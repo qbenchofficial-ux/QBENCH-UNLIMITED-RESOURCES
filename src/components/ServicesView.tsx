@@ -17,7 +17,8 @@ import {
   ChevronRight,
   Laptop,
   CheckCircle2,
-  HelpCircle
+  HelpCircle,
+  FileSpreadsheet
 } from 'lucide-react';
 
 import BrandingService from './BrandingService';
@@ -261,7 +262,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
               {websiteContent?.servicesHero?.description || 'We deliver end-to-end creative, branding, web, and digital marketing solutions that help businesses stand out, connect with the right audience, and achieve measurable growth. From strategy to execution, every solution is designed to elevate your brand and drive lasting results.'}
             </p>
             
-            <div id="services-hero-action">
+            <div id="services-hero-action" className="flex flex-wrap items-center gap-3">
               <button
                 id="services-hero-cta"
                 onClick={handleBuildSomethingGreatClick}
@@ -269,6 +270,17 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
               >
                 <span>{websiteContent?.servicesHero?.ctaText || "Let's Build Something Great"}</span>
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (onNavigate) onNavigate('packages');
+                }}
+                className="rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 px-5 py-3.5 font-display text-sm font-bold transition-all duration-200 shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <FileSpreadsheet className="h-4 w-4 text-[#00685b]" />
+                <span>Zoho Books Rate Card (20 Items)</span>
               </button>
             </div>
           </div>

@@ -19,6 +19,7 @@ import {
   Package,
   Briefcase,
   FileText,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export type AdminCmsSection =
@@ -28,6 +29,7 @@ export type AdminCmsSection =
   | 'edit-project'
   | 'packages'
   | 'services'
+  | 'zoho'
   | 'site-content'
   | 'categories'
   | 'media'
@@ -98,6 +100,12 @@ export default function AdminLayout({
       label: 'Services & Capabilities',
       path: '/admin/services',
       icon: <Briefcase className="h-4 w-4" />,
+    },
+    {
+      id: 'zoho',
+      label: 'Zoho Books Catalog',
+      path: '/admin/zoho',
+      icon: <FileSpreadsheet className="h-4 w-4 text-[#00685b]" />,
     },
     {
       id: 'site-content',

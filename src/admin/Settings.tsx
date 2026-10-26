@@ -19,7 +19,10 @@ import {
   EyeOff,
   ShieldCheck,
   Mail,
+  ExternalLink,
+  FileSpreadsheet,
 } from 'lucide-react';
+import { ZOHO_CONFIG, ZOHO_CATALOG_ITEMS } from '../data/zohoCatalog';
 
 interface SettingsProps {
   settings: SiteSettings;
@@ -605,6 +608,85 @@ export default function Settings({
             </div>
           </div>
         )}
+      </div>
+
+      {/* ZOHO BOOKS ERP INTEGRATION CARD */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-2xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-[#00685b] bg-[#e6f4f1] px-2.5 py-0.5 rounded-full inline-flex items-center gap-1.5">
+                <CheckCircle2 className="h-3 w-3" />
+                ERP CATALOG SYNCED
+              </span>
+              <span className="text-xs text-slate-500 font-mono">Org ID: {ZOHO_CONFIG.orgId}</span>
+            </div>
+            <h3 className="font-display text-xl font-black text-slate-900 mt-1">
+              Zoho Books India Integration
+            </h3>
+            <p className="font-sans text-xs text-slate-500 leading-relaxed max-w-2xl">
+              Connected to QBENCH Zoho Books ERP. Standardized rates, 5 turnkey package bundles, and 15 individual production deliverables are synchronized with their official Zoho Item IDs.
+            </p>
+          </div>
+
+          <a
+            href={ZOHO_CONFIG.variantsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#00685b] hover:bg-[#005147] text-white text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            <span>Open Zoho Product Variants</span>
+          </a>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+            <span className="text-[10px] uppercase font-bold text-slate-400 font-mono">Zoho Organization</span>
+            <div className="text-base font-bold text-slate-900">{ZOHO_CONFIG.orgName}</div>
+            <div className="text-xs text-slate-500 font-mono">{ZOHO_CONFIG.orgId}</div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+            <span className="text-[10px] uppercase font-bold text-slate-400 font-mono">Synchronized Items</span>
+            <div className="text-base font-bold text-slate-900">{ZOHO_CATALOG_ITEMS.length} Items Active</div>
+            <div className="text-xs text-slate-500">17 Services • 3 Production Goods</div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+            <span className="text-[10px] uppercase font-bold text-slate-400 font-mono">Inventory Base URL</span>
+            <div className="text-xs font-mono text-slate-700 truncate" title={ZOHO_CONFIG.itemsListUrl}>
+              books.zoho.in/app/{ZOHO_CONFIG.orgId}
+            </div>
+            <div className="text-xs text-emerald-700 font-semibold flex items-center gap-1">
+              <CheckCircle2 className="h-3 w-3" />
+              Verified & Linked
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-100 text-xs">
+          <span className="text-slate-500 font-medium">Quick Navigation:</span>
+          <a
+            href={ZOHO_CONFIG.variantsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#00685b] hover:underline font-bold inline-flex items-center gap-1"
+          >
+            <span>Product Variants List</span>
+            <ExternalLink className="h-3 w-3" />
+          </a>
+          <span className="text-slate-300">•</span>
+          <a
+            href={ZOHO_CONFIG.itemsListUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[#00685b] hover:underline font-bold inline-flex items-center gap-1"
+          >
+            <span>Items & Inventory</span>
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
       </div>
     </div>
   );

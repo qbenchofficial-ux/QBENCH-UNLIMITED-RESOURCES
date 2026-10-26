@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Settings,
   ArrowRight,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -93,6 +94,15 @@ export default function AdminDashboard({
           >
             <Briefcase className="h-4 w-4 text-[#00685b]" />
             <span>Edit Services ({services.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateRoute('/admin/zoho')}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100/50 px-4 py-2.5 font-display text-xs font-bold text-emerald-800 transition-colors cursor-pointer"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-700" />
+            <span>Zoho Catalog (20)</span>
           </button>
 
           <button
@@ -230,6 +240,32 @@ export default function AdminDashboard({
               </h4>
               <p className="font-sans text-xs text-slate-500 mt-1 leading-relaxed">
                 Customize all {services.length} agency services, starting prices, descriptions, icons, and bulleted deliverables.
+              </p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigateRoute('/admin/zoho')}
+            className="text-left bg-white hover:border-[#00685b] border border-slate-200 rounded-2xl p-5 shadow-2xs transition-all group cursor-pointer space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                <FileSpreadsheet className="h-5 w-5" />
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-[#00685b] group-hover:translate-x-0.5 transition-all" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <h4 className="font-display text-sm font-black text-slate-900">
+                  Zoho Books Inventory
+                </h4>
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#e6f4f1] text-[#00685b]">
+                  20 Items
+                </span>
+              </div>
+              <p className="font-sans text-xs text-slate-500 mt-1 leading-relaxed">
+                View synchronized Zoho Books items (Org: 60072580070), direct deep links, item codes, and fixed INR rates.
               </p>
             </div>
           </button>

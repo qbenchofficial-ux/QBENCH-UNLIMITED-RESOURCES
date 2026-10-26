@@ -746,9 +746,21 @@ ${message}`;
                     
                     <div className="flex items-start justify-between border-b border-[#00685b]/10 pb-3">
                       <div>
-                        <span className="text-[9px] font-mono text-[#00685b] font-black tracking-wider uppercase">Selected Service Package</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-mono text-[#00685b] font-black tracking-wider uppercase">
+                            {selectedPackage.zohoItemId ? 'Zoho Books Verified Scope' : 'Selected Service Package'}
+                          </span>
+                          {selectedPackage.zohoItemId && (
+                            <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-emerald-100 text-emerald-800">
+                              Zoho Org: 60072580070
+                            </span>
+                          )}
+                        </div>
                         <h4 className="font-display text-md font-black text-[#002f29] mt-0.5">{selectedPackage.packageName}</h4>
-                        <p className="font-sans text-[10px] text-brand-text-muted mt-0.5">Package ID: <span className="font-mono font-bold">{selectedPackage.packageId}</span></p>
+                        <p className="font-sans text-[10px] text-brand-text-muted mt-0.5">
+                          {selectedPackage.zohoItemId ? 'Zoho Item ID: ' : 'Package ID: '}
+                          <span className="font-mono font-bold">{selectedPackage.zohoItemId || selectedPackage.packageId}</span>
+                        </p>
                       </div>
                       <button
                         type="button"
