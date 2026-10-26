@@ -495,7 +495,7 @@ export const DEFAULT_SERVICES_DATA: CmsServiceItem[] = [
     emoji: '📱',
     iconName: 'MessageSquare',
     desc: 'Creative social media designs that strengthen your brand across every platform.',
-    startingPrice: '₹5,000',
+    startingPrice: '₹500',
     deliverables: [
       'Custom Feed & Grid Posts',
       'Engaging Stories & Carousels',
@@ -510,7 +510,7 @@ export const DEFAULT_SERVICES_DATA: CmsServiceItem[] = [
     emoji: '🎬',
     iconName: 'Video',
     desc: 'Professional editing for promotional videos, product showcases, reels, and brand stories.',
-    startingPrice: '₹5,000',
+    startingPrice: '₹1,200',
     deliverables: [
       'Reels & Short-Form Cuts',
       'Promotional & Product Videos',
@@ -570,7 +570,7 @@ export const DEFAULT_SERVICES_DATA: CmsServiceItem[] = [
     emoji: '✨',
     iconName: 'Sparkles',
     desc: 'Eye-catching animations and motion visuals that bring ideas to life.',
-    startingPrice: '₹12,000',
+    startingPrice: '₹800',
     deliverables: [
       '2D & 3D Brand Animations',
       'Logo Reveals & Title Sequences',

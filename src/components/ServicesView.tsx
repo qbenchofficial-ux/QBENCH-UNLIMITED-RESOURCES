@@ -18,7 +18,8 @@ import {
   Laptop,
   CheckCircle2,
   HelpCircle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ExternalLink,
 } from 'lucide-react';
 
 import BrandingService from './BrandingService';
@@ -30,6 +31,8 @@ import WebDevService from './WebDevService';
 import MotionService from './MotionService';
 import GrowthService from './GrowthService';
 import BusinessSupportService from './BusinessSupportService';
+import ZohoServicesCatalog from './ZohoServicesCatalog';
+import { ZOHO_CATALOG_ITEMS, ZohoCatalogItem, ZOHO_CONFIG } from '../data/zohoCatalog';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -113,7 +116,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: Layers,
         title: 'Branding & Identity',
         desc: 'Logos, brand identity systems, visual guidelines, and brand assets that create a lasting impression.',
-        startingPrice: '₹4,999',
+        startingPrice: '₹5,000',
         deliverables: [],
       },
       {
@@ -121,7 +124,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: MessageSquare,
         title: 'Social Media Design',
         desc: 'Creative social media designs that strengthen your brand across every platform.',
-        startingPrice: '₹6,999/mo',
+        startingPrice: '₹500',
         deliverables: [],
       },
       {
@@ -129,7 +132,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: Video,
         title: 'Video Editing',
         desc: 'Professional editing for promotional videos, product showcases, reels, and brand stories.',
-        startingPrice: '₹1,500',
+        startingPrice: '₹1,200',
         deliverables: [],
       },
       {
@@ -137,7 +140,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: Target,
         title: 'Digital Marketing',
         desc: 'Creative campaigns and digital solutions that help brands build a stronger online presence.',
-        startingPrice: '₹9,999/mo',
+        startingPrice: '₹5,000',
         deliverables: [],
       },
       {
@@ -145,7 +148,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: Layers,
         title: 'UI/UX Design',
         desc: 'User-centered interfaces designed for intuitive, engaging, and seamless digital experiences.',
-        startingPrice: '₹7,999',
+        startingPrice: '₹15,000',
         deliverables: [],
       },
       {
@@ -153,7 +156,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: Code,
         title: 'Website Development',
         desc: 'Modern, responsive websites designed for performance, usability, and great user experiences.',
-        startingPrice: '₹9,999',
+        startingPrice: '₹25,000',
         deliverables: [],
       },
       {
@@ -161,7 +164,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: Sparkles,
         title: 'Motion Graphics',
         desc: 'Eye-catching animations and motion visuals that bring ideas to life.',
-        startingPrice: '₹2,500',
+        startingPrice: '₹800',
         deliverables: [],
       },
       {
@@ -236,6 +239,58 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
   const handleBuildSomethingGreatClick = () => {
     if (onNavigate) {
       onNavigate('packages');
+    }
+  };
+
+  const getZohoItemsForTab = (tab: ServiceTab): ZohoCatalogItem[] => {
+    switch (tab) {
+      case 'branding':
+        return ZOHO_CATALOG_ITEMS.filter((i) => i.itemId === '3835950000000037276' || i.itemId === '3835950000000037308');
+      case 'social-media':
+        return ZOHO_CATALOG_ITEMS.filter((i) =>
+          ['3835950000000037244', '3835950000000037236', '3835950000000037227', '3835950000000037284'].includes(i.itemId)
+        );
+      case 'video-editing':
+        return ZOHO_CATALOG_ITEMS.filter((i) =>
+          ['3835950000000037194', '3835950000000037202', '3835950000000037178', '3835950000000037210', '3835950000000037316', '3835950000000037300'].includes(i.itemId)
+        );
+      case 'motion':
+        return ZOHO_CATALOG_ITEMS.filter((i) =>
+          ['3835950000000037186', '3835950000000037218', '3835950000000037268', '3835950000000037324', '3835950000000037292', '3835950000000037260', '3835950000000037252', '3835950000000046138'].includes(i.itemId)
+        );
+      default:
+        return [];
+    }
+  };
+
+  const handleBookZohoItem = (item: ZohoCatalogItem) => {
+    try {
+      const packagePayload = {
+        serviceId: 'zoho-' + item.category,
+        serviceName: item.name,
+        tier: 'zoho-catalog-item',
+        tierName: `Zoho Verified [${item.unit}]`,
+        price: item.rate,
+        priceFormatted: item.rateFormatted,
+        duration: item.unit === 'Package' ? 'Turnkey Sprint' : 'Standard Turnaround',
+        packageCategory: item.categoryLabel,
+        zohoItemId: item.itemId,
+        zohoRate: item.rate,
+        addonsOrOptions: [],
+        features: item.deliverables || [item.description]
+      };
+      localStorage.setItem('qbench_selected_package', JSON.stringify(packagePayload));
+      localStorage.setItem('qbench_prefilled_budget', item.rateFormatted);
+      localStorage.setItem(
+        'qbench_prefilled_message',
+        `Hello QBENCH, I would like to book the "${item.name}" service (${item.rateFormatted} / ${item.unit}, Zoho Ref #${item.itemId}). Please share scope confirmation and schedule.`
+      );
+    } catch (e) {
+      console.error('Error saving selected Zoho item', e);
+    }
+
+    if (onNavigate) {
+      onNavigate('contact');
     }
   };
 
@@ -461,6 +516,11 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         </div>
       </section>
 
+      {/* 2.5 ALL 20 ZOHO BOOKS VERIFIED SERVICES & DELIVERABLES */}
+      <section id="zoho-services-showcase" className="mx-auto max-w-7xl px-6 py-16 lg:px-12 scroll-mt-20">
+        <ZohoServicesCatalog onNavigate={onNavigate} />
+      </section>
+
       {/* 3. DEEP DIVE INTERACTIVE EXPLORER WORKSPACE */}
       <section id="deep-dive-explorer" className="mx-auto max-w-7xl px-6 py-20 lg:px-12 scroll-mt-24">
         
@@ -520,8 +580,107 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
                 transition={{ duration: 0.25, ease: 'easeOut' }}
-                className="w-full"
+                className="w-full space-y-8"
               >
+                {/* Linked Zoho Books items for this specific service */}
+                {(() => {
+                  const activeZohoItems = getZohoItemsForTab(activeTab);
+                  if (activeZohoItems.length === 0) return null;
+
+                  return (
+                    <div className="p-5 sm:p-6 rounded-2xl bg-emerald-50/70 border border-emerald-200/90 space-y-4 shadow-2xs">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200/70 pb-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="p-2 rounded-xl bg-[#00685b] text-white shrink-0">
+                            <FileSpreadsheet className="h-4 w-4" />
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-xs sm:text-sm font-bold text-slate-900 font-display">
+                                Zoho Books Standardized Items for this Service
+                              </h4>
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-[#00685b] text-white">
+                                {activeZohoItems.length} Items Synced
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-600 mt-0.5">
+                              Official rates and deliverable units registered in Zoho Books India (Org ID: {ZOHO_CONFIG.orgId})
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-mono text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full font-bold self-start sm:self-auto">
+                          Verified ERP Pricing
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                        {activeZohoItems.map((item) => (
+                          <div
+                            key={item.itemId}
+                            className="p-4 rounded-xl bg-white border border-emerald-100 hover:border-emerald-300 shadow-2xs transition-all flex flex-col justify-between"
+                          >
+                            <div>
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <span className="text-[10px] font-mono uppercase text-[#00685b] font-bold block">
+                                    {item.categoryLabel}
+                                  </span>
+                                  <span className="text-xs sm:text-sm font-bold text-slate-900 font-display">
+                                    {item.name}
+                                  </span>
+                                </div>
+                                <span className="text-sm font-black text-[#00685b] font-display whitespace-nowrap">
+                                  {item.rateFormatted}
+                                  <span className="text-[10px] text-slate-400 font-sans font-normal ml-0.5">/{item.unit}</span>
+                                </span>
+                              </div>
+
+                              <p className="text-xs text-slate-600 mt-1.5 line-clamp-2">
+                                {item.description}
+                              </p>
+
+                              {item.deliverables && item.deliverables.length > 0 && (
+                                <div className="mt-2.5 flex flex-wrap gap-1">
+                                  {item.deliverables.slice(0, 3).map((d, idx) => (
+                                    <span key={idx} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                      • {d}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="text-[10px] font-mono text-slate-400 mt-2">
+                                Zoho Ref #{item.itemId}
+                              </div>
+                            </div>
+
+                            <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleBookZohoItem(item)}
+                                className="text-xs font-bold text-[#00685b] hover:text-[#005147] hover:underline flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>Book This Service</span>
+                                <ArrowRight className="h-3.5 w-3.5" />
+                              </button>
+
+                              <a
+                                href={ZOHO_CONFIG.getItemUrl(item.itemId)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[11px] text-slate-400 hover:text-slate-700 flex items-center gap-1"
+                              >
+                                <span>Zoho Item</span>
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {activeTab === 'branding' && <BrandingService />}
                 {activeTab === 'social-media' && <SocialMediaService />}
                 {activeTab === 'video-editing' && <VideoService />}
