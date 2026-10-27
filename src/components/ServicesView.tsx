@@ -31,8 +31,8 @@ import WebDevService from './WebDevService';
 import MotionService from './MotionService';
 import GrowthService from './GrowthService';
 import BusinessSupportService from './BusinessSupportService';
-import ZohoServicesCatalog from './ZohoServicesCatalog';
-import { ZOHO_CATALOG_ITEMS, ZohoCatalogItem, ZOHO_CONFIG } from '../data/zohoCatalog';
+import ServicesCatalog from './ServicesCatalog';
+import { ZOHO_CATALOG_ITEMS, ZohoCatalogItem } from '../data/zohoCatalog';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -116,7 +116,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: Layers,
         title: 'Branding & Identity',
         desc: 'Logos, brand identity systems, visual guidelines, and brand assets that create a lasting impression.',
-        startingPrice: '₹5,000',
+        startingPrice: 'Custom Scope',
         deliverables: [],
       },
       {
@@ -124,7 +124,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: MessageSquare,
         title: 'Social Media Design',
         desc: 'Creative social media designs that strengthen your brand across every platform.',
-        startingPrice: '₹500',
+        startingPrice: 'Custom Scope',
         deliverables: [],
       },
       {
@@ -132,7 +132,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: Video,
         title: 'Video Editing',
         desc: 'Professional editing for promotional videos, product showcases, reels, and brand stories.',
-        startingPrice: '₹1,200',
+        startingPrice: 'Custom Scope',
         deliverables: [],
       },
       {
@@ -140,7 +140,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: Target,
         title: 'Digital Marketing',
         desc: 'Creative campaigns and digital solutions that help brands build a stronger online presence.',
-        startingPrice: '₹5,000',
+        startingPrice: 'Custom Scope',
         deliverables: [],
       },
       {
@@ -148,7 +148,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: Layers,
         title: 'UI/UX Design',
         desc: 'User-centered interfaces designed for intuitive, engaging, and seamless digital experiences.',
-        startingPrice: '₹15,000',
+        startingPrice: 'Custom Scope',
         deliverables: [],
       },
       {
@@ -156,7 +156,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: Code,
         title: 'Website Development',
         desc: 'Modern, responsive websites designed for performance, usability, and great user experiences.',
-        startingPrice: '₹25,000',
+        startingPrice: 'Custom Scope',
         deliverables: [],
       },
       {
@@ -164,7 +164,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: Sparkles,
         title: 'Motion Graphics',
         desc: 'Eye-catching animations and motion visuals that bring ideas to life.',
-        startingPrice: '₹800',
+        startingPrice: 'Custom Scope',
         deliverables: [],
       },
       {
@@ -172,7 +172,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: TrendingUp,
         title: 'Creative Strategy',
         desc: 'Creative direction and digital solutions that help brands communicate with clarity and confidence.',
-        startingPrice: '₹14,999/mo',
+        startingPrice: 'Custom Scope',
         deliverables: [],
       },
       {
@@ -180,7 +180,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         icon: Briefcase,
         title: 'Creative Support',
         desc: 'Ongoing design support for presentations, marketing materials, print media, and creative content.',
-        startingPrice: '₹4,999/mo',
+        startingPrice: 'Custom Scope',
         deliverables: [],
       },
     ];
@@ -266,27 +266,23 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
   const handleBookZohoItem = (item: ZohoCatalogItem) => {
     try {
       const packagePayload = {
-        serviceId: 'zoho-' + item.category,
+        serviceId: 'qbench-' + item.category,
         serviceName: item.name,
-        tier: 'zoho-catalog-item',
-        tierName: `Zoho Verified [${item.unit}]`,
-        price: item.rate,
-        priceFormatted: item.rateFormatted,
+        tier: item.unit === 'Package' ? 'Turnkey Suite' : 'Standard Deliverable',
+        tierName: item.unit === 'Package' ? 'Full Turnkey Package' : 'Standard Deliverable',
         duration: item.unit === 'Package' ? 'Turnkey Sprint' : 'Standard Turnaround',
         packageCategory: item.categoryLabel,
-        zohoItemId: item.itemId,
-        zohoRate: item.rate,
         addonsOrOptions: [],
         features: item.deliverables || [item.description]
       };
       localStorage.setItem('qbench_selected_package', JSON.stringify(packagePayload));
-      localStorage.setItem('qbench_prefilled_budget', item.rateFormatted);
+      localStorage.removeItem('qbench_prefilled_budget');
       localStorage.setItem(
         'qbench_prefilled_message',
-        `Hello QBENCH, I would like to book the "${item.name}" service (${item.rateFormatted} / ${item.unit}, Zoho Ref #${item.itemId}). Please share scope confirmation and schedule.`
+        `Hello QBENCH, I would like to book the "${item.name}" service (${item.categoryLabel}, ${item.unit} Scope). Please share scope confirmation and schedule.`
       );
     } catch (e) {
-      console.error('Error saving selected Zoho item', e);
+      console.error('Error saving selected service', e);
     }
 
     if (onNavigate) {
@@ -330,12 +326,17 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
               <button
                 type="button"
                 onClick={() => {
-                  if (onNavigate) onNavigate('packages');
+                  const catalogElem = document.getElementById('full-services-catalog');
+                  if (catalogElem) {
+                    catalogElem.scrollIntoView({ behavior: 'smooth' });
+                  } else if (onNavigate) {
+                    onNavigate('packages');
+                  }
                 }}
                 className="rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 px-5 py-3.5 font-display text-sm font-bold transition-all duration-200 shadow-xs flex items-center justify-center gap-2 cursor-pointer"
               >
-                <FileSpreadsheet className="h-4 w-4 text-[#00685b]" />
-                <span>Zoho Books Rate Card (20 Items)</span>
+                <Layers className="h-4 w-4 text-[#00685b]" />
+                <span>Explore All 20 Services</span>
               </button>
             </div>
           </div>
@@ -516,9 +517,9 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         </div>
       </section>
 
-      {/* 2.5 ALL 20 ZOHO BOOKS VERIFIED SERVICES & DELIVERABLES */}
-      <section id="zoho-services-showcase" className="mx-auto max-w-7xl px-6 py-16 lg:px-12 scroll-mt-20">
-        <ZohoServicesCatalog onNavigate={onNavigate} />
+      {/* 2.5 ALL 20 SPECIALIZED QBENCH SERVICES & DELIVERABLES */}
+      <section id="full-services-catalog" className="mx-auto max-w-7xl px-6 py-16 lg:px-12 scroll-mt-20">
+        <ServicesCatalog onNavigate={onNavigate} />
       </section>
 
       {/* 3. DEEP DIVE INTERACTIVE EXPLORER WORKSPACE */}
@@ -582,39 +583,39 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
                 transition={{ duration: 0.25, ease: 'easeOut' }}
                 className="w-full space-y-8"
               >
-                {/* Linked Zoho Books items for this specific service */}
+                {/* Standardized deliverables for this specific service */}
                 {(() => {
-                  const activeZohoItems = getZohoItemsForTab(activeTab);
-                  if (activeZohoItems.length === 0) return null;
+                  const activeItems = getZohoItemsForTab(activeTab);
+                  if (activeItems.length === 0) return null;
 
                   return (
                     <div className="p-5 sm:p-6 rounded-2xl bg-emerald-50/70 border border-emerald-200/90 space-y-4 shadow-2xs">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200/70 pb-3">
                         <div className="flex items-center gap-2.5">
                           <span className="p-2 rounded-xl bg-[#00685b] text-white shrink-0">
-                            <FileSpreadsheet className="h-4 w-4" />
+                            <Layers className="h-4 w-4" />
                           </span>
                           <div>
                             <div className="flex items-center gap-2">
                               <h4 className="text-xs sm:text-sm font-bold text-slate-900 font-display">
-                                Zoho Books Standardized Items for this Service
+                                Standard Deliverables & Inclusions for this Service
                               </h4>
                               <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-[#00685b] text-white">
-                                {activeZohoItems.length} Items Synced
+                                {activeItems.length} Deliverable Formats
                               </span>
                             </div>
                             <p className="text-[11px] text-slate-600 mt-0.5">
-                              Official rates and deliverable units registered in Zoho Books India (Org ID: {ZOHO_CONFIG.orgId})
+                              Standardized creative assets, motion deliverables, and turnkeys prepared by QBENCH specialists.
                             </p>
                           </div>
                         </div>
                         <span className="text-[10px] font-mono text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full font-bold self-start sm:self-auto">
-                          Verified ERP Pricing
+                          Standard Scope
                         </span>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
-                        {activeZohoItems.map((item) => (
+                        {activeItems.map((item) => (
                           <div
                             key={item.itemId}
                             className="p-4 rounded-xl bg-white border border-emerald-100 hover:border-emerald-300 shadow-2xs transition-all flex flex-col justify-between"
@@ -629,9 +630,8 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
                                     {item.name}
                                   </span>
                                 </div>
-                                <span className="text-sm font-black text-[#00685b] font-display whitespace-nowrap">
-                                  {item.rateFormatted}
-                                  <span className="text-[10px] text-slate-400 font-sans font-normal ml-0.5">/{item.unit}</span>
+                                <span className="text-xs font-mono font-bold text-[#00685b] bg-[#e6f4f1] px-2 py-0.5 rounded-full">
+                                  {item.unit === 'Package' ? 'Turnkey Bundle' : `${item.unit} Scope`}
                                 </span>
                               </div>
 
@@ -648,10 +648,6 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
                                   ))}
                                 </div>
                               )}
-
-                              <div className="text-[10px] font-mono text-slate-400 mt-2">
-                                Zoho Ref #{item.itemId}
-                              </div>
                             </div>
 
                             <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
@@ -660,19 +656,20 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
                                 onClick={() => handleBookZohoItem(item)}
                                 className="text-xs font-bold text-[#00685b] hover:text-[#005147] hover:underline flex items-center gap-1 cursor-pointer"
                               >
-                                <span>Book This Service</span>
+                                <span>Inquire / Book Deliverable</span>
                                 <ArrowRight className="h-3.5 w-3.5" />
                               </button>
 
-                              <a
-                                href={ZOHO_CONFIG.getItemUrl(item.itemId)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[11px] text-slate-400 hover:text-slate-700 flex items-center gap-1"
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const text = `Hi QBENCH, I am interested in inquiring about the "${item.name}" deliverable. Could you share details and schedule?`;
+                                  window.open(`https://wa.me/917356525932?text=${encodeURIComponent(text)}`, '_blank');
+                                }}
+                                className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
                               >
-                                <span>Zoho Item</span>
-                                <ExternalLink className="h-3 w-3" />
-                              </a>
+                                <span>WhatsApp</span>
+                              </button>
                             </div>
                           </div>
                         ))}

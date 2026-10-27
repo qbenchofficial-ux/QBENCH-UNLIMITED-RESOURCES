@@ -1,15 +1,17 @@
-import { NavSection } from '../types';
-import { Menu, X, ArrowRight, ShieldCheck } from 'lucide-react';
+import { NavSection, ServiceTab } from '../types';
+import { Menu, X, ArrowRight, ShieldCheck, Search } from 'lucide-react';
 import { useState } from 'react';
 import QBenchLogo from './QBenchLogo';
 import { PWAInstallButton } from './PWAInstallPrompt';
+import HeaderSearch from './HeaderSearch';
 
 interface HeaderProps {
   activeSection: NavSection;
-  onNavigate: (section: NavSection) => void;
+  onNavigate: (section: NavSection, serviceTab?: ServiceTab) => void;
+  onOpenProjectDetail?: (slug: string) => void;
 }
 
-export default function Header({ activeSection, onNavigate }: HeaderProps) {
+export default function Header({ activeSection, onNavigate, onOpenProjectDetail }: HeaderProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   const menuItems: { id: NavSection; label: string }[] = [
@@ -34,7 +36,7 @@ export default function Header({ activeSection, onNavigate }: HeaderProps) {
         </div>
 
         {/* Desktop Navigation */}
-        <nav id="desktop-nav" className="hidden md:flex items-center space-x-8">
+        <nav id="desktop-nav" className="hidden lg:flex items-center space-x-6 xl:space-x-8">
           {menuItems.map((item) => {
             const isActive = activeSection === item.id;
             return (
@@ -57,6 +59,14 @@ export default function Header({ activeSection, onNavigate }: HeaderProps) {
             );
           })}
         </nav>
+
+        {/* Search Bar for Portfolio Projects & Services */}
+        <div id="desktop-search-container" className="hidden md:flex items-center">
+          <HeaderSearch 
+            onNavigate={onNavigate} 
+            onOpenProjectDetail={onOpenProjectDetail} 
+          />
+        </div>
 
         {/* CTA Button */}
         <div id="desktop-cta-container" className="hidden md:flex items-center gap-2.5">
@@ -85,10 +95,20 @@ export default function Header({ activeSection, onNavigate }: HeaderProps) {
           </button>
         </div>
 
-        {/* Mobile menu button */}
-        <div id="mobile-menu-trigger-container" className="flex md:hidden">
+        {/* Mobile controls */}
+        <div id="mobile-menu-trigger-container" className="flex md:hidden items-center gap-1.5">
+          <button
+            id="mobile-search-toggle-btn"
+            type="button"
+            onClick={() => setIsOpen(true)}
+            className="rounded-lg p-2 text-brand-text-muted hover:text-brand-text hover:bg-brand-surface-low focus:outline-none cursor-pointer"
+            title="Search projects & services"
+          >
+            <Search className="h-5 w-5" />
+          </button>
           <button
             id="mobile-menu-toggle-btn"
+            type="button"
             onClick={() => setIsOpen(!isOpen)}
             className="rounded-lg p-2 text-brand-text hover:bg-brand-surface-low focus:outline-none cursor-pointer"
           >
@@ -101,6 +121,20 @@ export default function Header({ activeSection, onNavigate }: HeaderProps) {
       {isOpen && (
         <div id="mobile-nav-menu" className="md:hidden border-b border-brand-outline/20 bg-brand-background px-6 py-4 animate-fade-in">
           <div className="flex flex-col space-y-4">
+            {/* Mobile Search Bar */}
+            <div id="mobile-search-section" className="pb-3 border-b border-brand-outline/15">
+              <HeaderSearch
+                onNavigate={(section, tab) => {
+                  onNavigate(section, tab);
+                  setIsOpen(false);
+                }}
+                onOpenProjectDetail={(slug) => {
+                  if (onOpenProjectDetail) onOpenProjectDetail(slug);
+                  setIsOpen(false);
+                }}
+                isMobileDrawer
+              />
+            </div>
             {menuItems.map((item) => {
               const isActive = activeSection === item.id;
               return (

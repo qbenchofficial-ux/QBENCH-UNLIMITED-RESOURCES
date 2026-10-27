@@ -26,6 +26,7 @@ import {
   Play,
   Film,
   FileSpreadsheet,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface HomeViewProps {
@@ -542,30 +543,30 @@ export default function HomeView({
             })}
           </div>
 
-          {/* Zoho Books Verified Rate Card Banner */}
+          {/* Complete Service Catalog Banner */}
           <div className="mt-12 bg-gradient-to-r from-slate-900 via-[#072421] to-[#041513] text-white rounded-2xl p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 border border-[#00685b]/30 shadow-md">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] uppercase font-bold bg-[#00685b] text-[#40dfcb] inline-flex items-center gap-1.5">
-                  <FileSpreadsheet className="h-3 w-3" />
-                  ERP RATE CARD SYNCED
+                  <ShieldCheck className="h-3 w-3" />
+                  COMPLETE SERVICE CATALOG
                 </span>
-                <span className="text-[11px] font-mono text-slate-400">Zoho Org ID: 60072580070</span>
+                <span className="text-[11px] font-mono text-slate-400">20 Production Deliverables</span>
               </div>
               <h3 className="font-display text-xl sm:text-2xl font-black text-white">
                 All 20 Standardized Services & Turnkey Packages
               </h3>
               <p className="font-sans text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
-                Looking for fixed rates? Browse our full catalog of 20 verified services starting at ₹250 for digital screens up to ₹40,000 for complete event multimedia suites.
+                Explore our full catalog of 20 verified creative services, turnkey production bundles, and motion visual deliverables tailored for high-growth brands.
               </p>
             </div>
 
             <button
               type="button"
-              onClick={() => onNavigate('services')}
+              onClick={() => onNavigate('packages')}
               className="px-5 py-3 rounded-xl bg-[#00685b] hover:bg-[#005147] text-white text-xs font-bold font-display uppercase tracking-wider transition-all shadow-md shrink-0 cursor-pointer flex items-center justify-center gap-2 group"
             >
-              <span>Explore All 20 Zoho Services</span>
+              <span>Explore Full Service Catalog</span>
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </button>
           </div>

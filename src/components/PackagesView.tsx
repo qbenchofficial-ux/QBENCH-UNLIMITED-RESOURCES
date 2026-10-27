@@ -29,7 +29,7 @@ import {
   MessageSquare,
   FileSpreadsheet,
 } from 'lucide-react';
-import ZohoCatalogSection from './ZohoCatalogSection';
+import ServicesCatalog from './ServicesCatalog';
 
 interface FeatureRow {
   name: string;
@@ -63,7 +63,7 @@ const SERVICES_DATA: ServiceData[] = [
     description: 'Explore logo designs, brand identities, visual systems, and creative concepts crafted to build memorable and impactful brands.',
     iconName: 'Compass',
     prices: { basic: 5000, standard: 12000, premium: 25000 },
-    priceLabels: { basic: '₹5,000', standard: '₹12,000', premium: '₹25,000' },
+    priceLabels: { basic: 'Starter Scope', standard: 'Growth Scope', premium: 'Enterprise Scope' },
     features: [
       { name: 'Logo Design', basic: true, standard: true, premium: true },
       { name: 'Brand Color Palette', basic: true, standard: true, premium: true },
@@ -80,7 +80,7 @@ const SERVICES_DATA: ServiceData[] = [
     description: 'Capture instant digital attention and build consistent brand aesthetic across all social grids.',
     iconName: 'Share2',
     prices: { basic: 5000, standard: 12000, premium: 25000 },
-    priceLabels: { basic: '₹5,000', standard: '₹12,000', premium: '₹25,000' },
+    priceLabels: { basic: 'Starter Scope', standard: 'Growth Scope', premium: 'Enterprise Scope' },
     features: [
       { name: 'Static Post Designs', basic: '8 Posts', standard: '15 Posts', premium: '30 Posts' },
       { name: 'Story Designs', basic: '4 Stories', standard: '10 Stories', premium: '20 Stories' },
@@ -96,7 +96,7 @@ const SERVICES_DATA: ServiceData[] = [
     description: 'Cinematic short films, motion animations, and ad creatives designed for peak retention.',
     iconName: 'Video',
     prices: { basic: 5000, standard: 15000, premium: 35000 },
-    priceLabels: { basic: '₹5,000', standard: '₹15,000', premium: '₹35,000' },
+    priceLabels: { basic: 'Starter Scope', standard: 'Growth Scope', premium: 'Enterprise Scope' },
     features: [
       { name: 'Short Form Videos', basic: '4 Videos', standard: '8 Videos', premium: '15 Videos' },
       { name: 'Motion Graphics', basic: 'Basic', standard: 'Advanced', premium: 'Premium' },
@@ -111,8 +111,8 @@ const SERVICES_DATA: ServiceData[] = [
     name: 'Digital Marketing',
     description: 'Complete cross-channel management, semantic keyword optimization, and metric campaigns.',
     iconName: 'Target',
-    prices: { basic: 5000, standard: 12000, premium: 22000 }, // treat custom as ₹22K in base calculator
-    priceLabels: { basic: '₹5,000', standard: '₹12,000', premium: 'Custom' },
+    prices: { basic: 5000, standard: 12000, premium: 22000 }, // Scope configuration
+    priceLabels: { basic: 'Starter Scope', standard: 'Growth Scope', premium: 'Enterprise Scope' },
     features: [
       { name: 'Social Media Management', basic: true, standard: true, premium: true },
       { name: 'Content Planning', basic: true, standard: true, premium: true },
@@ -129,7 +129,7 @@ const SERVICES_DATA: ServiceData[] = [
     description: 'High-craft interactive screen layouts and functional digital design systems in Figma.',
     iconName: 'Layers',
     prices: { basic: 15000, standard: 35000, premium: 75000 },
-    priceLabels: { basic: '₹15,000', standard: '₹35,000', premium: '₹75,000+' },
+    priceLabels: { basic: 'Starter Scope', standard: 'Growth Scope', premium: 'Enterprise Scope' },
     features: [
       { name: 'Wireframes', basic: true, standard: true, premium: true },
       { name: 'UI Design', basic: '5 Screens', standard: '15 Screens', premium: 'Unlimited' },
@@ -145,7 +145,7 @@ const SERVICES_DATA: ServiceData[] = [
     description: 'Fast, responsive, full-stack website architectures built with production-ready code.',
     iconName: 'Laptop',
     prices: { basic: 25000, standard: 60000, premium: 120000 },
-    priceLabels: { basic: '₹25,000', standard: '₹60,000', premium: '₹1,20,000+' },
+    priceLabels: { basic: 'Starter Scope', standard: 'Growth Scope', premium: 'Enterprise Scope' },
     features: [
       { name: 'Responsive Website', basic: true, standard: true, premium: true },
       { name: 'Pages Included', basic: '5 Pages', standard: '10 Pages', premium: 'Unlimited' },
@@ -162,7 +162,7 @@ const SERVICES_DATA: ServiceData[] = [
     description: 'Liquid animations, cinematic titles, and storyboards tailored for elite digital engagement.',
     iconName: 'Sparkles',
     prices: { basic: 12000, standard: 30000, premium: 75000 },
-    priceLabels: { basic: '₹12,000', standard: '₹30,000', premium: '₹75,000+' },
+    priceLabels: { basic: 'Starter Scope', standard: 'Growth Scope', premium: 'Enterprise Scope' },
     features: [
       { name: 'Animated Graphics', basic: true, standard: true, premium: true },
       { name: 'Explainer Videos', basic: false, standard: true, premium: true },
@@ -178,7 +178,7 @@ const SERVICES_DATA: ServiceData[] = [
     description: 'Aggressive marketing funnels, performance scaling strategy, and conversion growth audit.',
     iconName: 'TrendingUp',
     prices: { basic: 10000, standard: 25000, premium: 60000 },
-    priceLabels: { basic: '₹10,000', standard: '₹25,000', premium: '₹60,000+' },
+    priceLabels: { basic: 'Starter Scope', standard: 'Growth Scope', premium: 'Enterprise Scope' },
     features: [
       { name: 'Growth Audit', basic: true, standard: true, premium: true },
       { name: 'Competitor Analysis', basic: true, standard: true, premium: true },
@@ -195,7 +195,7 @@ const SERVICES_DATA: ServiceData[] = [
     description: 'Outsource premium copywriting, custom presentation decks, print coordination, and content operations to elevate your creative output.',
     iconName: 'Briefcase',
     prices: { basic: 8000, standard: 18000, premium: 35000 },
-    priceLabels: { basic: '₹8,000', standard: '₹18,000', premium: '₹35,000' },
+    priceLabels: { basic: 'Starter Scope', standard: 'Growth Scope', premium: 'Enterprise Scope' },
     features: [
       { name: 'Copywriting & Editing', basic: '5 Pieces', standard: '12 Pieces', premium: 'Unlimited' },
       { name: 'Pitch & Presentation Decks', basic: '1 Deck', standard: '3 Decks', premium: 'Unlimited' },
@@ -224,8 +224,7 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
   const { packages: cmsPackages, businessSupport: cmsBs, websiteContent } = useProjects('public');
   const activePackagesList = cmsPackages && cmsPackages.length > 0 ? cmsPackages : SERVICES_DATA;
 
-  // active service shown in pricing sheets
-  const [packagesTabMode, setPackagesTabMode] = useState<'zoho' | 'capabilities'>('zoho');
+  // active service shown in capability sheets
   const [selectedServiceId, setSelectedServiceId] = useState<string>('branding');
   const [showMatrix, setShowMatrix] = useState<boolean>(false);
 
@@ -323,7 +322,7 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
     const modulesStr = currentEstimate.modules.length > 0 
       ? currentEstimate.modules.join(', ') 
       : 'Custom Workspace Formulation';
-    const textToCopy = `Q BENCH Custom Proposal Specification:\n- Selected Frameworks: ${modulesStr}\n- Estimated Delivery: ${currentEstimate.duration}\n- Projected Value Estimate: ₹${currentEstimate.price.toLocaleString('en-IN')}`;
+    const textToCopy = `Q BENCH Custom Proposal Specification:\n- Selected Capabilities: ${modulesStr}\n- Estimated Delivery: ${currentEstimate.duration}\n- Support Level: ${prioritySupport ? 'Priority SLA' : 'Standard SLA'}`;
     
     navigator.clipboard.writeText(textToCopy);
     setCopiedEstimate(true);
@@ -337,28 +336,14 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
       ? currentEstimate.modules.join(', ') 
       : 'Custom Workspace Formulation';
       
-    const descriptionText = `Hi Q BENCH team! I used your interactive specifications estimator on the website and configured a custom service roadmap:\n\n- Selected Frameworks: ${modulesStr}\n- Delivery Velocity: ${calcSpeed === 'fast' ? 'Express (Fast-Track)' : calcSpeed === 'extended' ? 'Extended Collaborative' : 'Standard Delivery'}\n- Priority Support Addon: ${prioritySupport ? 'Yes (Enabled)' : 'No (Standard Support)'}\n- Projected Value Quote: ₹${currentEstimate.price.toLocaleString('en-IN')}`;
+    const descriptionText = `Hi Q BENCH team! I used your interactive specifications planner on the website and configured a custom service roadmap:\n\n- Selected Capabilities: ${modulesStr}\n- Delivery Velocity: ${calcSpeed === 'fast' ? 'Express (Fast-Track)' : calcSpeed === 'extended' ? 'Extended Collaborative' : 'Standard Delivery'}\n- Priority Support Addon: ${prioritySupport ? 'Yes (Enabled)' : 'No (Standard Support)'}\n- Projected Delivery: ${currentEstimate.duration}`;
     
     localStorage.setItem('qbench_prefilled_message', descriptionText);
-    
-    let budgetBucket = 'Under ₹15,000';
-    if (currentEstimate.price < 15000) {
-      budgetBucket = 'Under ₹15,000';
-    } else if (currentEstimate.price >= 15000 && currentEstimate.price < 50000) {
-      budgetBucket = '₹15,000 — ₹50,000';
-    } else if (currentEstimate.price >= 50000 && currentEstimate.price < 150000) {
-      budgetBucket = '₹50,000 — ₹1.5L';
-    } else if (currentEstimate.price >= 150000 && currentEstimate.price < 300000) {
-      budgetBucket = '₹1.5L — ₹3L';
-    } else {
-      budgetBucket = '₹3L+';
-    }
-
-    localStorage.setItem('qbench_prefilled_budget', budgetBucket);
+    localStorage.removeItem('qbench_prefilled_budget');
 
     const calcOptions = [];
     if (currentEstimate.modules.length > 0) {
-      calcOptions.push(`Frameworks: ${modulesStr}`);
+      calcOptions.push(`Capabilities: ${modulesStr}`);
     }
     calcOptions.push(`Velocity: ${calcSpeed === 'fast' ? 'Express (2-3 Weeks)' : calcSpeed === 'extended' ? 'Extended (8-12 Weeks)' : 'Standard (4-6 Weeks)'}`);
     calcOptions.push(`Priority Support: ${prioritySupport ? 'Enabled' : 'Disabled'}`);
@@ -366,43 +351,22 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
     const packageObj = {
       packageName: 'Custom Multi-Service Formulation',
       packageId: 'custom_estimator_spec',
-      packagePrice: `₹${currentEstimate.price.toLocaleString('en-IN')}`,
+      packagePrice: 'Custom Scope Plan',
       packageCategory: 'Custom Multi-Service',
       duration: currentEstimate.duration,
       addonsOrOptions: calcOptions,
-      totalAmount: `₹${currentEstimate.price.toLocaleString('en-IN')}`
+      totalAmount: 'Standardized Project Scope'
     };
     localStorage.setItem('qbench_selected_package', JSON.stringify(packageObj));
 
     onNavigate('contact');
   };
 
-  const handleSelectPackageCTA = (tierName: string, serviceName: string, priceStr: string) => {
-    const textMsg = `Hi Q BENCH! I want to inquire about the "${serviceName}" - [${tierName.toUpperCase()} Package] (${priceStr}). Kindly provide me with information on how we can get started with this service block.`;
+  const handleSelectPackageCTA = (tierName: string, serviceName: string, scopeLabel?: string) => {
+    const textMsg = `Hi Q BENCH! I want to inquire about the "${serviceName}" - [${tierName.toUpperCase()} Scope]. Kindly provide me with information on how we can get started with this service block.`;
     
     localStorage.setItem('qbench_prefilled_message', textMsg);
-    
-    // Parse price string to match suitable budget option dynamically
-    let numericPrice = 0;
-    const cleaned = priceStr.replace(/[^\d]/g, '');
-    if (cleaned) {
-      numericPrice = parseInt(cleaned, 10);
-    } else if (priceStr.toLowerCase().includes('custom')) {
-      numericPrice = 300000; // treat custom as ₹3L+
-    }
-    
-    let budgetBucket = 'Under ₹15,000';
-    if (numericPrice >= 300000) {
-      budgetBucket = '₹3L+';
-    } else if (numericPrice >= 150000) {
-      budgetBucket = '₹1.5L — ₹3L';
-    } else if (numericPrice >= 50000) {
-      budgetBucket = '₹50,000 — ₹1.5L';
-    } else if (numericPrice >= 15000) {
-      budgetBucket = '₹15,000 — ₹50,000';
-    }
-    
-    localStorage.setItem('qbench_prefilled_budget', budgetBucket);
+    localStorage.removeItem('qbench_prefilled_budget');
 
     let durationVal = 'approx. 3-4 Weeks';
     if (serviceName === 'Business Support') {
@@ -420,24 +384,24 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
     const simpleId = serviceName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '_' + tierName.toLowerCase();
 
     const packageObj = {
-      packageName: `${serviceName} — ${tierName} Package`,
+      packageName: `${serviceName} — ${tierName} Scope`,
       packageId: simpleId,
-      packagePrice: priceStr,
+      packagePrice: scopeLabel || `${tierName} Scope`,
       packageCategory: serviceName,
       duration: durationVal,
       addonsOrOptions: [],
-      totalAmount: priceStr
+      totalAmount: 'Standardized Project Scope'
     };
     localStorage.setItem('qbench_selected_package', JSON.stringify(packageObj));
 
     onNavigate('contact');
   };
 
-  const handleWhatsAppPackageClick = (tierName: string, serviceName: string, priceStr: string) => {
+  const handleWhatsAppPackageClick = (tierName: string, serviceName: string, _priceStr?: string) => {
     const pageUrl = `${window.location.origin}/packages?service=${encodeURIComponent(serviceName)}`;
     const referenceId = `#QBS-PKG-${serviceName.slice(0, 3).toUpperCase().replace(/[^A-Z]/g, '')}-${tierName.toUpperCase().replace(/\s+/g, '')}`;
 
-    const textMessage = `Hello Q BENCH Team,\n\nI am interested in exploring your package options! Here are the details:\n\n*Service Name*: ${serviceName}\n*Package Name*: ${tierName} Package\n*Project Name*: N/A\n*Reference ID*: ${referenceId}\n*Page URL*: ${pageUrl}\n\nPlease contact me to discuss how we can get started with this package. Thank you!`;
+    const textMessage = `Hello Q BENCH Team,\n\nI am interested in exploring your service options! Here are the details:\n\n*Service Name*: ${serviceName}\n*Scope Level*: ${tierName} Scope\n*Reference ID*: ${referenceId}\n*Page URL*: ${pageUrl}\n\nPlease contact me to discuss how we can get started with this package. Thank you!`;
 
     const encoded = encodeURIComponent(textMessage);
     window.open(`https://wa.me/917356525932?text=${encoded}`, '_blank');
@@ -460,57 +424,25 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
         </p>
       </div>
 
-      {/* View Switcher: Zoho Books Verified Rate Card vs 9 Capabilities Blueprint */}
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-12">
-        <button
-          type="button"
-          onClick={() => setPackagesTabMode('zoho')}
-          className={`flex items-center gap-2.5 px-6 py-3.5 rounded-2xl font-display text-xs sm:text-sm font-bold tracking-tight transition-all cursor-pointer ${
-            packagesTabMode === 'zoho'
-              ? 'bg-[#00685b] text-white shadow-lg ring-2 ring-[#00685b]/30 scale-[1.02]'
-              : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
-          }`}
-        >
-          <FileSpreadsheet className="h-4 w-4" />
-          <span>Zoho Books Verified Catalog & Estimator</span>
-          <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-black tracking-wider ${
-            packagesTabMode === 'zoho' ? 'bg-white/20 text-white' : 'bg-[#e6f4f1] text-[#00685b]'
-          }`}>
-            20 Items • Live ERP
-          </span>
-        </button>
+      {/* 1. Complete 20-Deliverable Service Catalog Section */}
+      <section id="full-services-catalog-section" className="mb-20">
+        <ServicesCatalog onNavigate={onNavigate} />
+      </section>
 
-        <button
-          type="button"
-          onClick={() => setPackagesTabMode('capabilities')}
-          className={`flex items-center gap-2.5 px-6 py-3.5 rounded-2xl font-display text-xs sm:text-sm font-bold tracking-tight transition-all cursor-pointer ${
-            packagesTabMode === 'capabilities'
-              ? 'bg-[#00685b] text-white shadow-lg ring-2 ring-[#00685b]/30 scale-[1.02]'
-              : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
-          }`}
-        >
-          <Grid className="h-4 w-4" />
-          <span>Capabilities & Tier Matrix</span>
-          <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-black tracking-wider ${
-            packagesTabMode === 'capabilities' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
-          }`}>
-            9 Capabilities
-          </span>
-        </button>
-      </div>
-
-      {packagesTabMode === 'capabilities' ? (
-        <>
-          {/* 9-Services Switchboard layout */}
-          <div className="space-y-8 mb-16">
-            <div className="flex flex-col space-y-2 text-center md:text-left">
-              <span className="font-tech text-[10px] tracking-widest text-[#00685b] font-black uppercase">
-                // PROJECT CATEGORIES
-              </span>
-              <h2 className="font-display text-lg font-bold text-brand-text">
-                Explore pricing and inclusions across our {activePackagesList.length} core capabilities:
-              </h2>
-            </div>
+      {/* 2. Core Capabilities & Inclusions Matrix */}
+      <div id="capabilities-matrix-section" className="scroll-mt-20">
+        <div className="space-y-8 mb-16">
+          <div className="flex flex-col space-y-2 text-center md:text-left">
+            <span className="font-tech text-[10px] tracking-widest text-[#00685b] font-black uppercase">
+              // CORE CAPABILITIES & SCOPES
+            </span>
+            <h2 className="font-display text-2xl font-black text-brand-text">
+              Agency Capabilities & Inclusions Breakdown ({activePackagesList.length} Disciplines)
+            </h2>
+            <p className="font-sans text-xs sm:text-sm text-brand-text-muted">
+              Select any capability below to explore scope deliverables, sprint timelines, and comprehensive specifications.
+            </p>
+          </div>
 
         {/* Categories Tab selector bar */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2 bg-brand-surface-low border border-brand-outline/20 p-2 rounded-2xl">
@@ -695,10 +627,10 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                   </div>
 
                   <div className="pb-4 border-b border-brand-outline/15">
-                    <span className="font-display text-3xl sm:text-4xl font-extrabold text-brand-text">
-                      {cmsBs?.tiers?.[0]?.price || '₹4,999'}
+                    <span className="font-display text-2xl sm:text-3xl font-extrabold text-brand-text">
+                      Starter Scope
                     </span>
-                    <span className="text-brand-text-muted text-xs font-semibold block mt-1">{cmsBs?.tiers?.[0]?.period || '/ Month'}</span>
+                    <span className="text-brand-text-muted text-xs font-semibold block mt-1">Operational Retainer Block</span>
                   </div>
 
                   <div className="space-y-3 pt-2">
@@ -729,14 +661,14 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                     <span>View comparison grid ↓</span>
                   </a>
                   <button
-                    onClick={() => handleSelectPackageCTA(cmsBs?.tiers?.[0]?.name || 'Starter', 'Business Support', `${cmsBs?.tiers?.[0]?.price || '₹4,999'}${cmsBs?.tiers?.[0]?.period || '/Month'}`)}
+                    onClick={() => handleSelectPackageCTA(cmsBs?.tiers?.[0]?.name || 'Starter', 'Business Support', 'Starter Scope')}
                     className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-brand-dark text-white hover:bg-[#2d3030] cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    <span>Select {cmsBs?.tiers?.[0]?.name || 'Starter'} Package</span>
+                    <span>Select {cmsBs?.tiers?.[0]?.name || 'Starter'} Scope</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                   <button
-                    onClick={() => handleWhatsAppPackageClick(cmsBs?.tiers?.[0]?.name || 'Starter', 'Business Support', `${cmsBs?.tiers?.[0]?.price || '₹4,999'}${cmsBs?.tiers?.[0]?.period || '/Month'}`)}
+                    onClick={() => handleWhatsAppPackageClick(cmsBs?.tiers?.[0]?.name || 'Starter', 'Business Support')}
                     className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#25D366] hover:bg-[#20ba5a] text-white cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                   >
                     <MessageSquare className="h-3.5 w-3.5" />
@@ -754,7 +686,7 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                 <div className="space-y-6">
                   <div className="space-y-2">
                     <span className="font-tech text-[10px] uppercase tracking-widest text-emerald-800 font-bold bg-[#00685b]/10 px-3 py-1 rounded-full">
-                      {cmsBs?.tiers?.[1]?.name || 'Growth'} Package
+                      {cmsBs?.tiers?.[1]?.name || 'Growth'} Scope
                     </span>
                     <p className="font-display text-xs text-brand-text-muted mt-2">
                       {cmsBs?.tiers?.[1]?.subtitle || 'Designed for growing businesses requiring regular operational support.'}
@@ -762,10 +694,10 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                   </div>
 
                   <div className="pb-4 border-b border-brand-outline/15">
-                    <span className="font-display text-3xl sm:text-4xl font-extrabold text-[#00685b]">
-                      {cmsBs?.tiers?.[1]?.price || '₹9,999'}
+                    <span className="font-display text-2xl sm:text-3xl font-extrabold text-[#00685b]">
+                      Growth Scope
                     </span>
-                    <span className="text-[#00685b] text-xs font-bold block mt-1">{cmsBs?.tiers?.[1]?.period || '/ Month'}</span>
+                    <span className="text-[#00685b] text-xs font-bold block mt-1">Dedicated Growth Retainer</span>
                   </div>
 
                   <div className="space-y-3 pt-2">
@@ -798,14 +730,14 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                     <span>View comparison grid ↓</span>
                   </a>
                   <button
-                    onClick={() => handleSelectPackageCTA(cmsBs?.tiers?.[1]?.name || 'Growth', 'Business Support', `${cmsBs?.tiers?.[1]?.price || '₹9,999'}${cmsBs?.tiers?.[1]?.period || '/Month'}`)}
+                    onClick={() => handleSelectPackageCTA(cmsBs?.tiers?.[1]?.name || 'Growth', 'Business Support', 'Growth Scope')}
                     className="w-full py-3.5 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#00685b] text-white hover:bg-[#005a4e] cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
                   >
-                    <span>Select {cmsBs?.tiers?.[1]?.name || 'Growth'} Package</span>
+                    <span>Select {cmsBs?.tiers?.[1]?.name || 'Growth'} Scope</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                   <button
-                    onClick={() => handleWhatsAppPackageClick(cmsBs?.tiers?.[1]?.name || 'Growth', 'Business Support', `${cmsBs?.tiers?.[1]?.price || '₹9,999'}${cmsBs?.tiers?.[1]?.period || '/Month'}`)}
+                    onClick={() => handleWhatsAppPackageClick(cmsBs?.tiers?.[1]?.name || 'Growth', 'Business Support')}
                     className="w-full py-3.5 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#25D366] hover:bg-[#20ba5a] text-white cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                   >
                     <MessageSquare className="h-3.5 w-3.5" />
@@ -827,10 +759,10 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                   </div>
 
                   <div className="pb-4 border-b border-brand-outline/15">
-                    <span className="font-display text-3xl sm:text-4xl font-extrabold text-[#178373]">
-                      {cmsBs?.tiers?.[2]?.price || '₹19,999'}
+                    <span className="font-display text-2xl sm:text-3xl font-extrabold text-[#178373]">
+                      Partner Scope
                     </span>
-                    <span className="text-[#178373] text-xs font-semibold block mt-1">{cmsBs?.tiers?.[2]?.period || '/ Month'}</span>
+                    <span className="text-[#178373] text-xs font-semibold block mt-1">Full Back-Office Operations</span>
                   </div>
 
                   <div className="space-y-3 pt-2">
@@ -863,14 +795,14 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                     <span>View comparison grid ↓</span>
                   </a>
                   <button
-                    onClick={() => handleSelectPackageCTA(cmsBs?.tiers?.[2]?.name || 'Business Partner', 'Business Support', `${cmsBs?.tiers?.[2]?.price || '₹19,999'}${cmsBs?.tiers?.[2]?.period || '/Month'}`)}
+                    onClick={() => handleSelectPackageCTA(cmsBs?.tiers?.[2]?.name || 'Business Partner', 'Business Support', 'Partner Scope')}
                     className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-gradient-to-r from-[#178373] to-[#00685b] text-white hover:opacity-95 cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                   >
-                    <span>Deploy {cmsBs?.tiers?.[2]?.name || 'Partner'} Package</span>
+                    <span>Deploy {cmsBs?.tiers?.[2]?.name || 'Partner'} Scope</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                   <button
-                    onClick={() => handleWhatsAppPackageClick(cmsBs?.tiers?.[2]?.name || 'Business Partner', 'Business Support', `${cmsBs?.tiers?.[2]?.price || '₹19,999'}${cmsBs?.tiers?.[2]?.period || '/Month'}`)}
+                    onClick={() => handleWhatsAppPackageClick(cmsBs?.tiers?.[2]?.name || 'Business Partner', 'Business Support')}
                     className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#25D366] hover:bg-[#20ba5a] text-white cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                   >
                     <MessageSquare className="h-3.5 w-3.5" />
@@ -976,20 +908,20 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {(cmsBs?.addOns || [
-                { name: "Accounting & Tax Support", price: "Starting from ₹500" },
-                { name: "GST Filing Assistance", price: "Starting from ₹500" },
-                { name: "Payroll Processing", price: "Starting from ₹1,500/month" },
-                { name: "Financial Dashboard Creation", price: "Starting from ₹3,000" },
-                { name: "Loan Documentation Support", price: "Starting from ₹2,500" },
-                { name: "Business Reports & MIS", price: "Starting from ₹2,000" },
-                { name: "Custom Excel Automation", price: "Starting from ₹3,500" },
-                { name: "Travel Itinerary Preparation", price: "Starting from ₹1,000" }
+                { name: "Accounting & Tax Support", label: "Operational Add-On" },
+                { name: "GST Filing Assistance", label: "Compliance Scope" },
+                { name: "Payroll Processing", label: "Monthly Add-On" },
+                { name: "Financial Dashboard Creation", label: "Reporting Scope" },
+                { name: "Loan Documentation Support", label: "Documentation Scope" },
+                { name: "Business Reports & MIS", label: "Analytics Scope" },
+                { name: "Custom Excel Automation", label: "Automation Scope" },
+                { name: "Travel Itinerary Preparation", label: "Coordination Scope" }
               ]).map((addon, aIdx) => (
                 <div key={aIdx} className="bg-white border border-brand-outline/20 rounded-2xl p-5 flex flex-col justify-between hover:border-[#00685b]/40 transition-colors">
                   <h4 className="font-display text-xs font-black text-brand-text mb-2">{addon.name}</h4>
                   <div>
                     <span className="text-[#00685b] font-tech text-[10px] font-bold bg-[#00685b]/10 px-2 py-0.5 rounded-md block w-fit">
-                      {addon.price}
+                      {(addon as any).label || 'Add-On Scope'}
                     </span>
                   </div>
                 </div>
@@ -1048,7 +980,7 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
               <button
                 onClick={() => {
                   localStorage.setItem('qbench_prefilled_message', 'Hi QBench! I am looking to simplify our operations with your Business Support Services. Let us book a consultation. Thank you.');
-                  localStorage.setItem('qbench_prefilled_budget', 'Under ₹15,000');
+                  localStorage.removeItem('qbench_prefilled_budget');
                   onNavigate('contact');
                 }}
                 className="w-full sm:w-auto py-3 px-6 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#00685b] text-white hover:bg-[#005a4e] cursor-pointer shadow-md"
@@ -1057,12 +989,13 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
               </button>
               <button
                 onClick={() => {
-                  localStorage.setItem('qbench_prefilled_message', 'Hi QBench! I am looking for a custom price quote for structured excel/bookkeeping business services. Regards.');
+                  localStorage.setItem('qbench_prefilled_message', 'Hi QBench! I am looking for a custom scope proposal for structured excel/bookkeeping business services. Regards.');
+                  localStorage.removeItem('qbench_prefilled_budget');
                   onNavigate('contact');
                 }}
                 className="w-full sm:w-auto py-3 px-6 rounded-xl font-display text-[10px] font-black uppercase tracking-wider text-slate-800 tracking-widest text-center transition-all bg-white hover:bg-slate-100 cursor-pointer"
               >
-                Get a Custom Quote
+                Get a Custom Scope Proposal
               </button>
               <button
                 onClick={() => onNavigate('contact')}
@@ -1100,11 +1033,11 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
               </div>
 
               <div className="pb-4 border-b border-brand-outline/15">
-                <span className="font-display text-3xl sm:text-4xl font-extrabold text-brand-text">
-                  {activeService.priceLabels.basic}
+                <span className="font-display text-2xl sm:text-3xl font-extrabold text-brand-text">
+                  Starter Scope
                 </span>
                 <span className="font-display text-xs text-brand-text-muted font-medium block mt-1">
-                  Single-project focus model
+                  Single-project execution model
                 </span>
               </div>
 
@@ -1142,14 +1075,14 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                 Timeline Objective: {(activeService as any).tierTimelines?.basic || 'approx. 1-2 Weeks'}
               </span>
               <button
-                onClick={() => handleSelectPackageCTA((activeService as any).tierNames?.basic || 'Basic', activeService.name, activeService.priceLabels.basic)}
+                onClick={() => handleSelectPackageCTA((activeService as any).tierNames?.basic || 'Basic', activeService.name, 'Starter Scope')}
                 className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-brand-dark text-white hover:bg-[#2d3030] cursor-pointer flex items-center justify-center gap-1.5"
               >
-                <span>Deploy {(activeService as any).tierNames?.basic || 'Basic'} Tier</span>
+                <span>Deploy {(activeService as any).tierNames?.basic || 'Starter'} Scope</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </button>
               <button
-                onClick={() => handleWhatsAppPackageClick((activeService as any).tierNames?.basic || 'Basic', activeService.name, activeService.priceLabels.basic)}
+                onClick={() => handleWhatsAppPackageClick((activeService as any).tierNames?.basic || 'Basic', activeService.name)}
                 className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#25D366] hover:bg-[#20ba5a] text-white cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
               >
                 <MessageSquare className="h-3.5 w-3.5" />
@@ -1184,8 +1117,8 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
               </div>
 
               <div className="pb-4 border-b border-brand-outline/15">
-                <span className="font-display text-3xl sm:text-4xl font-extrabold text-[#00685b]">
-                  {activeService.priceLabels.standard}
+                <span className="font-display text-2xl sm:text-3xl font-extrabold text-[#00685b]">
+                  Growth Scope
                 </span>
                 <span className="font-display text-xs text-[#00685b] font-bold block mt-1">
                   Complete ownership handoff suite
@@ -1226,14 +1159,14 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                 Timeline Objective: {(activeService as any).tierTimelines?.standard || (activeService.id === 'branding' ? 'approx. 2-3 Weeks' : 'approx. 3-4 Weeks')}
               </span>
               <button
-                onClick={() => handleSelectPackageCTA((activeService as any).tierNames?.standard || 'Standard', activeService.name, activeService.priceLabels.standard)}
+                onClick={() => handleSelectPackageCTA((activeService as any).tierNames?.standard || 'Standard', activeService.name, 'Growth Scope')}
                 className="w-full py-3.5 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#00685b] text-white hover:bg-[#005a4e] cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
               >
-                <span>Deploy {(activeService as any).tierNames?.standard || 'Standard'} Tier</span>
+                <span>Deploy {(activeService as any).tierNames?.standard || 'Growth'} Scope</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </button>
               <button
-                onClick={() => handleWhatsAppPackageClick((activeService as any).tierNames?.standard || 'Standard', activeService.name, activeService.priceLabels.standard)}
+                onClick={() => handleWhatsAppPackageClick((activeService as any).tierNames?.standard || 'Standard', activeService.name)}
                 className="w-full py-3.5 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#25D366] hover:bg-[#20ba5a] text-white cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
               >
                 <MessageSquare className="h-3.5 w-3.5" />
@@ -1264,11 +1197,11 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
               </div>
 
               <div className="pb-4 border-b border-brand-outline/15">
-                <span className="font-display text-3xl sm:text-4xl font-extrabold text-[#178373]">
-                  {activeService.priceLabels.premium}
+                <span className="font-display text-2xl sm:text-3xl font-extrabold text-[#178373]">
+                  Enterprise Scope
                 </span>
                 <span className="font-display text-xs text-[#178373] font-bold block mt-1">
-                  Unlimited potential & premium setups
+                  Unlimited potential & dedicated setups
                 </span>
               </div>
 
@@ -1306,14 +1239,14 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                 Timeline Objective: {(activeService as any).tierTimelines?.premium || (activeService.id === 'branding' ? 'approx. 3-4 Weeks' : 'Continuous Sprint Delivery')}
               </span>
               <button
-                onClick={() => handleSelectPackageCTA((activeService as any).tierNames?.premium || 'Premium', activeService.name, activeService.priceLabels.premium)}
+                onClick={() => handleSelectPackageCTA((activeService as any).tierNames?.premium || 'Premium', activeService.name, 'Enterprise Scope')}
                 className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-gradient-to-r from-[#178373] to-[#00685b] text-white hover:opacity-95 cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
               >
-                <span>Deploy {(activeService as any).tierNames?.premium || 'Premium'} Tier</span>
+                <span>Deploy {(activeService as any).tierNames?.premium || 'Enterprise'} Scope</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </button>
               <button
-                onClick={() => handleWhatsAppPackageClick((activeService as any).tierNames?.premium || 'Premium', activeService.name, activeService.priceLabels.premium)}
+                onClick={() => handleWhatsAppPackageClick((activeService as any).tierNames?.premium || 'Premium', activeService.name)}
                 className="w-full py-3 rounded-xl font-display text-[10px] font-black uppercase tracking-widest text-center transition-all bg-[#25D366] hover:bg-[#20ba5a] text-white cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
               >
                 <MessageSquare className="h-3.5 w-3.5" />
@@ -1403,10 +1336,10 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                 </span>
               </div>
               <h2 className="font-display text-xl sm:text-2xl font-black uppercase tracking-tight text-white">
-                Configure Your Project Budget
+                Build Your Project Scope & Roadmap
               </h2>
               <p className="font-sans text-xs text-white/70 max-w-lg leading-relaxed">
-                Select your overall plan scale and tap any capabilities below to instantly estimate your budget.
+                Select your overall plan scale and tap any capabilities below to build your customized service roadmap.
               </p>
             </div>
 
@@ -1490,9 +1423,9 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                         </div>
                       </div>
                       <div className="flex justify-between items-baseline w-full pt-1">
-                        <span className="text-[8px] font-tech text-white/30 uppercase">Est. Cost:</span>
+                        <span className="text-[8px] font-tech text-white/30 uppercase">Status:</span>
                         <span className={`font-tech text-[9px] font-extrabold ${isActive ? 'text-[#00c9a7]' : 'text-white/50'}`}>
-                          {service.priceLabels[masterTier]}
+                          {isActive ? 'Included in Scope' : 'Tap to Add'}
                         </span>
                       </div>
                     </button>
@@ -1613,13 +1546,13 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
             <div className="space-y-4">
               <div className="bg-white/5 rounded-2xl p-4 border border-white/5 text-center">
                 <span className="font-tech text-[9px] uppercase text-white/60 tracking-wider block mb-1">
-                  Estimated Project Valuation
+                  Project Scope Formulation
                 </span>
-                <span className="font-display text-3xl sm:text-4xl font-extrabold text-[#00c9a7]">
-                  ₹{currentEstimate.price.toLocaleString('en-IN')}
+                <span className="font-display text-2xl sm:text-3xl font-extrabold text-[#00c9a7]">
+                  {currentEstimate.modules.length > 0 ? `${currentEstimate.modules.length} Capabilities Configured` : 'Select Capabilities'}
                 </span>
                 <span className="font-display text-[9px] text-white/50 block mt-1">
-                  Value-based deployment model • Inclusive of code handoff
+                  Tailored execution roadmap • Inclusive of complete IP handoff
                 </span>
               </div>
 
@@ -1644,18 +1577,17 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
                   onClick={handleApplyEstimateToContact}
                   className="py-3 px-4 rounded-xl font-display text-[10px] font-black uppercase tracking-wider text-center bg-[#00c9a7] hover:bg-[#16dab8] text-black transition-all font-extrabold flex items-center justify-center space-x-1.5 cursor-pointer shadow-sm"
                 >
-                  <span>Build This Plan</span>
+                  <span>Build This Scope</span>
                   <ArrowRight className="h-3.5 w-3.5" />
                 </button>
               </div>
               <button
                 onClick={() => {
                   const moduleList = currentEstimate.modules.join(', ');
-                  const priceStr = `₹${currentEstimate.price.toLocaleString('en-IN')}`;
                   const pageUrl = `${window.location.origin}/packages`;
                   const referenceId = `#QBS-PKG-CUSTOM-${currentEstimate.modules.length}NODES`;
 
-                  const textMessage = `Hello Q BENCH Team,\n\nI just built a customized plan on your services comparison grid and would like to proceed with WhatsApp chat! Here are the specifications:\n\n*Service Name*: Custom Configuration\n*Package Name*: Custom Dynamic Plan\n*Project Name*: Custom Estimate (${currentEstimate.modules.length} capabilities selected: ${moduleList})\n*Reference ID*: ${referenceId}\n*Page URL*: ${pageUrl}\n*Price Quote*: ${priceStr}\n\nPlease contact me to initiate the modular setup. Thank you!`;
+                  const textMessage = `Hello Q BENCH Team,\n\nI just built a customized roadmap on your services blueprint planner! Here are the specifications:\n\n*Service*: Custom Multi-Capability Roadmap\n*Configured Capabilities* (${currentEstimate.modules.length}): ${moduleList}\n*Projected Duration*: ${currentEstimate.duration}\n*Reference ID*: ${referenceId}\n*Page URL*: ${pageUrl}\n\nPlease contact me to discuss this scope. Thank you!`;
 
                   const encoded = encodeURIComponent(textMessage);
                   window.open(`https://wa.me/917356525932?text=${encoded}`, '_blank');
@@ -1671,10 +1603,7 @@ export default function PackagesView({ onNavigate }: PackagesViewProps) {
 
         </div>
       </section>
-      </>
-      ) : (
-        <ZohoCatalogSection onNavigate={onNavigate} />
-      )}
+      </div>
 
       {/* WHY CHOOSE US GRID SECTION */}
       <section id="why-choose-us-section" className="bg-white border border-brand-outline/35 rounded-3xl p-6 sm:p-10 mb-8 shadow-sm">

@@ -148,10 +148,11 @@ export default function ContactView({ onNavigate }: ContactViewProps) {
         ? `\n\nOptions & Configurations Specified:\n${selectedPackage.addonsOrOptions.map((opt: string) => `- ${opt}`).join('\n')}`
         : '';
         
+      const scopeDetail = selectedPackage.packagePrice ? `- Scope Level: ${selectedPackage.packagePrice}\n` : '';
       const autoMessage = `Hi Q BENCH team! I would like to book the following service package:\n\n` +
         `- Selected Package: ${selectedPackage.packageName}\n` +
         `- Package ID: ${selectedPackage.packageId}\n` +
-        `- Price Quote: ${selectedPackage.packagePrice}\n` +
+        scopeDetail +
         `- Estimated Delivery: ${selectedPackage.duration}${optionsInfo}\n\n` +
         `Kindly coordinate my onboarding details and launch files. Thank you!`;
       
@@ -748,18 +749,12 @@ ${message}`;
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-[9px] font-mono text-[#00685b] font-black tracking-wider uppercase">
-                            {selectedPackage.zohoItemId ? 'Zoho Books Verified Scope' : 'Selected Service Package'}
+                            Selected Service Package
                           </span>
-                          {selectedPackage.zohoItemId && (
-                            <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase bg-emerald-100 text-emerald-800">
-                              Zoho Org: 60072580070
-                            </span>
-                          )}
                         </div>
                         <h4 className="font-display text-md font-black text-[#002f29] mt-0.5">{selectedPackage.packageName}</h4>
                         <p className="font-sans text-[10px] text-brand-text-muted mt-0.5">
-                          {selectedPackage.zohoItemId ? 'Zoho Item ID: ' : 'Package ID: '}
-                          <span className="font-mono font-bold">{selectedPackage.zohoItemId || selectedPackage.packageId}</span>
+                          Package Reference: <span className="font-mono font-bold">{selectedPackage.packageId}</span>
                         </p>
                       </div>
                       <button
@@ -782,8 +777,8 @@ ${message}`;
                         <span className="font-bold text-[#002f29] font-sans">{selectedPackage.packageCategory}</span>
                       </div>
                       <div className="col-span-2 sm:col-span-1">
-                        <span className="text-brand-text-muted text-[10px] block font-mono">RATE BASE</span>
-                        <span className="font-bold text-[#00685b] font-sans">{selectedPackage.packagePrice}</span>
+                        <span className="text-brand-text-muted text-[10px] block font-mono">SCOPE LEVEL</span>
+                        <span className="font-bold text-[#00685b] font-sans">{selectedPackage.packagePrice || 'Standardized Scope'}</span>
                       </div>
                     </div>
 
@@ -800,10 +795,10 @@ ${message}`;
 
                     <div className="border-t border-dashed border-[#00685b]/30 pt-4 flex items-center justify-between">
                       <div>
-                        <span className="text-brand-text-muted text-[10px] block font-mono">TOTAL PROJECT VALUE / AMOUNT</span>
+                        <span className="text-brand-text-muted text-[10px] block font-mono">PROJECT ALLOCATION</span>
                         <span className="text-[11px] text-[#00685b] font-medium leading-none">Inclusive of standard resource allocation</span>
                       </div>
-                      <span className="text-xl sm:text-2xl font-display font-black text-[#00685b]">{selectedPackage.totalAmount}</span>
+                      <span className="text-lg sm:text-xl font-display font-black text-[#00685b]">{selectedPackage.totalAmount || 'Standardized Scope'}</span>
                     </div>
 
                   </motion.div>
@@ -1217,7 +1212,7 @@ ${message}`;
                                 type="text"
                                 value={formData.budget}
                                 onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
-                                placeholder="e.g. ₹25,000 – ₹75,000 / Flexible"
+                                placeholder="e.g. Growth Scope / Flexible / Project-based"
                                 className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors"
                               />
                             </div>

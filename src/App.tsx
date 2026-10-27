@@ -18,6 +18,7 @@ import PackagesView from './components/PackagesView';
 import AdminControlView from './components/AdminControlView';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import SkeletonRouter from './components/SkeletonLoader';
+import ScrollProgressBar from './components/ScrollProgressBar';
 import { OfflineIndicator } from './components/PWAInstallPrompt';
 import { useProjects } from './hooks/useProjects';
 import { NavSection, ServiceTab } from './types';
@@ -271,10 +272,16 @@ export default function App() {
       <Header 
         activeSection={activeSection} 
         onNavigate={handleNavigate} 
+        onOpenProjectDetail={handleOpenProjectDetail}
       />
 
       {/* Primary views router layout container */}
-      <main id="app-main-viewports" className="flex-grow relative z-10 overflow-x-hidden">
+      <main id="app-main-viewports" className="flex-grow relative z-10 overflow-x-clip">
+        {/* Scroll Progress Bar at the top of app-main-viewports container */}
+        <ScrollProgressBar 
+          containerId="app-main-viewports" 
+          activeSection={transitioningTo || activeSection} 
+        />
         
         <AnimatePresence mode="wait">
           {transitioningTo ? (
