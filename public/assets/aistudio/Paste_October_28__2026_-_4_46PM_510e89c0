@@ -1,0 +1,894 @@
+# QBench Website — Complete Zoho Books Admin Dashboard Integration
+
+## 1. Project Objective
+
+I have an existing website built using Google AI Studio, connected to GitHub and deployed through Vercel.
+
+I want to upgrade the existing admin panel by adding a complete **Zoho Books Dashboard** that displays live business and financial data from my Zoho Books account.
+
+Do not create a separate website or a disconnected demo dashboard. Integrate this functionality directly into my existing QBench website and admin panel.
+
+### Zoho Books account details
+
+- Zoho Books home dashboard: https://books.zoho.in/app/60072580070#/home/dashboard?dashboard_id=defaultdashboard
+- Zoho Books organization ID: `60072580070`
+- Zoho region: India
+- Zoho API domain: `https://www.zohoapis.in`
+- Zoho Accounts domain: `https://accounts.zoho.in`
+- Supabase project URL: `https://zsbpxqzmkhcvxdvjoabp.supabase.co`
+- Existing QBench website: https://qbench-unlimited-resources.vercel.app
+- Existing GitHub repository: `qbenchofficial-ux/QBENCH-UNLIMITED-RESOURCES`
+- Primary branch: `main`
+
+The Zoho organization ID must be configurable through secure server-side configuration where appropriate, but the initial integration must use organization `60072580070`.
+
+## 2. First Inspect the Existing Project
+
+Before changing code, inspect the current repository and understand:
+
+- Existing React, TypeScript and Tailwind CSS setup.
+- Current routing structure.
+- Existing admin authentication and authorization.
+- Existing admin dashboard and navigation.
+- Existing Supabase client configuration.
+- Existing Supabase Edge Functions.
+- Existing Zoho integration files, including `src/admin/ZohoInventoryManager.tsx` if it is still present.
+- Existing Zoho OAuth start and callback functions.
+- Existing Supabase tables used to store the Zoho connection.
+- Current site colors, typography, spacing, buttons, cards, responsive layouts and notification patterns.
+
+Reuse and extend existing components wherever possible.
+
+Do not replace the website, rebuild the entire admin panel, delete existing features, change unrelated routes or overwrite the existing design.
+
+Preserve all working functionality.
+
+## 3. Add a New Admin Navigation Section Called “Zoho”
+
+Add a new navigation item named **Zoho** inside the existing authenticated admin panel.
+
+Suggested navigation:
+
+- Overview
+- Projects / Portfolio
+- Existing admin features
+- Zoho
+- Existing settings and logout
+
+Use the existing navigation style and icon system. A relevant receipt, chart, wallet or finance icon is suitable.
+
+When an authorized administrator clicks **Zoho**, open the new Zoho Books dashboard.
+
+Suggested route:
+
+`/admin/zoho`
+
+If the project uses a different established routing convention, follow that convention instead.
+
+Requirements:
+
+- Reuse the existing admin authentication.
+- Protect the page against unauthenticated access.
+- Verify administrator permissions on the backend as well as the frontend.
+- Do not expose the dashboard to public website visitors.
+- Preserve the current admin sidebar, header, breadcrumbs and responsive layout.
+- Add a suitable active navigation state.
+- Include a clear link to open the original Zoho Books dashboard.
+
+Use this exact external URL:
+
+https://books.zoho.in/app/60072580070#/home/dashboard?dashboard_id=defaultdashboard
+
+Open the external dashboard in a new tab with appropriate security attributes.
+
+## 4. Create a Professional Zoho Books Dashboard
+
+Create a polished, responsive financial dashboard inside the QBench admin panel.
+
+It should look like a professional business management dashboard rather than an embedded screenshot or a simple collection of external links.
+
+The page header should contain:
+
+**Zoho Books**
+
+Subtitle: `Live financial overview and business management`
+
+Display the following information:
+
+- Connection status: Connected, Disconnected or Error.
+- Connected organization name, when available.
+- Organization ID: `60072580070`.
+- Last successful synchronization time.
+- Current selected reporting period.
+- Refresh Data button.
+- Reconnect Zoho button when necessary.
+- Open Zoho Books button.
+
+Show a clear loading state while retrieving data. Show a helpful error state when the connection or API request fails.
+
+Do not display fabricated values, placeholder financial figures or hardcoded sample transactions.
+
+If data is unavailable, display `Unavailable` or `Not authorized` with an explanation rather than a fake number.
+
+## 5. Date Range and Dashboard Filters
+
+Provide a date filter at the top of the dashboard.
+
+Required options:
+
+- Today
+- Yesterday
+- This Week
+- Last Week
+- This Month
+- Last Month
+- This Quarter
+- This Financial Year
+- Last Financial Year
+- Last 30 Days
+- Last 90 Days
+- Custom Date Range
+
+Use the organization's applicable reporting settings and Indian financial-year conventions where relevant. Do not assume the Zoho organization uses a particular financial-year configuration if the API provides the actual setting.
+
+For custom ranges, provide start and end date pickers.
+
+The selected date range must affect all supported period-based metrics, charts, transaction lists and reports.
+
+Important distinction:
+
+- Sales, invoice totals, payment receipts and expenses can be period-based.
+- Outstanding receivables and payables are generally point-in-time balances as of the selected end date.
+- Current bank balances may represent the latest available balances, not historical balances.
+- Customer, vendor and item counts should be identified as current counts unless historical counts are genuinely available.
+
+Clearly label the reporting period and the effective date of point-in-time figures. Never imply that a current balance represents a historical balance unless the relevant historical data has been retrieved.
+
+## 6. Main Financial KPI Cards
+
+Build a responsive grid of summary cards.
+
+### Sales and revenue
+
+1. Total Sales / Invoiced Amount
+2. Total Invoice Count
+3. Amount Collected from Customers
+4. Outstanding Accounts Receivable
+5. Overdue Receivables
+6. Draft Invoices
+7. Sent / Open Invoices
+8. Partially Paid Invoices
+9. Paid Invoices
+10. Void or Cancelled Invoices, if available
+
+### Purchases and expenses
+
+11. Total Expenses
+12. Total Bills / Purchases
+13. Outstanding Accounts Payable
+14. Overdue Bills
+15. Vendor Payments
+16. Credit Notes Issued
+
+### Business overview
+
+17. Total Customers
+18. Total Vendors
+19. Total Active Items
+20. Total Inventory Value, only if accurately supported by the account and API.
+21. Bank Account Balances
+22. Cash / Bank Receipts, where supported.
+
+Every KPI must use actual data returned by Zoho Books APIs.
+
+For each KPI, display:
+
+- Metric name.
+- Amount or count.
+- Applicable currency.
+- Reporting period or balance date.
+- Tooltip or information text explaining the metric.
+- Optional comparison with the previous equivalent period, but only when both periods have been retrieved and calculated correctly.
+
+Do not combine different currencies without a documented, accurate conversion process.
+
+Avoid double-counting invoices, customer payments, credit notes, vendor bills and vendor payments.
+
+## 7. Sales and Revenue Analytics
+
+Create charts for:
+
+- Sales by day, week or month.
+- Invoice totals over time.
+- Payments received over time.
+- Outstanding receivables over time, only where historical data is available.
+- Sales by customer.
+- Sales by item or product, where supported.
+- Invoice status distribution.
+
+Use appropriate line charts, bar charts, doughnut charts or other visualizations.
+
+Chart requirements:
+
+- Use real API data.
+- Support the selected date range.
+- Show meaningful tooltips.
+- Format Indian currency using the correct currency code and locale.
+- Handle empty datasets gracefully.
+- Do not invent missing chart points.
+- Do not label an invoice total as recognized accounting revenue unless that is the metric actually returned by the source.
+- Clearly distinguish invoice amounts from cash collected and accounting revenue.
+
+If the API supports an official sales report that is more accurate than summing transaction lists, prefer the report.
+
+## 8. Purchases and Expense Analytics
+
+Create charts and summaries for:
+
+- Expenses by period.
+- Expenses by category or account.
+- Bills by period.
+- Vendor payments by period.
+- Outstanding bills.
+- Overdue bills.
+- Credit notes or vendor credits, where supported.
+- Purchases by vendor, where supported.
+
+Use actual Zoho data and accurate status definitions.
+
+Do not calculate net profit by simply subtracting an expense list from invoice totals. Use an official Profit and Loss report for profit figures.
+
+If the API cannot retrieve a requested report or data category, display the limitation clearly.
+
+## 9. Official Financial Reports
+
+Create a Reports section with the following reports wherever the connected Zoho Books account and API support them:
+
+1. Profit and Loss
+2. Balance Sheet
+3. Cash Flow Statement
+4. Accounts Receivable Summary
+5. Accounts Receivable Aging
+6. Accounts Payable Summary
+7. Accounts Payable Aging
+8. Sales by Customer
+9. Sales by Item
+10. Expense Summary
+11. Tax Summary, where available.
+
+Each report should:
+
+- Use the selected date range or applicable as-of date.
+- Display the report title and period.
+- Show the correct currency and accounting values.
+- Offer a loading indicator and meaningful error handling.
+- Support viewing detailed report data where available.
+- Provide CSV export where appropriate and permitted.
+- Provide print-friendly output where practical.
+
+Use Zoho's official report endpoints and documented parameters. Verify the exact API endpoint, scope and response structure before implementation.
+
+Do not fabricate a report by combining unrelated transaction fields.
+
+If a report is unsupported, unauthorized or unavailable, explain why and provide an appropriate link to open Zoho Books.
+
+## 10. Sales Management — Invoices
+
+Add an Invoices section with a searchable, filterable table.
+
+Suggested columns:
+
+- Invoice Number
+- Customer Name
+- Invoice Date
+- Due Date
+- Status
+- Invoice Amount
+- Amount Paid
+- Balance Due
+- Currency
+- Last Updated
+
+Required functionality:
+
+- Search by invoice number or customer.
+- Filter by invoice status.
+- Filter by date.
+- Sort by date and amount.
+- Paginate results.
+- View invoice details when supported.
+- Open the corresponding record in Zoho Books where a valid record URL is available.
+
+Include these useful filters:
+
+- All
+- Draft
+- Sent / Open
+- Partially Paid
+- Paid
+- Overdue
+- Void / Cancelled, if applicable.
+
+Do not assume that every Zoho API status maps exactly to the labels above. Map statuses according to the documented API response and distinguish overdue status from payment status where necessary.
+
+The dashboard must remain read-only. Do not add buttons to create, edit, send, approve, delete or void invoices.
+
+## 11. Customer Payments
+
+Add a Customer Payments section.
+
+Display:
+
+- Payment Number or Reference.
+- Customer Name.
+- Payment Date.
+- Amount.
+- Currency.
+- Payment Mode, if available.
+- Reference Number, if available.
+- Associated Invoice, if available.
+- Payment Status, if available.
+
+Features:
+
+- Search.
+- Date filters.
+- Pagination.
+- Sorting.
+- Record detail link where supported.
+- Total received during the selected period.
+
+Use actual customer payment records. Do not calculate received payments by summing invoice totals or treating invoice status as a payment record.
+
+Account for partial payments, advances, refunds and credit notes correctly according to the API data.
+
+## 12. Expenses
+
+Add an Expenses section.
+
+Display:
+
+- Expense Date.
+- Expense Number or Reference.
+- Merchant or Payee.
+- Expense Account / Category.
+- Description.
+- Amount.
+- Currency.
+- Customer or Project, where available.
+- Status, if available.
+
+Features:
+
+- Search.
+- Category filters.
+- Date filters.
+- Pagination.
+- Sorting.
+- Expense summary.
+
+Use the documented Zoho Books API and the scopes authorized by the user.
+
+## 13. Bills and Vendor Payments
+
+Create separate sections for Bills and Vendor Payments.
+
+### Bills
+
+Display:
+
+- Bill Number.
+- Vendor Name.
+- Bill Date.
+- Due Date.
+- Status.
+- Total Amount.
+- Amount Paid.
+- Balance Due.
+- Currency.
+
+Support search, filtering, sorting, pagination and record links.
+
+### Vendor Payments
+
+Display:
+
+- Payment Number or Reference.
+- Vendor Name.
+- Payment Date.
+- Amount.
+- Currency.
+- Payment Mode, where available.
+- Associated Bill, where available.
+
+Include overdue and outstanding payable summaries.
+
+Keep vendor bills and vendor payments separate. Do not count a bill as a payment.
+
+If vendor credits or credit notes are supported by the connected account, display them separately and avoid double-counting them in expense totals.
+
+## 14. Customers and Vendors
+
+Create Customers and Vendors tabs.
+
+### Customers
+
+Display:
+
+- Customer Name.
+- Customer Type, if available.
+- Email.
+- Phone.
+- Outstanding Receivables.
+- Currency.
+- Status, if available.
+
+### Vendors
+
+Display:
+
+- Vendor Name.
+- Email.
+- Phone.
+- Outstanding Payables.
+- Currency.
+- Status, if available.
+
+Features:
+
+- Search by name, email or phone.
+- Pagination.
+- Sorting.
+- View details when supported.
+- Link to the relevant Zoho record.
+
+Protect personal and business contact data behind administrator authentication. Do not expose it through public API endpoints or client-side secrets.
+
+## 15. Items and Inventory
+
+Create an Items / Inventory section.
+
+Display supported fields such as:
+
+- Item Name.
+- SKU.
+- Item ID.
+- Item Type.
+- Selling Price.
+- Purchase Price.
+- Stock on Hand.
+- Reorder Level.
+- Unit.
+- Inventory Asset Value, if accurately available.
+- Active / Inactive status.
+
+Requirements:
+
+- Search by item name or SKU.
+- Filter by item type.
+- Sort and paginate.
+- Show stock alerts only if stock tracking and reorder data are supported.
+- Display item details and links where available.
+
+Do not assume all items are inventory-tracked. Service items and non-inventory items must not be presented as stocked products.
+
+Do not use locally hardcoded inventory values. If the existing `ZohoInventoryManager.tsx` contains a locally defined catalog, keep its useful interface but replace any simulated data with actual API data.
+
+## 16. Banking and Cash Overview
+
+Create a Banking section showing supported bank and cash account information.
+
+Display:
+
+- Account Name.
+- Account Type.
+- Currency.
+- Current Available Balance, where supported.
+- Last Updated / Balance Date, if available.
+- Recent transactions, if the API and authorized scopes support them.
+
+Do not expose account credentials, bank authentication data or sensitive token information.
+
+Clearly distinguish bank account balances from accounting cash-flow figures.
+
+Do not assume the API returns historical balances. If historical bank data is unavailable, label the displayed amount as the latest available balance.
+
+If banking endpoints require additional permissions, explain the missing scope and provide a secure reconnection path.
+
+## 17. Credit Notes and Other Supported Records
+
+Where available, include:
+
+- Customer Credit Notes.
+- Vendor Credits.
+- Sales Orders.
+- Purchase Orders.
+- Estimates / Quotes.
+- Tax-related summaries.
+
+These sections should use real Zoho Books data and the correct API resources.
+
+Only show a section as available when the required endpoint, permissions and account features are confirmed. Unsupported sections should display an explanatory unavailable state instead of dummy records.
+
+## 18. Supabase Backend and OAuth Security
+
+Use the existing Supabase project and existing OAuth integration. Inspect it before making changes.
+
+Existing Supabase project:
+
+`https://zsbpxqzmkhcvxdvjoabp.supabase.co`
+
+Existing OAuth functions:
+
+- `zoho-oauth-start`
+- `zoho-oauth-callback`
+
+Existing connection table:
+
+- `public.zoho_connections`
+
+Existing OAuth state table:
+
+- `public.zoho_oauth_states`
+
+The current connection table stores encrypted refresh-token information using these columns:
+
+- `refresh_token_ciphertext`
+- `refresh_token_iv`
+- `org_id`
+- `org_name`
+- `api_domain`
+- `created_by`
+- `connected_at`
+- `updated_at`
+
+The existing callback encrypts the refresh token using AES-256-GCM. Any new function must use the exact existing encryption format and key configuration.
+
+### Backend requirements
+
+Create or update a Supabase Edge Function named:
+
+`zoho-dashboard`
+
+It must:
+
+1. Require a valid Supabase authenticated session.
+2. Verify that the caller is an authorized QBench administrator using the existing `is_qbench_admin()` authorization logic or the established equivalent.
+3. Retrieve the encrypted Zoho connection using server-side service-role access.
+4. Decrypt the refresh token only on the server.
+5. Refresh the Zoho access token through `https://accounts.zoho.in`.
+6. Call the documented Zoho Books APIs using the India API domain `https://www.zohoapis.in`.
+7. Use organization ID `60072580070` and verify it matches the authorized stored connection.
+8. Validate requested dates, pagination values, report types and action names.
+9. Return only the requested business data to the authorized administrator.
+10. Handle API errors, expired authorization, missing scopes, rate limits and unavailable endpoints.
+11. Return appropriate HTTP status codes and sanitized error messages.
+12. Avoid logging access tokens, refresh tokens, encryption keys, authorization headers or sensitive customer data.
+13. Never return OAuth tokens or encrypted token material to the frontend.
+14. Never expose the Supabase service-role key in client-side code.
+
+Do not trust an organization ID supplied by the browser without checking it against the stored, authorized connection.
+
+The Edge Function must never allow a normal authenticated user to retrieve data merely because they know the function URL.
+
+### API implementation
+
+Use documented Zoho Books API endpoints, request parameters and response structures.
+
+For example, verify the current documentation for the applicable resources for:
+
+- Organization information.
+- Invoices.
+- Customer payments.
+- Contacts.
+- Expenses.
+- Bills.
+- Vendor payments.
+- Credit notes.
+- Items.
+- Banking.
+- Sales orders.
+- Purchase orders.
+- Estimates.
+- Official reports.
+
+Do not guess endpoint paths, scope names or response properties. Confirm them from Zoho Books API documentation before using them.
+
+Implement pagination correctly for every resource that supports pagination. Avoid silently treating the first page as the complete dataset.
+
+Use appropriate request timeouts, bounded pagination and sensible caching to avoid excessive API requests.
+
+Use short-lived access tokens and refresh them server-side as needed. If the refresh token is invalid or revoked, return a connection error and provide a reconnect option.
+
+## 19. OAuth Scopes and Reconnection
+
+Inspect the scopes already requested by the existing `zoho-oauth-start` function.
+
+Request only the read-only scopes required by the dashboard.
+
+Potential scopes to verify against current Zoho Books API documentation include:
+
+- `ZohoBooks.settings.READ`
+- `ZohoBooks.contacts.READ`
+- `ZohoBooks.invoices.READ`
+- `ZohoBooks.customerpayments.READ`
+- `ZohoBooks.estimates.READ`
+- `ZohoBooks.creditnotes.READ`
+- `ZohoBooks.expenses.READ`
+- `ZohoBooks.bills.READ`
+- `ZohoBooks.vendorpayments.READ`
+- `ZohoBooks.banking.READ`
+- `ZohoBooks.salesorders.READ`
+- `ZohoBooks.purchaseorders.READ`
+
+These are candidates to verify, not permission strings to assume blindly. Confirm exact scope syntax and any report-specific scopes from current Zoho documentation.
+
+Do not request unnecessary write permissions.
+
+If additional scopes are needed, update the OAuth start function and provide a reconnect workflow. Explain that an existing refresh token may not contain newly added scopes, so reauthorization may be required.
+
+Preserve the existing OAuth state validation, expiration checks, one-time state consumption and encrypted token storage.
+
+Ensure the callback saves the correct organization and API domain.
+
+The organization selected and stored must match `60072580070`. If the OAuth callback finds a different organization, do not silently connect to it. Show a clear error and require the correct organization to be selected or configured securely.
+
+## 20. Frontend-to-Backend Integration
+
+The frontend must call the `zoho-dashboard` Edge Function using the existing Supabase client and the current authenticated session.
+
+The frontend must not call Zoho APIs directly using a client secret or refresh token.
+
+Create a typed API service layer with functions similar to:
+
+- `getZohoConnectionStatus()`
+- `getZohoDashboardSummary()`
+- `getZohoInvoices()`
+- `getZohoCustomerPayments()`
+- `getZohoExpenses()`
+- `getZohoBills()`
+- `getZohoVendorPayments()`
+- `getZohoCustomers()`
+- `getZohoVendors()`
+- `getZohoItems()`
+- `getZohoBankAccounts()`
+- `getZohoReport()`
+
+These are suggested frontend method names, not mandatory backend endpoint names. Use a consistent and secure request format supported by the implementation.
+
+The backend can use a validated action-based request structure or separate functions where that is more maintainable.
+
+Use TypeScript interfaces for returned data and explicit loading, success, empty, unavailable and error states.
+
+Do not expose secrets in environment variables prefixed with `VITE_` or otherwise bundled into the frontend.
+
+## 21. Connection Setup and Status
+
+When the Zoho account is not connected:
+
+- Show a clear `Connect Zoho Books` button.
+- Use the existing secure `zoho-oauth-start` function.
+- Redirect to the verified Zoho authorization URL.
+- Complete the OAuth callback.
+- Return to the QBench site with a clear success or error message.
+- Reload the connection status and load the dashboard after successful connection.
+
+When connected:
+
+- Display the organization name and ID.
+- Display the last successful data retrieval time.
+- Provide a manual refresh button.
+- Provide a reconnect action when required.
+- Show clear error messages for expired or revoked authorization.
+
+Do not display `Connected` just because a token exists in the database. Confirm the stored connection and, where appropriate, validate it with an authorized Zoho API request.
+
+Do not claim live synchronization unless the backend has successfully fetched the actual Zoho data.
+
+## 22. Refresh, Caching and Performance
+
+Implement sensible caching for dashboard summaries and large data lists.
+
+Requirements:
+
+- Manual refresh button.
+- Loading indicators during refresh.
+- Prevent unnecessary duplicate API requests.
+- Avoid making every dashboard component independently refresh the same resource.
+- Cache only data that is safe and appropriate to cache.
+- Respect selected date ranges.
+- Display the last successful retrieval timestamp.
+- Handle Zoho API rate limits.
+- Provide retry behavior for transient errors.
+- Avoid infinite retry loops.
+- Avoid showing stale cached data as live data without a visible timestamp and stale-data indicator.
+
+Do not use fabricated data to make the dashboard appear populated during loading.
+
+## 23. UI and Design Requirements
+
+Use the existing QBench design system and visual identity.
+
+QBench brand styling:
+
+- Green: `#007F06`
+- Light green: `#A8E6A3`
+- Dark charcoal: `#151715`
+- Off-white: `#F4F5F2`
+- Typography: existing site fonts, preferably Inter or Poppins if already configured.
+
+The interface should be clean, premium, professional and suitable for business administration.
+
+Use:
+
+- Responsive KPI cards.
+- Clear section headings.
+- Charts with meaningful labels.
+- Tables with proper alignment.
+- Consistent spacing.
+- Readable financial figures.
+- Subtle borders and shadows.
+- Accessible text contrast.
+- Skeleton loaders.
+- Empty states.
+- Error states.
+- Toasts or alerts consistent with the existing site.
+- Mobile-friendly filters and tables.
+
+Avoid overcrowded cards, excessive gradients, oversized headings or unnecessary animation.
+
+Do not change the overall QBench website branding to resemble Zoho. The Zoho dashboard should feel like a natural extension of QBench.
+
+## 24. Read-Only Access — Strict Requirement
+
+This dashboard is for viewing and reporting only.
+
+It must not create, edit, delete, send, approve, void or otherwise modify Zoho Books records.
+
+Do not implement:
+
+- Create invoice.
+- Edit invoice.
+- Send invoice.
+- Delete invoice.
+- Create customer.
+- Edit customer.
+- Create expense.
+- Create bill.
+- Record payment.
+- Modify inventory.
+- Change bank transactions.
+- Any other write operation.
+
+Use read-only API scopes wherever possible.
+
+Do not introduce any feature that changes Zoho data without a separate explicit future requirement.
+
+The only permitted external actions are safe navigation to the original Zoho Books application and the authorization or reconnection flow.
+
+## 25. Data Accuracy and Accounting Rules
+
+Financial data must be accurate and traceable to Zoho Books.
+
+- Use official Zoho report data for accounting reports.
+- Do not calculate profit from invoice totals minus a partial expense list.
+- Do not mix invoice values with collected cash.
+- Do not count a bill as a vendor payment.
+- Handle credit notes, refunds, advances and partial payments according to the actual records.
+- Avoid double-counting transaction totals.
+- Respect currency codes.
+- Distinguish current balances from period totals.
+- Identify the date range used for every period-based calculation.
+- Do not infer historical balances from current balances.
+- Show `Unavailable` when the API does not provide a reliable value.
+- Clearly label estimates and derived calculations.
+- Never invent missing transactions, chart points, totals or report rows.
+
+## 26. Testing and Error Handling
+
+Test the complete implementation.
+
+### Authentication
+
+- Logged-out visitors cannot access the admin dashboard.
+- Logged-in non-admin users cannot retrieve Zoho data.
+- Authorized administrators can access the dashboard.
+
+### OAuth
+
+- Connect Zoho.
+- Confirm callback handling.
+- Verify organization ID.
+- Verify token encryption and decryption.
+- Test expired and revoked authorization.
+- Test reconnection after adding scopes.
+- Confirm tokens never appear in frontend responses or logs.
+
+### Data
+
+- Test each supported endpoint.
+- Confirm totals against the corresponding Zoho Books screens.
+- Test empty datasets.
+- Test pagination.
+- Test custom date ranges.
+- Test overdue and partially paid records.
+- Test multiple currencies if the organization uses them.
+- Test missing permissions and unsupported resources.
+
+### User experience
+
+- Confirm the Zoho navigation item works.
+- Confirm the `/admin/zoho` route is protected.
+- Confirm the Open Zoho Books link opens the correct organization.
+- Confirm refresh and error states work.
+- Confirm the layout works on desktop, tablet and mobile.
+- Confirm the existing site and admin features still work.
+
+Do not mark a test as successful unless it has actually been performed.
+
+## 27. Deployment and Repository Requirements
+
+Make the changes directly in the existing project.
+
+- Preserve the existing framework and dependencies wherever possible.
+- Avoid unnecessary packages.
+- Follow existing coding conventions.
+- Add appropriate TypeScript types.
+- Keep code modular and maintainable.
+- Do not remove unrelated files.
+- Do not overwrite existing environment configuration.
+- Do not commit secrets or tokens.
+- Do not expose Supabase service-role credentials.
+- Do not break existing Vercel deployment settings.
+- Verify the build and type checking where the available environment permits.
+
+If Supabase Edge Function changes are needed, clearly identify which functions must be created or updated and deploy them through the supported workflow.
+
+Do not claim that an Edge Function has been deployed if only frontend code has been generated.
+
+If Google AI Studio cannot deploy or modify Supabase Edge Functions directly, provide the complete Edge Function source code and exact deployment instructions instead of pretending the backend is complete.
+
+If a secret, OAuth permission or dashboard setting requires my action, state exactly what I must configure and where.
+
+## 28. Final Acceptance Criteria
+
+The task is complete only when:
+
+1. The existing QBench website remains functional.
+2. A new Zoho navigation item exists in the authenticated admin panel.
+3. The new `/admin/zoho` page uses the QBench design system.
+4. The page is protected by server-side administrator authorization.
+5. Zoho OAuth uses the existing secure integration or a verified compatible update.
+6. The connected organization is `60072580070`.
+7. The dashboard retrieves actual data from Zoho Books APIs.
+8. Supported financial KPIs, charts, tables and reports display accurate data.
+9. Date filters work correctly for supported metrics and reports.
+10. Unsupported data is identified honestly rather than replaced with sample data.
+11. The original Zoho Books dashboard opens through the provided URL.
+12. No refresh token, access token, encryption key or service-role key reaches the frontend.
+13. The integration remains read-only.
+14. Errors, missing permissions and expired connections are handled clearly.
+15. Existing QBench features remain intact.
+16. The implementation builds successfully and is deployed only after the required frontend and backend changes are complete.
+
+## 29. Execution Instructions
+
+Start by inspecting the existing repository and Supabase integration. Then implement the feature in the existing architecture.
+
+Do not stop after creating a visual mockup. Connect the interface to the actual backend and Zoho Books APIs wherever the available tools and permissions permit.
+
+If a required backend change cannot be completed automatically, do not replace it with simulated data. Tell me exactly which source file, Supabase Edge Function, secret, OAuth scope or deployment action is still required.
+
+At the end, provide a concise implementation report listing:
+
+- Files created or modified.
+- Navigation and route added.
+- APIs and reports successfully integrated.
+- OAuth scopes required.
+- Supabase Edge Functions created or updated.
+- Build and tests actually completed.
+- Deployment status.
+- Any remaining manual configuration.
+- Any Zoho data categories that are unavailable and why.
+
+**Final instruction:** Build a real, secure, read-only Zoho Books financial dashboard inside my existing QBench admin panel, connected to organization `60072580070`. Preserve the existing website, use live API data, and never fabricate financial information.
