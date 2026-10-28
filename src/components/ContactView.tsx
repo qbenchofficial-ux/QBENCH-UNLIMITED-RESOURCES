@@ -28,7 +28,9 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
-  X
+  X,
+  Copy,
+  Check
 } from 'lucide-react';
 import { NavSection, ServiceTab } from '../types';
 import { sendEmailJS, formatSupabaseError } from '../lib/emailService';
@@ -198,7 +200,16 @@ export default function ContactView({ onNavigate }: ContactViewProps) {
     message?: string;
     error?: string;
     advice?: string;
+    enquiryId?: string;
   } | null>(null);
+  const [copiedRef, setCopiedRef] = useState(false);
+
+  const copyRefToClipboard = (text?: string) => {
+    if (!text) return;
+    navigator.clipboard?.writeText(text);
+    setCopiedRef(true);
+    setTimeout(() => setCopiedRef(false), 2000);
+  };
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showSuccessToast, setShowSuccessToast] = useState(false);
 
@@ -216,23 +227,26 @@ export default function ContactView({ onNavigate }: ContactViewProps) {
   const [lastSubmittedSnapshot, setLastSubmittedSnapshot] = useState<typeof formData | null>(null);
   const isSubmittingRef = useRef(false);
 
-  // Construct pre-filled WhatsApp conversation URL dynamically with submitted form inputs
+  // Construct pre-filled WhatsApp conversation URL dynamically with submitted form inputs & Enquiry Reference ID
   const constructWhatsAppUrl = () => {
     const baseUrl = "https://wa.me/917356525932";
     const source = lastSubmittedSnapshot || formData;
-    const { name, company, phone, email, service, message } = source;
+    const { name, company, phone, email, service, message, budget } = source;
+    const refId = submissionDelivery?.enquiryId || 'QB-ENQ';
     
     const text = `Hello QBENCH Team,
 
-I have submitted an enquiry through your website.
+I have submitted an enquiry on your website.
 
+Reference ID: ${refId}
 Name: ${name}
-Company: ${company ? company : 'N/A'}
 Phone: ${phone}
-Email: ${email}
+Email: ${email || 'N/A'}
+Company: ${company || 'N/A'}
 Service: ${service}
+Package: ${budget || (selectedPackage ? selectedPackage.packageName : 'Standard Scope')}
 
-Message:
+Project Requirements / Message:
 ${message}`;
 
     return `${baseUrl}?text=${encodeURIComponent(text)}`;
@@ -253,7 +267,7 @@ ${message}`;
       return;
     }
 
-    // Comprehensive client-side form validation
+    // Comprehensive client-side form validation (Minimal Enquiry Form)
     const trimmedName = formData.name.trim();
     const trimmedPhone = formData.phone.trim();
     const trimmedEmail = formData.email.trim();
@@ -262,23 +276,21 @@ ${message}`;
     const newErrors: typeof errors = {};
 
     if (!trimmedName) {
-      newErrors.name = "Please enter your name.";
+      newErrors.name = "Please enter your full name.";
     } else if (trimmedName.length < 2) {
       newErrors.name = "Name must be at least 2 characters.";
     }
 
-    // Phone pattern allows standard local/international format with digits, dashes, spaces, brackets, or plus signs
     const phonePattern = /^\+?[0-9\s\-()]{7,20}$/;
     if (!trimmedPhone) {
       newErrors.phone = "Please enter your phone number.";
     } else if (!phonePattern.test(trimmedPhone)) {
-      newErrors.phone = "Please enter a valid phone number (at least 7 digits, digits and standard symbols only).";
+      newErrors.phone = "Please enter a valid phone number (at least 7 digits).";
     }
 
+    // Email is optional, but if entered, must be valid
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!trimmedEmail) {
-      newErrors.email = "Please enter your email address.";
-    } else if (!emailPattern.test(trimmedEmail)) {
+    if (trimmedEmail && !emailPattern.test(trimmedEmail)) {
       newErrors.email = "Please enter a valid email address.";
     }
 
@@ -314,10 +326,17 @@ ${message}`;
         `Kindly coordinate my onboarding details and launch files. Thank you!`;
     }
 
-    if (!selectedPackage && !selectedBlueprint && !finalMessage.trim()) {
-      newErrors.message = "Please enter your message.";
-    } else if (!selectedPackage && !selectedBlueprint && finalMessage.trim().length < 5) {
-      newErrors.message = "Please describe your query in more detail (at least 5 characters).";
+    const resolvedService = selectedPackage
+      ? (selectedPackage.packageCategory || formData.service)
+      : selectedBlueprint
+        ? (selectedBlueprint.projectCategory || formData.service)
+        : freeConsultation
+          ? `Free Consultation (${freeConsultation.selectedItem || 'General'})`
+          : formData.service;
+
+    // Project Requirements is optional
+    if (!finalMessage.trim()) {
+      finalMessage = `Initial inquiry for ${resolvedService}${selectedPackage ? ` (${selectedPackage.packageName})` : ''}.`;
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -332,14 +351,6 @@ ${message}`;
     setFormState('submitting');
     setFormError(null);
     setFormErrorMeta(null);
-
-    const resolvedService = selectedPackage
-      ? (selectedPackage.packageCategory || formData.service)
-      : selectedBlueprint
-        ? (selectedBlueprint.projectCategory || formData.service)
-        : freeConsultation
-          ? `Free Consultation (${freeConsultation.selectedItem || 'General'})`
-          : formData.service;
 
     try {
       const responseData = await sendEmailJS({
@@ -367,7 +378,8 @@ ${message}`;
         emailDelivery: responseData.emailDelivery,
         message: responseData.message,
         error: responseData.error,
-        advice: responseData.advice
+        advice: responseData.advice,
+        enquiryId: responseData.enquiryId
       });
 
       // Save snapshot for WhatsApp CTA before clearing form inputs
@@ -956,8 +968,59 @@ ${message}`;
                           transition={{ delay: 0.32, duration: 0.35, ease: "easeOut" }}
                           className="font-sans text-xs sm:text-sm text-brand-text-muted leading-relaxed max-w-md mx-auto"
                         >
-                          {submissionDelivery?.message || 'Thank you! Your enquiry has been submitted successfully. We’ll get back to you shortly.'}
+                          {submissionDelivery?.message || 'Thank you! Your enquiry has been submitted successfully.'}
                         </motion.p>
+                      </div>
+
+                      {/* Reference ID card with copy button */}
+                      <div className="bg-white border border-[#00685b]/30 rounded-2xl p-4 max-w-md mx-auto shadow-xs text-left space-y-3">
+                        <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                          <div>
+                            <span className="font-mono text-[9px] uppercase tracking-wider text-brand-text-muted font-bold block">
+                              Enquiry Reference ID
+                            </span>
+                            <span className="font-mono text-base font-black text-[#00685b] tracking-wider select-all">
+                              {submissionDelivery?.enquiryId || 'QB-ENQ-RECORDED'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyRefToClipboard(submissionDelivery?.enquiryId)}
+                            className="flex items-center gap-1.5 text-xs font-bold text-[#00685b] hover:text-[#004d43] bg-[#00685b]/10 hover:bg-[#00685b]/20 px-3 py-1.5 rounded-xl transition-all cursor-pointer shrink-0"
+                            title="Copy Enquiry Reference ID"
+                          >
+                            {copiedRef ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                            <span>{copiedRef ? 'Copied!' : 'Copy'}</span>
+                          </button>
+                        </div>
+
+                        {lastSubmittedSnapshot && (
+                          <div className="space-y-1.5 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500 font-medium">Customer:</span>
+                              <span className="font-bold text-slate-800">{lastSubmittedSnapshot.name}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500 font-medium">Phone:</span>
+                              <span className="font-mono font-semibold text-slate-700">{lastSubmittedSnapshot.phone}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500 font-medium">Service:</span>
+                              <span className="font-bold text-[#00685b]">{lastSubmittedSnapshot.service}</span>
+                            </div>
+                            {lastSubmittedSnapshot.budget && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-500 font-medium">Package:</span>
+                                <span className="font-semibold text-slate-700">{lastSubmittedSnapshot.budget}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="pt-2 border-t border-slate-100 flex items-center gap-2 text-[11px] text-[#00685b] font-medium">
+                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                          <span>We will review your requirements and respond within 24 hours.</span>
+                        </div>
                       </div>
 
                       {/* Prominent green WhatsApp CTA button */}
@@ -1055,56 +1118,43 @@ ${message}`;
                       )}
                       
                       {/* Name & Business grid */}
-                      <div className={(selectedPackage || selectedBlueprint || freeConsultation) ? "grid grid-cols-1 gap-4" : "grid grid-cols-1 sm:grid-cols-2 gap-4"}>
-                        
-                        <div className="space-y-1.5">
-                          <label htmlFor="name" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Full Name *</label>
-                          <input
-                            id="name"
-                            name="name"
-                            type="text"
-                            required
-                            value={formData.name}
-                            onChange={(e) => {
-                              setFormData({...formData, name: e.target.value});
-                              if (errors.name) setErrors(prev => ({ ...prev, name: undefined }));
-                            }}
-                            placeholder="Your full name"
-                            className={`w-full bg-[#faf9f9]/70 border rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:bg-white transition-all duration-200 ${
-                              errors.name 
-                                ? 'border-red-500 bg-red-50/10 focus:border-red-500 focus:ring-1 focus:ring-red-500/30' 
-                                : 'border-brand-outline/25 focus:border-[#00685b]'
-                            }`}
-                          />
-                          {errors.name && (
-                            <p className="text-[11px] text-red-600 font-sans mt-1 flex items-center gap-1 animate-fade-in">
-                              <span className="text-[12px]">⚠️</span> {errors.name}
-                            </p>
-                          )}
-                        </div>
-                        
-                        {!selectedPackage && !selectedBlueprint && !freeConsultation && (
-                          <div className="space-y-1.5">
-                            <label htmlFor="company" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Company Name</label>
-                            <input
-                              id="company"
-                              name="company"
-                              type="text"
-                              value={formData.company}
-                              onChange={(e) => setFormData({...formData, company: e.target.value})}
-                              placeholder="Name of your company / enterprise"
-                              className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors"
-                            />
-                          </div>
-                        )}
-                        
-                      </div>
+                      {/* Minimal Customer Enquiry Form (6 Fields) */}
                       
-                      {/* Phone & Email grid */}
+                      {/* 1. Full Name */}
+                      <div className="space-y-1.5">
+                        <label htmlFor="name" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">
+                          Full Name *
+                        </label>
+                        <input
+                          id="name"
+                          name="name"
+                          type="text"
+                          required
+                          value={formData.name}
+                          onChange={(e) => {
+                            setFormData({ ...formData, name: e.target.value });
+                            if (errors.name) setErrors((prev) => ({ ...prev, name: undefined }));
+                          }}
+                          placeholder="e.g. Rahul Sharma"
+                          className={`w-full bg-[#faf9f9]/70 border rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/40 focus:outline-none focus:bg-white transition-all duration-200 ${
+                            errors.name
+                              ? 'border-red-500 bg-red-50/10 focus:border-red-500 focus:ring-1 focus:ring-red-500/30'
+                              : 'border-brand-outline/25 focus:border-[#00685b]'
+                          }`}
+                        />
+                        {errors.name && (
+                          <p className="text-[11px] text-red-600 font-sans mt-1 flex items-center gap-1 animate-fade-in">
+                            <span className="text-[12px]">⚠️</span> {errors.name}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* 2. Phone Number & 3. Email Address (Optional) Grid */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        
                         <div className="space-y-1.5">
-                          <label htmlFor="phone" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Phone Number *</label>
+                          <label htmlFor="phone" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">
+                            Phone Number *
+                          </label>
                           <input
                             id="phone"
                             name="phone"
@@ -1112,13 +1162,13 @@ ${message}`;
                             required
                             value={formData.phone}
                             onChange={(e) => {
-                              setFormData({...formData, phone: e.target.value});
-                              if (errors.phone) setErrors(prev => ({ ...prev, phone: undefined }));
+                              setFormData({ ...formData, phone: e.target.value });
+                              if (errors.phone) setErrors((prev) => ({ ...prev, phone: undefined }));
                             }}
-                            placeholder="Include country code"
-                            className={`w-full bg-[#faf9f9]/70 border rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:bg-white transition-all duration-200 ${
-                              errors.phone 
-                                ? 'border-red-500 bg-red-50/10 focus:border-red-500 focus:ring-1 focus:ring-red-500/30' 
+                            placeholder="+91 98765 43210"
+                            className={`w-full bg-[#faf9f9]/70 border rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/40 focus:outline-none focus:bg-white transition-all duration-200 ${
+                              errors.phone
+                                ? 'border-red-500 bg-red-50/10 focus:border-red-500 focus:ring-1 focus:ring-red-500/30'
                                 : 'border-brand-outline/25 focus:border-[#00685b]'
                             }`}
                           />
@@ -1128,23 +1178,24 @@ ${message}`;
                             </p>
                           )}
                         </div>
-                        
+
                         <div className="space-y-1.5">
-                          <label htmlFor="email" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Email Address *</label>
+                          <label htmlFor="email" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">
+                            Email Address <span className="text-slate-400 font-normal font-sans">(Optional)</span>
+                          </label>
                           <input
                             id="email"
                             name="email"
                             type="email"
-                            required
                             value={formData.email}
                             onChange={(e) => {
-                              setFormData({...formData, email: e.target.value});
-                              if (errors.email) setErrors(prev => ({ ...prev, email: undefined }));
+                              setFormData({ ...formData, email: e.target.value });
+                              if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }));
                             }}
                             placeholder="name@company.com"
-                            className={`w-full bg-[#faf9f9]/70 border rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:bg-white transition-all duration-200 ${
-                              errors.email 
-                                ? 'border-red-500 bg-red-50/10 focus:border-red-500 focus:ring-1 focus:ring-red-500/30' 
+                            className={`w-full bg-[#faf9f9]/70 border rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/40 focus:outline-none focus:bg-white transition-all duration-200 ${
+                              errors.email
+                                ? 'border-red-500 bg-red-50/10 focus:border-red-500 focus:ring-1 focus:ring-red-500/30'
                                 : 'border-brand-outline/25 focus:border-[#00685b]'
                             }`}
                           />
@@ -1154,160 +1205,96 @@ ${message}`;
                             </p>
                           )}
                         </div>
-                        
-                      </div>
-                      
-                      {/* Service Required Select */}
-                      <div className="space-y-1.5">
-                        <label htmlFor="service" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Service Required *</label>
-                        {selectedPackage ? (
-                          <div className="w-full bg-[#00685b]/5 border border-[#00685b]/25 rounded-xl px-4 py-2.5 text-xs text-[#00685b] font-bold flex items-center justify-between">
-                            <span>{selectedPackage.packageCategory || 'Linked Service'}</span>
-                            <span className="text-[8px] font-bold text-white bg-[#00685b] px-2 py-0.5 rounded font-mono">LOCKED</span>
-                          </div>
-                        ) : selectedBlueprint ? (
-                          <div className="w-full bg-[#00685b]/5 border border-[#00685b]/25 rounded-xl px-4 py-2.5 text-xs text-[#00685b] font-bold flex items-center justify-between">
-                            <span>{selectedBlueprint.projectCategory || 'Linked Blueprint'}</span>
-                            <span className="text-[8px] font-bold text-white bg-[#00685b] px-2 py-0.5 rounded font-mono">LOCKED</span>
-                          </div>
-                        ) : freeConsultation ? (
-                          <div className="w-full bg-[#00685b]/5 border border-[#00685b]/25 rounded-xl px-4 py-2.5 text-xs text-[#00685b] font-bold flex items-center justify-between">
-                            <span>Free Consultation Focus ({freeConsultation.selectedItem})</span>
-                            <span className="text-[8px] font-bold text-white bg-[#00685b] px-2 py-0.5 rounded font-mono">LOCKED</span>
-                          </div>
-                        ) : (
-                          <select
-                            id="service"
-                            name="service"
-                            required
-                            value={formData.service}
-                            onChange={(e) => setFormData({...formData, service: e.target.value})}
-                            className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-2.5 text-xs text-brand-text focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors appearance-none cursor-pointer"
-                            style={{ backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2300685b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '16px' }}
-                          >
-                            <option value="Branding">Branding & Identity</option>
-                            <option value="Social Media Design">Social Media Design</option>
-                            <option value="Motion Graphics">Motion Graphics</option>
-                            <option value="Video Editing">Video Editing</option>
-                            <option value="Digital Marketing">Digital Marketing</option>
-                            <option value="UI/UX Design">UI/UX Design</option>
-                            <option value="Web Development">Web Development</option>
-                            <option value="AI Creative Services">AI Creative Services</option>
-                            <option value="Printing">Printing</option>
-                            <option value="Business Support">Business Support</option>
-                            <option value="Other">Other Inquiry</option>
-                          </select>
-                        )}
                       </div>
 
-                      {/* Budget, Timeline & Reference/Website Grid */}
-                      {!selectedPackage && !selectedBlueprint && !freeConsultation && (
-                        <>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="space-y-1.5">
-                              <label htmlFor="budget" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Estimated Budget</label>
-                              <input
-                                id="budget"
-                                name="budget"
-                                type="text"
-                                value={formData.budget}
-                                onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
-                                placeholder="e.g. Growth Scope / Flexible / Project-based"
-                                className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors"
-                              />
-                            </div>
-
-                            <div className="space-y-1.5">
-                              <label htmlFor="timeline" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Project Timeline</label>
-                              <input
-                                id="timeline"
-                                name="timeline"
-                                type="text"
-                                value={formData.timeline}
-                                onChange={(e) => setFormData({ ...formData, timeline: e.target.value })}
-                                placeholder="e.g. 2–4 Weeks / Immediate"
-                                className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="space-y-1.5">
-                              <label htmlFor="projectDescription" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Project Description</label>
-                              <input
-                                id="projectDescription"
-                                name="projectDescription"
-                                type="text"
-                                value={formData.projectDescription}
-                                onChange={(e) => setFormData({ ...formData, projectDescription: e.target.value })}
-                                placeholder="Brief summary of deliverables or goals"
-                                className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors"
-                              />
-                            </div>
-
-                            <div className="space-y-1.5">
-                              <label htmlFor="referenceUrl" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Reference / Website</label>
-                              <input
-                                id="referenceUrl"
-                                name="referenceUrl"
-                                type="url"
-                                value={formData.referenceUrl}
-                                onChange={(e) => setFormData({ ...formData, referenceUrl: e.target.value })}
-                                placeholder="https://yourwebsite.com or inspiration link"
-                                className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors"
-                              />
-                            </div>
-                          </div>
-                        </>
-                      )}
-                      
-                      {/* Message description box */}
-                      {!selectedPackage && !selectedBlueprint && (
+                      {/* 4. Service Required & 5. Package Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Service Required */}
                         <div className="space-y-1.5">
-                          <label htmlFor="message" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">Your Message *</label>
-                          <textarea
-                            id="message"
-                            name="message"
-                            required
-                            rows={5}
-                            readOnly={!!freeConsultation}
-                            value={formData.message}
-                            onChange={(e) => {
-                              if (!freeConsultation) {
-                                setFormData({...formData, message: e.target.value});
-                                if (errors.message) setErrors(prev => ({ ...prev, message: undefined }));
-                              }
-                            }}
-                            placeholder="Please write your detailed query or project description here..."
-                            className={`w-full border rounded-xl px-4 py-3 text-xs resize-none transition-all duration-200 ${
-                              freeConsultation 
-                                ? "bg-[#00685b]/5 border-[#00685b]/20 text-[#002f29]/80 font-medium font-sans leading-relaxed pointer-events-none select-all" 
-                                : errors.message 
-                                  ? "bg-red-50/10 border-red-500 text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:ring-1 focus:ring-red-500/30"
-                                  : "bg-[#faf9f9]/70 border-brand-outline/25 text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:border-[#00685b] focus:bg-white"
-                            }`}
-                          />
-                          {errors.message && (
-                            <p className="text-[11px] text-red-600 font-sans mt-1 flex items-center gap-1 animate-fade-in">
-                              <span className="text-[12px]">⚠️</span> {errors.message}
-                            </p>
+                          <label htmlFor="service" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">
+                            Service Required *
+                          </label>
+                          {selectedPackage ? (
+                            <div className="w-full bg-[#00685b]/5 border border-[#00685b]/25 rounded-xl px-4 py-2.5 text-xs text-[#00685b] font-bold flex items-center justify-between">
+                              <span className="truncate">{selectedPackage.packageCategory || formData.service}</span>
+                              <span className="text-[8px] font-bold text-white bg-[#00685b] px-2 py-0.5 rounded font-mono">SELECTED</span>
+                            </div>
+                          ) : (
+                            <select
+                              id="service"
+                              name="service"
+                              required
+                              value={formData.service}
+                              onChange={(e) => setFormData({ ...formData, service: e.target.value })}
+                              className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-2.5 text-xs text-brand-text focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors appearance-none cursor-pointer"
+                              style={{ backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2300685b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '16px' }}
+                            >
+                              <option value="Branding">Branding & Visual Identity</option>
+                              <option value="Awards Package">Awards Package (Ceremony & Gala Suite)</option>
+                              <option value="Social Media Design">Social Media Design & Growth</option>
+                              <option value="Video Editing">Video Editing & Reels</option>
+                              <option value="Digital Marketing">Digital Marketing & SEO</option>
+                              <option value="UI/UX Design">UI/UX & Product Design</option>
+                              <option value="Web Development">Web & Full-Stack Development</option>
+                              <option value="Motion Graphics">Motion Graphics & Visuals</option>
+                              <option value="Digital Growth">Digital Growth Strategy</option>
+                              <option value="Business Support">Studio Support & Operations</option>
+                              <option value="Other">Other Creative Inquiry</option>
+                            </select>
                           )}
                         </div>
-                      )}
 
-                      {/* Optional Message box for Portfolio Blueprint Inquiry */}
-                      {selectedBlueprint && (
-                        <div className="space-y-1.5 animate-fade-in">
-                          <label className="text-[10px] font-tech text-[#00685b] uppercase font-bold tracking-wider">Additional Message (Optional)</label>
-                          <textarea
-                            rows={3}
-                            value={additionalMessage}
-                            onChange={(e) => setAdditionalMessage(e.target.value)}
-                            placeholder="Add any specific guidelines, custom tweaks or options for this design blueprint..."
-                            className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-3 text-xs text-brand-text placeholder-brand-text-muted/30 focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors resize-none"
-                          />
+                        {/* Package (Optional, Prefilled when selected) */}
+                        <div className="space-y-1.5">
+                          <label htmlFor="package" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">
+                            Package <span className="text-slate-400 font-normal font-sans">(Optional)</span>
+                          </label>
+                          {selectedPackage ? (
+                            <div className="w-full bg-[#00685b]/5 border border-[#00685b]/25 rounded-xl px-4 py-2.5 text-xs text-[#00685b] font-bold flex items-center justify-between">
+                              <span className="truncate">{selectedPackage.packageName}</span>
+                              <button
+                                type="button"
+                                onClick={handleClearPackage}
+                                className="text-[10px] text-red-500 hover:text-red-700 underline font-sans ml-2"
+                              >
+                                Change
+                              </button>
+                            </div>
+                          ) : (
+                            <select
+                              id="package"
+                              name="package"
+                              value={formData.budget} // Use budget field internally to track package choice or freeform
+                              onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
+                              className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-2.5 text-xs text-brand-text focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors appearance-none cursor-pointer"
+                              style={{ backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2300685b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '16px' }}
+                            >
+                              <option value="">Standard Scope (Default)</option>
+                              <option value="Awards Package">Awards Package (All-in-One Suite)</option>
+                              <option value="Starter Scope">Starter Scope</option>
+                              <option value="Growth Scope">Growth Scope</option>
+                              <option value="Enterprise Scope">Enterprise Scope</option>
+                              <option value="Custom Quotation">Custom Quotation Required</option>
+                            </select>
+                          )}
                         </div>
-                      )}
+                      </div>
+
+                      {/* 6. Project Requirements (Optional short text field) */}
+                      <div className="space-y-1.5">
+                        <label htmlFor="message" className="text-[10px] font-tech text-brand-text-muted uppercase font-bold tracking-wider">
+                          Project Requirements <span className="text-slate-400 font-normal font-sans">(Optional)</span>
+                        </label>
+                        <textarea
+                          id="message"
+                          name="message"
+                          rows={3}
+                          value={formData.message}
+                          onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                          placeholder="Briefly describe your project goals, deliverables, or target timeline..."
+                          className="w-full bg-[#faf9f9]/70 border border-brand-outline/25 rounded-xl px-4 py-2.5 text-xs text-brand-text placeholder-brand-text-muted/40 focus:outline-none focus:border-[#00685b] focus:bg-white transition-colors resize-none"
+                        />
+                      </div>
                       
                       <button
                         type="submit"
@@ -1566,22 +1553,62 @@ ${message}`;
                 </p>
               </div>
 
-              {lastSubmittedSnapshot && (
-                <div className="bg-[#faf9f9] border border-brand-outline/15 rounded-2xl p-4 text-left text-xs space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-[10px] uppercase text-brand-text-muted font-bold">Name</span>
-                    <span className="font-sans font-bold text-[#002f29] truncate">{lastSubmittedSnapshot.name}</span>
+              {/* Reference ID banner with Copy button */}
+              <div className="bg-[#002f29]/5 border border-[#00685b]/25 rounded-2xl p-4 text-left space-y-3">
+                <div className="flex items-center justify-between gap-3 border-b border-[#00685b]/15 pb-2.5">
+                  <div>
+                    <span className="font-mono text-[9px] uppercase tracking-wider text-[#00685b] font-bold block">
+                      Enquiry Reference ID
+                    </span>
+                    <span className="font-mono text-base font-black text-[#002f29] tracking-wider select-all">
+                      {submissionDelivery?.enquiryId || 'QB-ENQ-RECORDED'}
+                    </span>
                   </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-[10px] uppercase text-brand-text-muted font-bold">Service</span>
-                    <span className="font-mono text-[11px] font-bold text-[#00685b]">{lastSubmittedSnapshot.service}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-[10px] uppercase text-brand-text-muted font-bold">Reply Email</span>
-                    <span className="font-sans text-slate-700 truncate">{lastSubmittedSnapshot.email}</span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyRefToClipboard(submissionDelivery?.enquiryId)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-white bg-[#00685b] hover:bg-[#005247] px-3 py-1.5 rounded-xl transition-all cursor-pointer shrink-0 shadow-xs"
+                    title="Copy Enquiry Reference ID"
+                  >
+                    {copiedRef ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    <span>{copiedRef ? 'Copied!' : 'Copy ID'}</span>
+                  </button>
                 </div>
-              )}
+
+                {lastSubmittedSnapshot && (
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 font-medium">Customer:</span>
+                      <span className="font-bold text-slate-800">{lastSubmittedSnapshot.name}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 font-medium">Phone:</span>
+                      <span className="font-mono font-semibold text-slate-800">{lastSubmittedSnapshot.phone}</span>
+                    </div>
+                    {lastSubmittedSnapshot.email && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">Email:</span>
+                        <span className="font-sans text-slate-700 truncate">{lastSubmittedSnapshot.email}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 font-medium">Service:</span>
+                      <span className="font-bold text-[#00685b]">{lastSubmittedSnapshot.service}</span>
+                    </div>
+                    {lastSubmittedSnapshot.budget && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 font-medium">Package:</span>
+                        <span className="font-semibold text-slate-700">{lastSubmittedSnapshot.budget}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-[#00685b]/15 flex items-center gap-2 text-[11px] text-[#00685b] font-medium">
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                  <span>We will review your requirements and respond within 24 hours.</span>
+                </div>
+              </div>
 
               <div className="flex flex-col sm:flex-row gap-2.5 pt-1">
                 <a

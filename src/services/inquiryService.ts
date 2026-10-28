@@ -130,21 +130,31 @@ export async function createProjectInquiry(
   input: ProjectInquiryInput
 ): Promise<ProjectInquiry> {
   const name = (input.name || '').trim();
-  const email = (input.email || '').trim();
+  const rawEmail = (input.email || '').trim();
   const phone = (input.phone || '').trim();
   const service = (input.service || 'Branding').trim();
   const company = (input.company || '').trim();
   const budget = (input.budget || '').trim();
   const pkg = (input.package || '').trim();
 
-  if (!name || !email || !phone || !service) {
+  // Full Name, Phone, and Service are strictly required; Email is optional
+  if (!name || !phone || !service) {
     throw new SupabaseInquiryError({
-      message: 'Required fields (Name, Email, Phone, and Service) are missing.',
+      message: 'Required fields (Full Name, Phone Number, and Service Required) are missing.',
       code: 'VALIDATION_ERROR',
-      details: `Received name=${Boolean(name)}, email=${Boolean(email)}, phone=${Boolean(phone)}, service=${Boolean(service)}`,
+      details: `Received name=${Boolean(name)}, phone=${Boolean(phone)}, service=${Boolean(service)}`,
       hint: 'Please fill in all required fields before submitting.',
     });
   }
+
+  // Generate unique Enquiry Reference ID
+  const year = new Date().getFullYear();
+  const randNum = Math.floor(1000 + Math.random() * 9000);
+  const timeHex = Date.now().toString(36).slice(-3).toUpperCase();
+  const generatedReferenceId = `QB-ENQ-${year}-${randNum}${timeHex}`;
+
+  // If email not provided, use a valid placeholder for SQL NOT NULL constraints
+  const email = rawEmail || 'no-email-provided@qbench.in';
 
   await ensureSupabaseConfig();
   const diag = getSupabaseClientDiagnostics();
@@ -155,11 +165,12 @@ export async function createProjectInquiry(
       message: SUPABASE_CONFIG_WARNING || 'Supabase configuration is missing or incomplete.',
       code: 'SUPABASE_ENV_MISSING',
       details: `Project URL: ${diag.projectUrl}, Anon Key Present: ${diag.anonKeyPresent} (${diag.anonKeyFormat})`,
-      hint: 'In Vercel > Project Settings > Environment Variables, set VITE_SUPABASE_URL=https://zsbpxqzmkhcvxdvjoabp.supabase.co and VITE_SUPABASE_ANON_KEY=<your_supabase_anon_key>, then redeploy.',
+      hint: 'In Vercel > Project Settings > Environment Variables, set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.',
     });
   }
 
   const messageParts: string[] = [];
+  messageParts.push(`Enquiry Reference ID: ${generatedReferenceId}`);
   if (pkg) {
     messageParts.push(`Selected Package: ${pkg}`);
   }
@@ -175,20 +186,13 @@ export async function createProjectInquiry(
   ) {
     messageParts.push(`Project Description: ${input.project_description.trim()}`);
   }
-  if (input.timeline?.trim()) {
-    messageParts.push(`Timeline: ${input.timeline.trim()}`);
-  }
-  if (input.reference_url?.trim()) {
-    messageParts.push(`Reference URL: ${input.reference_url.trim()}`);
-  }
 
   // Ensure message is always a non-empty string so NOT NULL constraints on `message` never fail
   const combinedMessage =
     messageParts.join('\n\n').trim() ||
-    `Project enquiry for ${service}${pkg ? ` (${pkg})` : ''}${budget ? ` (Budget: ${budget})` : ''}.`;
+    `Project enquiry for ${service}${pkg ? ` (${pkg})` : ''}. Reference: ${generatedReferenceId}`;
 
-  // Standard payload matching public.project_inquiries schema:
-  // name, email, phone, company, service, budget, message, status
+  // Standard payload matching public.project_inquiries schema
   const basePayload: Record<string, any> = {
     name,
     email,
@@ -197,37 +201,33 @@ export async function createProjectInquiry(
     service,
     budget: budget || null,
     message: combinedMessage,
-    status: 'new' as InquiryStatus,
+    status: 'New' as InquiryStatus,
   };
 
-  // If package is present, try inserting with package first if table schema supports it
-  let payload: Record<string, any> = pkg
-    ? { ...basePayload, package: pkg }
-    : basePayload;
+  // If package or reference_id is supported, try inserting with extended payload
+  let payload: Record<string, any> = {
+    ...basePayload,
+    ...(pkg ? { package: pkg } : {}),
+  };
 
-  // Note: Do not chain .select() on anonymous insert because public visitors only have
-  // INSERT permission (not SELECT permission) under RLS on public.project_inquiries.
   let { error } = await supabase.from('project_inquiries').insert([payload]);
 
-  // If package column does not exist in public.project_inquiries (PGRST204 or 42703),
-  // adapt dynamically to the existing database schema by removing the column
-  if (error && (error.code === 'PGRST204' || error.code === '42703') && 'package' in payload) {
-    console.info('[QBENCH Supabase Inquiry] Adapting to existing schema without package column');
+  // If column does not exist in public.project_inquiries, adapt dynamically
+  if (error && (error.code === 'PGRST204' || error.code === '42703')) {
+    console.info('[QBENCH Supabase Inquiry] Adapting to basic schema columns');
     payload = basePayload;
     const retry = await supabase.from('project_inquiries').insert([payload]);
     error = retry.error;
   }
 
-  // If a NOT NULL constraint exists on company, budget, or other columns (code 23502),
-  // retry with non-null string defaults
+  // If a NOT NULL constraint exists on company or budget (code 23502), retry with defaults
   if (error && error.code === '23502') {
-    console.warn('[QBENCH Supabase Inquiry] Retrying insert with non-null string defaults due to 23502');
     const nonNullPayload: Record<string, any> = {
       ...payload,
       company: payload.company || 'Not specified',
-      budget: payload.budget || 'Not specified',
+      budget: payload.budget || 'Standard Scope',
       message: combinedMessage,
-      status: 'new' as InquiryStatus,
+      status: 'New' as InquiryStatus,
     };
     const retry = await supabase.from('project_inquiries').insert([nonNullPayload]);
     error = retry.error;
@@ -245,20 +245,21 @@ export async function createProjectInquiry(
     });
   }
 
-  console.info('[QBENCH] Supabase INSERT: SUCCESS');
+  console.info('[QBENCH] Supabase INSERT: SUCCESS - Reference ID:', generatedReferenceId);
   window.dispatchEvent(new CustomEvent('qbench-cms-updated'));
 
   return {
     id: `inq-${Date.now()}`,
+    reference_id: generatedReferenceId,
     name,
-    email,
+    email: rawEmail || '',
     phone,
     company: company || null,
     service,
     package: pkg || null,
     budget: budget || null,
     message: combinedMessage,
-    status: 'new' as InquiryStatus,
+    status: 'New' as InquiryStatus,
     created_at: new Date().toISOString(),
   };
 }

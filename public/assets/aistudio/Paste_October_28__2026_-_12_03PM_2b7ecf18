@@ -1,0 +1,620 @@
+QBench CRM — Complete Enquiry Management System
+Act as a senior full-stack developer, CRM architect, database engineer, and UI/UX designer. Upgrade my existing QBench website with a complete, production-ready enquiry management system inspired by Excel CRM workflows and modern SaaS dashboards.
+Existing Project Context
+Brand: QBENCH — Creative, Digital & Events
+Frontend: React + TypeScript + Vite + Tailwind CSS
+Backend: Existing Supabase project
+Deployment: Vercel
+Existing enquiry table: "project_inquiries"
+Authentication: Existing Supabase Auth
+Email service: Existing EmailJS integration, if configured
+Spreadsheet: Excel export and optional Google Sheets synchronisation
+Critical instructions:
+Inspect the existing source code, database schema, website forms, authentication, package configuration, and integrations before modifying anything.
+Do not create a new project, duplicate existing tables, replace working integrations, or redesign the entire website.
+Preserve all existing branding, animations, layouts, routes, portfolio content, responsiveness, and functionality. Implement only the required changes.
+Minimal Customer Enquiry Form
+Make the initial enquiry form short, simple, and easy to complete on mobile.
+Collect only these fields:
+Full Name — required
+Phone Number — required
+Email Address — optional
+Service Required — required
+Package — optional, automatically prefilled when selected
+Project Requirements — optional short text field
+Automatically record the submission date and generate a unique enquiry reference ID.
+Do not ask customers to enter internal remarks, quotation amounts, payment details, follow-up dates, project status, or other administrative information.
+Keep the form consistent with the existing QBench website design.
+Consolidate All Award-Based Packages
+Merge all existing award-based packages into one single package named “Awards Package.”
+Requirements:
+Inspect all existing award-based packages before merging.
+Combine their unique services, deliverables, and inclusions into one consolidated package.
+Remove duplicate package cards and redundant selection options.
+Update website package listings, enquiry forms, package references, and admin dashboard mappings.
+Keep the package description concise and easy to understand.
+Retain existing approved pricing only when it is consistent and applicable.
+If prices or deliverables conflict, flag them for administrator review rather than inventing a price.
+Do not delete historical enquiries, old quotations, invoices, or previously agreed package details.
+Use a safe migration or mapping strategy that preserves historical records.
+All new enquiries for award-related services should use the consolidated Awards Package. Existing historical enquiries must retain their original information.
+Enquiry Submission and Confirmation
+When a customer submits an enquiry:
+Validate the submitted fields.
+Save the enquiry to Supabase.
+Generate a unique enquiry ID.
+Set the initial status to "New".
+Record the submission timestamp.
+Display a confirmation message containing the enquiry ID.
+Send a customer acknowledgement email.
+Notify the QBench administrator.
+Prevent accidental duplicate submissions.
+Display clear errors if saving fails.
+Never show a success message before Supabase confirms the database operation.
+The customer acknowledgement should contain:
+Enquiry reference ID
+Service selected
+Package selected, if applicable
+Submission date
+Confirmation that QBench has received the enquiry
+An appropriate next-step message
+Do not promise a response time unless QBench has configured one.
+Keep email delivery status separate from enquiry submission status. An email failure must not create duplicate enquiries when the customer retries.
+Enquiry Status Management
+Create a complete enquiry status workflow with editable status options.
+Use these statuses:
+Status| Purpose
+New| Enquiry received
+Contacted| Initial contact completed
+Requirement Confirmed| Client requirements verified
+Quotation Preparing| Preparing the quotation
+Quotation Sent| Quotation shared with client
+Negotiation| Discussing pricing or deliverables
+Follow-up Required| Further contact is needed
+Approved| Client approved the proposal
+On Hold| Temporarily paused
+Rejected| Client declined the proposal
+Lost| Opportunity closed without conversion
+Cancelled| Enquiry or project cancelled
+In Progress| Approved project is underway
+Completed| Project delivery completed
+Implement the following features:
+Status dropdown for each enquiry
+Clear colour-coded status badges
+Status filtering
+Status update timestamps
+Status change history
+Search by enquiry ID or client
+Filters by service, date, status, and assigned team member
+Quick status updates from the enquiry table
+Detailed enquiry view for editing all related information
+Allow legitimate status transitions without forcing a rigid sequence. For example, an enquiry may move directly from "New" to "Lost" if the client declines immediately.
+Record who changed the status and when, where audit tracking is supported.
+Important: Do not automatically mark enquiries as Approved, payments as Paid, or projects as Completed without a confirmed action.
+Admin Dashboard
+Create a secure admin page called Enquiry Management within the existing QBench admin interface.
+Display these summary cards:
+Total Enquiries
+New Enquiries
+Contacted
+Follow-ups Due
+Quotations Sent
+Approved
+In Progress
+Completed
+Lost / Rejected
+Calculate all counts from real Supabase data. Do not use hardcoded sample numbers.
+Add an Excel-style table with:
+Enquiry ID
+Date
+Client Name
+Phone Number
+Service
+Package
+Enquiry Status
+Quotation Amount
+Follow-up Date
+Assigned To
+Last Updated
+Actions
+Include:
+Search
+Sorting
+Pagination
+Filters
+View Details
+Edit Enquiry
+Update Status
+Add Follow-up
+Export Data
+Make the dashboard responsive on desktop, tablet, and mobile.
+Full Enquiry Details and CRM Updates
+After an enquiry arrives, authorised administrators must be able to update its full details without asking the customer to resubmit the form.
+Customer information
+Client name
+Contact person
+Phone number
+Email address
+Company name
+Service and requirements
+Service category
+Selected package
+Confirmed requirements
+Estimated budget
+Reference files or links
+Additional deliverables
+Sales and follow-up
+Current enquiry status
+Assigned team member
+Last contacted date
+Next follow-up date
+Follow-up notes
+Quotation number
+Quotation amount
+Quotation sent date
+Client feedback
+Internal remarks
+Lost or rejection reason
+Project management
+Project start date
+Expected deadline
+Project completion date
+Agreed project value
+Project progress
+Delivery links
+Payment tracking
+Invoice reference
+Total agreed amount
+Advance amount
+Amount received
+Outstanding balance
+Payment status
+Use separate, clearly labelled sections in the enquiry details page.
+Allow administrators to add multiple follow-up notes and payment entries when necessary. Calculate outstanding balances from recorded transactions rather than relying on manually entered totals.
+All changes must be saved to Supabase and reflected immediately in the dashboard after a successful save.
+Keep the original enquiry submission intact and maintain a history of important changes wherever practical.
+Follow-up and Reminder System
+Implement follow-up management for every enquiry.
+Administrators should be able to:
+Schedule a follow-up date
+Record call, email, or meeting notes
+Update the next follow-up date
+Mark a follow-up as completed
+View overdue follow-ups
+Filter enquiries due today or within a selected date range
+Display overdue follow-ups clearly in the dashboard.
+Avoid promising automatic notifications unless a scheduled backend mechanism is actually implemented and configured.
+Excel Export and Google Sheets Integration
+Excel / CSV export
+Provide options to export:
+All enquiries
+Filtered enquiries
+Selected enquiries
+Date-based reports
+Enquiry status reports
+Use meaningful column headings, readable dates, and proper currency formatting.
+If practical, support a formatted ".xlsx" export in addition to CSV.
+Google Sheets integration
+If Google Sheets is configured, synchronise new enquiries and subsequent CRM updates.
+Requirements:
+Use the enquiry ID as the unique identifier.
+Update an existing spreadsheet row instead of creating duplicates.
+Synchronise relevant status changes and administrative updates.
+Record synchronisation errors.
+Retry failed synchronisations safely.
+Keep Supabase as the primary source of truth.
+If Google Sheets is not configured, implement Excel export first and clearly identify the configuration needed for Google Sheets.
+Never expose service-account credentials or privileged API keys in frontend code.
+Database and Supabase Security
+Inspect the existing "project_inquiries" table and related database objects before making schema changes.
+Reuse existing columns wherever possible. Add only missing fields through safe, version-controlled SQL migrations.
+Implement:
+Row Level Security
+Authorised administrator read and update access
+Secure public enquiry submission
+Input validation and sanitisation
+Proper access control for internal CRM fields
+Safe handling of personal information
+Server-side privileged integrations
+Audit history for important changes
+Public website visitors must never be able to read other customers' enquiries or change internal statuses, quotations, payments, or remarks.
+Use the existing Supabase Auth administrator account. Do not hardcode passwords or bypass authentication.
+Ensure generated IDs are unique and database constraints protect data integrity.
+QBench Visual Design
+Use the existing QBench brand identity:
+Primary Green: "#007F06"
+Light Green: "#A8E6A3"
+Dark Charcoal: "#151715"
+Off-White: "#F4F5F2"
+Typography: Inter or Poppins, consistent with the existing website
+Create a clean, professional SaaS interface featuring:
+Compact KPI cards
+Excel-like data tables
+Clear status badges
+Simple editing forms
+Detailed enquiry views
+Quick filters and search
+Follow-up reminders
+Consistent spacing and typography
+Mobile-friendly layouts
+Accessible form controls
+Loading, empty, success, and error states
+Avoid excessive gradients, unnecessary animations, oversized cards, and decorative elements that reduce usability.
+Implementation and Testing
+Follow this implementation sequence:
+Inspect the existing project and database schema.
+Identify existing enquiry, package, and admin components.
+Present a concise implementation plan.
+Consolidate award-based packages safely.
+Simplify the public enquiry form.
+Implement database changes only where necessary.
+Implement enquiry confirmation and email notifications.
+Build the admin dashboard and status workflow.
+Add full enquiry editing and follow-up management.
+Implement Excel export.
+Configure Google Sheets synchronisation if credentials and integration are available.
+Test Supabase permissions and authentication.
+Test all status transitions and data updates.
+Test package consolidation and historical record preservation.
+Test mobile responsiveness and error handling.
+Provide the changed files, required environment variables, SQL migrations, and deployment instructions.
+Do not remove existing functionality or replace the current website with a mockup.
+Do not claim that integrations are working until they have been implemented and tested.
+Final Objective
+Deliver a complete QBench enquiry management CRM with:
+One consolidated Awards Package
+A minimal customer enquiry form
+Automatic enquiry IDs and submission confirmations
+Customer and administrator email notifications
+A complete, editable enquiry status workflow
+Excel-style CRM data management
+Full customer, quotation, follow-up, project, and payment details
+Excel/CSV export
+Optional Google Sheets synchronisation
+Secure Supabase integration
+Preservation of all existing QBench website functionality
+Build on the existing application, keep customer data safe, and make the system practical for day-to-day business operations.
+Gemini 3.8 Flash
+Ran for 0s
+error
+Quota limits exceeded
+The dev server didn't start, please fix it
+Gemini 3.8 Flash
+Ran for 0s
+error
+Quota limits exceeded
+QBENCH — Complete CRM, Enquiry Management, Pricing, Admin Portal & Zoho Books
+Act as a senior full-stack developer, CRM architect, database engineer, and UI/UX designer. Upgrade my existing QBench website into a reliable, production-ready business management system with enquiry tracking, editable pricing, Excel import/export, package management, and secure administration.
+1. Existing Project Context
+Brand: QBENCH — Creative, Digital & Events
+Frontend: React + TypeScript + Vite + Tailwind CSS
+Backend: Existing Supabase project
+Deployment: Vercel
+Existing enquiry table: project_inquiries
+Authentication: Existing Supabase Auth
+Email service: EmailJS, if configured
+Spreadsheet: Excel export and optional Google Sheets synchronisation
+Accounting platform: Zoho Books, accessed externally unless a real integration is configured
+Mandatory rules
+Inspect the existing codebase, database schema, routes, navigation, packages, and integrations before modifying anything.
+Preserve the existing website design, branding, animations, layouts, portfolio content, and working functionality.
+Reuse existing components and database tables wherever possible.
+Do not create duplicate authentication systems or database tables.
+Use safe, version-controlled SQL migrations for necessary schema changes.
+Preserve historical enquiries, quotations, invoices, and customer records.
+Implement working functionality, not just static UI mockups.
+Never expose privileged credentials or secrets in frontend code.
+2. Minimal Customer Enquiry Form
+Create a simple, mobile-friendly enquiry form with these fields:
+Full Name — required
+Phone Number — required
+Email Address — optional
+Service Required — required
+Package — optional and prefilled when selected
+Project Requirements — optional short text
+Automatically generate a unique enquiry ID and record the submission timestamp.
+Do not ask customers for internal remarks, quotation amounts, payment details, follow-up dates, or administrative information.
+Validate inputs, prevent accidental duplicate submissions, and display clear success or error messages.
+3. Consolidate Award-Based Packages
+Merge all existing award-based packages into one package named Awards Package.
+Combine unique services, deliverables, and inclusions from existing award-based packages.
+Remove duplicate package cards and redundant selection options.
+Update package listings, enquiry forms, admin dashboard references, and database mappings.
+Retain valid approved pricing where applicable.
+Flag conflicting prices or inclusions for administrator review.
+Do not invent prices or delete historical records.
+Preserve old quotations and previously agreed customer prices.
+Apply the consolidated package to new award-related enquiries.
+4. Enquiry Submission and Confirmation
+When a customer submits an enquiry:
+Validate the form.
+Save the enquiry in Supabase.
+Generate a unique enquiry ID.
+Set the initial status to New.
+Record the submission date and time.
+Display the reference ID after successful database confirmation.
+Send a customer acknowledgement email.
+Notify the QBench administrator.
+Handle email failures independently of database submission.
+Prevent duplicate submissions caused by retries.
+The customer email should contain the enquiry ID, service, selected package, submission date, and a confirmation message.
+Do not promise a response time unless QBench has configured one.
+5. Complete Enquiry Status Workflow
+Implement the following statuses:
+New
+Contacted
+Requirement Confirmed
+Quotation Preparing
+Quotation Sent
+Negotiation
+Follow-up Required
+Approved
+On Hold
+Rejected
+Lost
+Cancelled
+In Progress
+Completed
+Provide status dropdowns, colour-coded badges, filtering, status timestamps, search, and a history of important changes.
+Allow legitimate direct transitions. Do not force every enquiry through every stage.
+Never automatically mark a project as approved, completed, or paid without a confirmed action.
+6. Admin Dashboard
+Create an Enquiry Management page within the existing QBench Admin Portal.
+Display live KPI cards for:
+Total Enquiries
+New Enquiries
+Contacted
+Follow-ups Due
+Quotations Sent
+Approved
+In Progress
+Completed
+Lost / Rejected
+Use actual Supabase data.
+Create an Excel-style table with:
+Enquiry ID
+Enquiry Date
+Client Name
+Phone Number
+Service
+Package
+Status
+Quotation Amount
+Follow-up Date
+Assigned To
+Last Updated
+Actions
+Support searching, sorting, pagination, filters, editing, status changes, follow-ups, and exports.
+7. Full Enquiry and Project Details
+Allow authorised administrators to update all relevant information after the initial enquiry.
+Customer details
+Client name
+Contact person
+Phone
+Email
+Company name
+Service details
+Service category
+Package
+Confirmed requirements
+Estimated budget
+Reference files or links
+Additional deliverables
+Sales and follow-up
+Status
+Assigned team member
+Last contacted date
+Next follow-up date
+Follow-up notes
+Quotation number
+Quotation amount
+Quotation sent date
+Client feedback
+Internal remarks
+Lost or rejection reason
+Project details
+Project start date
+Expected deadline
+Completion date
+Agreed project value
+Project progress
+Delivery links
+Payment details
+Invoice reference
+Total agreed amount
+Advance amount
+Amount received
+Outstanding balance
+Payment status
+Organise these details into clear sections. Preserve the original enquiry submission and save updates to Supabase.
+Allow multiple follow-up notes and payment entries when necessary. Calculate outstanding balances from recorded transactions.
+8. Follow-up Management
+Allow administrators to schedule follow-ups, record calls and meetings, add notes, reschedule dates, mark follow-ups complete, and filter overdue or upcoming follow-ups.
+Display overdue items prominently.
+Only implement automated reminders if the necessary backend scheduling and notification systems are actually configured.
+9. Editable Pricing Management — Excel-Style Admin Module
+This is a core requirement. Create a dedicated Pricing Management section in the QBench Admin Portal where authorised administrators can manage service prices and package rates directly, using an Excel-style editable interface.
+A. Pricing spreadsheet
+Create a spreadsheet-like table with these columns:
+Price ID
+Service Category
+Service Name
+Package Name
+Package Description
+Deliverables / Inclusions
+Pricing Type
+Base Price
+Discount
+Final Price
+GST / Tax Rate, if applicable
+Currency
+Active / Inactive
+Last Updated
+Actions
+Use INR (₹) as the default currency.
+Support pricing types such as fixed price, starting price, hourly rate, daily rate, and custom quotation. Use only the types relevant to the existing QBench services.
+B. Editable prices
+Administrators must be able to:
+Edit prices directly in the table.
+Add new service and package prices.
+Update existing package prices.
+Change package descriptions and inclusions.
+Activate or deactivate a price.
+Duplicate a price record as a starting point for a new offering.
+Search and filter by service or package.
+Sort by price and last updated date.
+Save changes individually or through a clearly labelled bulk-save action.
+Cancel unsaved edits.
+Receive success or error feedback when saving.
+See who last modified a price and when, where audit tracking is available.
+Validate all monetary values and prevent negative prices unless an explicitly supported pricing model requires otherwise.
+Calculate the final price consistently. For example, if a discount is a percentage, apply it to the base price using a clearly defined calculation. Avoid applying discounts or taxes twice.
+C. Package price management
+Provide a simple way to manage pricing for all QBench services and packages, including:
+Branding
+Social Media Design
+Video Editing
+Digital Marketing
+UI/UX Design
+Web Development
+Motion Graphics
+Digital Growth
+Business Support
+Awards Package
+Other services already configured in the website
+Inspect existing package data before creating or changing these entries. Do not invent prices for packages that have no confirmed price.
+The consolidated Awards Package must appear as a single current package in the pricing interface, while historical quotations and records retain their original pricing.
+D. Website price synchronisation
+Where the public website displays package prices, retrieve the active price from the database rather than hardcoding it in frontend components.
+When an authorised administrator updates a price:
+Save the updated price in Supabase.
+Refresh the admin pricing table.
+Update relevant public package displays.
+Update new enquiry package references where appropriate.
+Ensure the change is reflected after page refresh and deployment-independent database updates.
+Do not silently change a price that has already been agreed with a customer. Existing quotations, invoices, and approved projects must retain their agreed prices.
+For services requiring a custom quotation, display an appropriate message such as “Contact for Pricing” rather than inventing an amount.
+E. Excel import and export for pricing
+Add these features:
+Export all pricing records to .xlsx or CSV.
+Export selected or filtered pricing records.
+Download a pricing template for bulk updates.
+Import an edited Excel or CSV file.
+Preview imported rows before saving.
+Validate service names, package names, currency, and monetary values.
+Show row-level validation errors.
+Identify duplicate or conflicting records.
+Require explicit confirmation before applying bulk updates.
+Provide a summary of successful updates, rejected rows, and errors.
+Use a stable Price ID to identify existing records during imports. Do not rely solely on package names to match records.
+Never overwrite unrelated pricing records because an imported file omits them. Never delete prices implicitly during an import.
+F. Pricing security and audit history
+Only authorised administrators may add, edit, import, activate, or deactivate prices.
+Public visitors may read only active public-facing pricing information.
+Internal costs, private notes, and other confidential pricing fields must not be exposed publicly.
+Apply Supabase Row Level Security.
+Validate all changes on the server or database side as appropriate.
+Record price changes, including previous price, new price, administrator, and timestamp, wherever practical.
+Preserve the historical prices used by existing quotations and projects.
+10. Excel Export and Google Sheets Integration for Enquiries
+Provide export options for all enquiries, selected enquiries, filtered results, date ranges, and status reports.
+Use readable dates, meaningful column names, and correct currency formatting.
+If Google Sheets is configured, synchronise enquiries and relevant CRM updates using the unique enquiry ID to prevent duplicate rows.
+Keep Supabase as the primary source of truth. Record synchronisation failures and retry safely.
+If Google Sheets is not configured, implement Excel/CSV export first and document the additional setup required.
+Never expose service-account credentials or privileged API keys in frontend code.
+11. Supabase Database and Security
+Inspect the existing project_inquiries table and related tables before changing the schema.
+Reuse existing fields and tables where possible. Create new pricing or history tables only when needed.
+Implement:
+Row Level Security
+Secure public enquiry submission
+Authorised administrator read and write access
+Restricted access to internal CRM information
+Input validation and sanitisation
+Secure handling of customer data
+Database constraints and unique identifiers
+Audit history for important changes
+Server-side privileged integrations
+Public users must not be able to read other customers' enquiries or modify statuses, quotations, payments, or pricing records.
+Use the existing Supabase Auth administrator account. Never hardcode credentials or bypass authentication.
+12. QBench Website Design
+Preserve the existing QBench brand identity:
+Primary Green: #007F06
+Light Green: #A8E6A3
+Dark Charcoal: #151715
+Off-White: #F4F5F2
+Typography: Inter or Poppins, consistent with the existing website
+Create a professional, modern interface featuring compact KPI cards, Excel-style tables, clear status indicators, editable forms, search and filters, follow-up reminders, responsive layouts, and accessible controls.
+Avoid unnecessary redesigns, excessive gradients, oversized cards, and decorative elements that reduce usability.
+13. Navigation Bar — Admin Portal and Zoho Books
+Add two menu items to the existing QBench navigation bar:
+Admin Portal and Zoho Books.
+Preserve all existing navigation items and behaviour.
+A. Admin Portal
+Link to the existing QBench admin login.
+Reuse Supabase Auth.
+Provide access to Enquiry Management, Pricing Management, package management, follow-ups, reports, and other authorised administrative functions.
+Protect every administrative route and database operation.
+Redirect unauthenticated users to login.
+Support secure logout and session handling.
+Do not create duplicate authentication systems or hardcoded credentials.
+B. Zoho Books
+Add a Zoho Books navigation item that opens the official website:
+https://www.zoho.com/books/
+Open it in a new browser tab. Use a verified region-appropriate sign-in URL if available rather than guessing a login route.
+Do not collect or store Zoho Books login credentials in QBench. Treat this as external navigation unless a real, configured Zoho Books API integration is explicitly implemented.
+C. Navigation design
+Match the existing QBench style and typography.
+Keep both menu items clear on desktop.
+Include them in the responsive mobile menu.
+Provide keyboard accessibility and clear focus states.
+Preserve all existing routes and menu items.
+Recommended order:
+Home → Services → Packages → Portfolio → Process → Contact → Admin Portal → Zoho Books
+Adapt this order to the current navigation structure without removing existing items.
+14. Implementation Plan
+Follow this sequence:
+Inspect the existing project, schema, packages, routes, and integrations.
+Identify reusable components and existing database tables.
+Present a concise implementation plan.
+Consolidate award-based packages safely.
+Simplify the public enquiry form.
+Implement enquiry IDs, confirmation messages, and emails.
+Implement the enquiry status workflow and admin dashboard.
+Add full enquiry editing and follow-up management.
+Build Pricing Management with direct price editing.
+Implement pricing Excel import, validation, preview, and export.
+Connect active database prices to public package displays.
+Preserve agreed prices in historical quotations and projects.
+Implement enquiry Excel/CSV export.
+Configure Google Sheets integration if credentials are available.
+Add Admin Portal and Zoho Books navigation.
+Apply and test required Supabase migrations and access policies.
+Test authentication, pricing updates, package changes, imports, exports, and status transitions.
+Test desktop and mobile layouts.
+Provide changed files, SQL migrations, environment variables, and deployment instructions.
+Do not delete existing data, replace the website with a mockup, or claim integrations are working before they have been tested.
+15. Final Acceptance Criteria
+The finished QBench website must include:
+One consolidated Awards Package
+A minimal customer enquiry form
+Automatic enquiry IDs and submission confirmation
+Customer and administrator email notifications
+Complete enquiry status tracking
+Full editable customer and project records
+Follow-up and reminder management
+An Excel-style Enquiry Management dashboard
+An editable Pricing Management dashboard
+Direct administrator editing of service and package prices
+Excel/CSV import and export for pricing
+Excel/CSV export for enquiries
+Active pricing synchronisation with public package displays
+Historical price preservation for quotations and projects
+Optional Google Sheets synchronisation
+Secure Supabase authentication and Row Level Security
+Admin Portal navigation
+Zoho Books external navigation
+Responsive desktop and mobile interfaces
+Preservation of existing QBench website functionality
+Final instruction: Build on the existing QBench application. Inspect before modifying, preserve historical data, implement real database-backed functionality, and provide exact setup and deployment instructions. All pricing edits must be secure, validated, auditable where practical, and reflected correctly across the website without changing previously agreed customer prices.

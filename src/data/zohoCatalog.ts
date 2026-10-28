@@ -30,15 +30,15 @@ export const ZOHO_CATALOG_ITEMS: ZohoCatalogItem[] = [
   // Packages
   {
     itemId: '3835950000000037292',
-    name: 'Award Night Package',
-    description: 'Comprehensive media and visual graphics production package tailored for grand award ceremonies, stage LED backdrops, and live event presentations.',
+    name: 'Awards Package',
+    description: 'Comprehensive media, stage LED graphics, and motion production suite tailored for grand award ceremonies, gala nights, and live celebrations.',
     deliverables: [
-      'Award Screen Designs',
-      'Winner Animation',
-      'Lucky Draw Video',
-      'LED Screen Motion Graphics',
-      'Stage Visual Package',
-      'Event Presentation Videos'
+      'LED Stage Backdrops & Award Screen Designs',
+      'Winner Reveal Sequence & Fanfare Animation',
+      'Nominee Stingers & Presentation Videos',
+      'Lucky Draw Interactive Stage Video',
+      '30-Second Event Highlight Reel',
+      'Stage Visual Package & Operator Masters'
     ],
     rate: 40000,
     rateFormatted: '₹40,000',
@@ -188,20 +188,6 @@ export const ZOHO_CATALOG_ITEMS: ZohoCatalogItem[] = [
     popular: false
   },
   {
-    itemId: '3835950000000037218',
-    name: 'Award Presentation Video',
-    description: 'Professional award ceremony presentation video editing, category reveal stings, and nominee showcases.',
-    deliverables: ['Nominee Stingers', 'Winner Reveal Sequence', 'Broadcast Safe Lower-Thirds', 'Synchronized Fanfare'],
-    rate: 3000,
-    rateFormatted: '₹3,000',
-    unit: 'Project',
-    productType: 'service',
-    itemType: 'Sales',
-    category: 'video',
-    categoryLabel: 'Ceremony Video',
-    popular: false
-  },
-  {
     itemId: '3835950000000037210',
     name: 'Promotional Reel Production',
     description: 'Short-form cinematic promotional reel for events, corporate launches, and high-velocity social media campaigns.',
@@ -230,22 +216,8 @@ export const ZOHO_CATALOG_ITEMS: ZohoCatalogItem[] = [
     popular: false
   },
   {
-    itemId: '3835950000000037316',
-    name: '30-Second Award Reel Production',
-    description: 'Fast-paced, high-energy 30-second award highlight reel tailored for rapid post-event social distribution.',
-    deliverables: ['30s Condensed Highlight', 'Music Sync', 'Vertical & Horizontal Formats'],
-    rate: 1200,
-    rateFormatted: '₹1,200',
-    unit: 'Project',
-    productType: 'goods',
-    itemType: 'Sales',
-    category: 'video',
-    categoryLabel: 'Quick Reel',
-    popular: false
-  },
-  {
     itemId: '3835950000000037324',
-    name: 'Lucky Drow Video',
+    name: 'Lucky Draw Video',
     description: 'Standard lucky draw reveal video animation sequence for community events and stage programs.',
     deliverables: ['Random Draw Graphic', 'Reveal Sequence', 'Stage Resolution Master'],
     rate: 800,
@@ -275,20 +247,6 @@ export const ZOHO_CATALOG_ITEMS: ZohoCatalogItem[] = [
     popular: true
   },
   {
-    itemId: '3835950000000037260',
-    name: 'Award Screen Design',
-    description: 'Premium LED award screen visual design calibrated for stage backdrops, multi-screen LED walls, and auditoriums.',
-    deliverables: ['Stage LED Wall Resolution', 'High Contrast Stage Palette', 'Nominee & Category Templates', 'Zero-Lag Formats'],
-    rate: 2000,
-    rateFormatted: '₹2,000',
-    unit: 'Each',
-    productType: 'service',
-    itemType: 'Sales',
-    category: 'design',
-    categoryLabel: 'Stage LED Visuals',
-    popular: false
-  },
-  {
     itemId: '3835950000000037236',
     name: 'Digital Poster Design',
     description: 'Creative digital poster design for digital promotions, billboards, and campaign announcements.',
@@ -315,6 +273,52 @@ export const ZOHO_CATALOG_ITEMS: ZohoCatalogItem[] = [
     category: 'design',
     categoryLabel: 'Social Media Creative',
     popular: false
+  }
+];
+
+/**
+ * Historical archive of award items before consolidation into "Awards Package".
+ * Preserves past customer quotes, invoices, and enquiries without data loss.
+ */
+export const HISTORICAL_AWARD_ITEMS: ZohoCatalogItem[] = [
+  {
+    itemId: '3835950000000037218',
+    name: 'Award Presentation Video',
+    description: 'Professional award ceremony presentation video editing, category reveal stings, and nominee showcases.',
+    deliverables: ['Nominee Stingers', 'Winner Reveal Sequence', 'Broadcast Safe Lower-Thirds', 'Synchronized Fanfare'],
+    rate: 3000,
+    rateFormatted: '₹3,000',
+    unit: 'Project',
+    productType: 'service',
+    itemType: 'Sales',
+    category: 'video',
+    categoryLabel: 'Ceremony Video'
+  },
+  {
+    itemId: '3835950000000037316',
+    name: '30-Second Award Reel Production',
+    description: 'Fast-paced, high-energy 30-second award highlight reel tailored for rapid post-event social distribution.',
+    deliverables: ['30s Condensed Highlight', 'Music Sync', 'Vertical & Horizontal Formats'],
+    rate: 1200,
+    rateFormatted: '₹1,200',
+    unit: 'Project',
+    productType: 'goods',
+    itemType: 'Sales',
+    category: 'video',
+    categoryLabel: 'Quick Reel'
+  },
+  {
+    itemId: '3835950000000037260',
+    name: 'Award Screen Design',
+    description: 'Premium LED award screen visual design calibrated for stage backdrops, multi-screen LED walls, and auditoriums.',
+    deliverables: ['Stage LED Wall Resolution', 'High Contrast Stage Palette', 'Nominee & Category Templates', 'Zero-Lag Formats'],
+    rate: 2000,
+    rateFormatted: '₹2,000',
+    unit: 'Each',
+    productType: 'service',
+    itemType: 'Sales',
+    category: 'design',
+    categoryLabel: 'Stage LED Visuals'
   },
   {
     itemId: '3835950000000037252',
@@ -327,8 +331,7 @@ export const ZOHO_CATALOG_ITEMS: ZohoCatalogItem[] = [
     productType: 'service',
     itemType: 'Sales',
     category: 'design',
-    categoryLabel: 'Stage Backdrop Asset',
-    popular: false
+    categoryLabel: 'Stage Backdrop Asset'
   },
   {
     itemId: '3835950000000046138',
@@ -341,8 +344,7 @@ export const ZOHO_CATALOG_ITEMS: ZohoCatalogItem[] = [
     productType: 'goods',
     itemType: 'Sales',
     category: 'design',
-    categoryLabel: 'Standard Screen Asset',
-    popular: false
+    categoryLabel: 'Standard Screen Asset'
   }
 ];
 
@@ -350,8 +352,25 @@ export const ZOHO_PACKAGES = ZOHO_CATALOG_ITEMS.filter((i) => i.category === 'pa
 export const ZOHO_VIDEO_SERVICES = ZOHO_CATALOG_ITEMS.filter((i) => i.category === 'video');
 export const ZOHO_DESIGN_SERVICES = ZOHO_CATALOG_ITEMS.filter((i) => i.category === 'design');
 
+export function isAwardPackage(nameOrId: string): boolean {
+  if (!nameOrId) return false;
+  const lower = nameOrId.toLowerCase();
+  return (
+    lower.includes('award') ||
+    lower.includes('3835950000000037292') ||
+    lower.includes('3835950000000037218') ||
+    lower.includes('3835950000000037260') ||
+    lower.includes('3835950000000037316') ||
+    lower.includes('3835950000000037252') ||
+    lower.includes('3835950000000046138')
+  );
+}
+
 export function getZohoItemById(itemId: string): ZohoCatalogItem | undefined {
-  return ZOHO_CATALOG_ITEMS.find((item) => item.itemId === itemId);
+  const active = ZOHO_CATALOG_ITEMS.find((item) => item.itemId === itemId);
+  if (active) return active;
+  // Fallback to historical award archive
+  return HISTORICAL_AWARD_ITEMS.find((item) => item.itemId === itemId);
 }
 
 export function formatINR(val: number): string {

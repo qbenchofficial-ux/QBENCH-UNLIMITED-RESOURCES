@@ -102,7 +102,7 @@ export default function AdminDashboard({
             className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100/50 px-4 py-2.5 font-display text-xs font-bold text-emerald-800 transition-colors cursor-pointer"
           >
             <FileSpreadsheet className="h-4 w-4 text-emerald-700" />
-            <span>Zoho Catalog (20)</span>
+            <span>Zoho Books Portal</span>
           </button>
 
           <button

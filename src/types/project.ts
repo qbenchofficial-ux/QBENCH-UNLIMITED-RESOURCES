@@ -187,10 +187,28 @@ export interface MediaFile {
   project_id?: string | null;
 }
 
-export type InquiryStatus = 'new' | 'contacted' | 'closed';
+export type InquiryStatus =
+  | 'new'
+  | 'contacted'
+  | 'closed'
+  | 'New'
+  | 'Contacted'
+  | 'Requirement Confirmed'
+  | 'Quotation Preparing'
+  | 'Quotation Sent'
+  | 'Negotiation'
+  | 'Follow-up Required'
+  | 'Approved'
+  | 'On Hold'
+  | 'Rejected'
+  | 'Lost'
+  | 'Cancelled'
+  | 'In Progress'
+  | 'Completed';
 
 export interface ProjectInquiry {
   id: string;
+  reference_id?: string;
   name: string;
   email: string;
   phone: string;
@@ -202,11 +220,17 @@ export interface ProjectInquiry {
   status: InquiryStatus;
   created_at: string;
   updated_at?: string;
+  assigned_to?: string | null;
+  next_followup_at?: string | null;
+  quotation_amount?: number | null;
+  quotation_number?: string | null;
+  internal_remarks?: string | null;
+  crm_meta?: Record<string, any>;
 }
 
 export interface ProjectInquiryInput {
   name: string;
-  email: string;
+  email?: string;
   phone: string;
   company?: string;
   service: string;

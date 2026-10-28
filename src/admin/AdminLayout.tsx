@@ -28,6 +28,7 @@ export type AdminCmsSection =
   | 'add-project'
   | 'edit-project'
   | 'packages'
+  | 'pricing'
   | 'services'
   | 'zoho'
   | 'site-content'
@@ -96,6 +97,12 @@ export default function AdminLayout({
       icon: <Package className="h-4 w-4" />,
     },
     {
+      id: 'pricing',
+      label: 'Pricing Matrix (Excel)',
+      path: '/admin/pricing',
+      icon: <FileSpreadsheet className="h-4 w-4 text-emerald-600" />,
+    },
+    {
       id: 'services',
       label: 'Services & Capabilities',
       path: '/admin/services',
@@ -103,7 +110,7 @@ export default function AdminLayout({
     },
     {
       id: 'zoho',
-      label: 'Zoho Books Catalog',
+      label: 'Zoho Books Portal',
       path: '/admin/zoho',
       icon: <FileSpreadsheet className="h-4 w-4 text-[#00685b]" />,
     },
@@ -259,6 +266,20 @@ export default function AdminLayout({
             >
               <Briefcase className="h-3.5 w-3.5 text-[#00685b]" />
               <span>Services</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleNavClick('/admin/zoho')}
+              className={`hidden md:inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 font-display text-xs font-bold transition-colors cursor-pointer ${
+                activeSection === 'zoho'
+                  ? 'border-[#00685b] bg-[#00685b] text-white shadow-2xs'
+                  : 'border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100/70 text-emerald-800'
+              }`}
+              title="Open Zoho Books Portal"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              <span>Zoho Books</span>
             </button>
 
             <button

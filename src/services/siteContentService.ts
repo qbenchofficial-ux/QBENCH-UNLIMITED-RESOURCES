@@ -414,6 +414,39 @@ export const DEFAULT_PACKAGES_DATA: CmsPackageCategory[] = [
       { name: 'Priority Sprint Delivery', basic: false, standard: false, premium: true },
     ],
   },
+  {
+    id: 'awards',
+    name: 'Awards Package',
+    description:
+      'All-in-one cinematic media, stage LED graphics, and motion production suite tailored for grand award ceremonies, gala nights, and live celebrations.',
+    iconName: 'Sparkles',
+    tierNames: {
+      basic: 'Ceremony Starter',
+      standard: 'Grand Gala Suite',
+      premium: 'Broadcast Master',
+    },
+    tierDescriptions: {
+      basic: 'Stage LED backdrops, nominee stingers, and winner reveal animations.',
+      standard: 'Full package with presentation video, lucky draw animation, and stage masters.',
+      premium: 'Complete end-to-end event coverage with 30s social highlight reel and live stage operations.',
+    },
+    tierTimelines: {
+      basic: 'approx. 1 Week',
+      standard: 'approx. 2 Weeks',
+      premium: 'Full Event Support',
+    },
+    prices: { basic: 25000, standard: 40000, premium: 65000 },
+    priceLabels: { basic: '₹25,000', standard: '₹40,000', premium: '₹65,000' },
+    features: [
+      { name: 'LED Award Screen & Stage Backdrops', basic: true, standard: true, premium: true },
+      { name: 'Winner Reveal Animation & Fanfare', basic: true, standard: true, premium: true },
+      { name: 'Nominee Category Stingers', basic: true, standard: true, premium: true },
+      { name: 'Award Presentation Video', basic: false, standard: true, premium: true },
+      { name: 'Lucky Draw Interactive Stage Video', basic: false, standard: true, premium: true },
+      { name: '30-Second Post-Event Social Highlight Reel', basic: false, standard: false, premium: true },
+      { name: 'On-Site Stage Coordination & Display Formats', basic: false, standard: false, premium: true },
+    ],
+  },
 ];
 
 export const DEFAULT_BUSINESS_SUPPORT_CONFIG: CmsBusinessSupportConfig = {

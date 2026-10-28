@@ -50,6 +50,8 @@ export interface EmailParams {
 export interface ContactSubmissionResult {
   success: boolean;
   message: string;
+  enquiryId?: string;
+  referenceId?: string;
   smtpConfigured: boolean;
   smtpSuccess: boolean;
   adminEmailSuccess?: boolean;
@@ -447,7 +449,7 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
 
   // STEP 1 (REQUIRED): Persist inquiry in Supabase `public.project_inquiries` table.
   // Do NOT hide errors or report success unless Supabase confirms the enquiry was inserted!
-  await createProjectInquiry({
+  const insertedInquiry = await createProjectInquiry({
     name,
     company,
     email: customerEmail,
@@ -464,6 +466,8 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
       '',
     message,
   });
+
+  const enquiryReferenceId = insertedInquiry.reference_id || insertedInquiry.id;
 
   // Save a local backup copy after Supabase insert succeeds
   const nowIso = new Date().toISOString();
@@ -555,7 +559,9 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
       const adminParams = {
         from_name: name,
         sender_name: 'QBENCH Creative Agency',
-        subject: 'New Project Enquiry Received – QBENCH',
+        subject: `New Project Enquiry [${enquiryReferenceId}] – QBENCH`,
+        enquiry_id: enquiryReferenceId,
+        reference_id: enquiryReferenceId,
         name,
         customer_name: name,
         from_email: customerEmail,
@@ -622,7 +628,9 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
 
         const customerParams = {
           from_name: 'QBENCH Creative Agency',
-          subject: 'Thank You for Reaching Out to QBENCH',
+          subject: `Enquiry Confirmation [${enquiryReferenceId}] – QBENCH`,
+          enquiry_id: enquiryReferenceId,
+          reference_id: enquiryReferenceId,
           name,
           customer_name: name,
           to_name: name,
@@ -728,6 +736,8 @@ export const sendEmailJS = async (params: EmailParams): Promise<ContactSubmissio
   return {
     success: true,
     message: outcomeMessage,
+    enquiryId: enquiryReferenceId,
+    referenceId: enquiryReferenceId,
     smtpConfigured: Boolean(EMAILJS_PUBLIC_KEY && EMAILJS_SERVICE_ID),
     smtpSuccess: adminEmailSuccess && customerEmailSuccess,
     adminEmailSuccess,

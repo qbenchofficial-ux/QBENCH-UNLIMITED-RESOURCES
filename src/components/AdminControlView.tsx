@@ -15,6 +15,7 @@ import AdminDashboard from '../admin/AdminDashboard';
 import ProjectList from '../admin/ProjectList';
 import ProjectForm from '../admin/ProjectForm';
 import PackagesManager from '../admin/PackagesManager';
+import PricingManagement from '../admin/PricingManagement';
 import ServicesManager from '../admin/ServicesManager';
 import SiteContentManager from '../admin/SiteContentManager';
 import CategoriesManager from '../admin/CategoriesManager';
@@ -53,6 +54,9 @@ function parseAdminPathname(pathname: string): ParsedAdminRoute {
   }
   if (clean === '/admin/packages') {
     return { section: 'packages' };
+  }
+  if (clean === '/admin/pricing') {
+    return { section: 'pricing' };
   }
   if (clean === '/admin/services') {
     return { section: 'services' };
@@ -419,6 +423,10 @@ export default function AdminControlView({
           onRefresh={refresh}
           onNotify={notify}
         />
+      )}
+
+      {parsedRoute.section === 'pricing' && (
+        <PricingManagement onNotify={notify} />
       )}
 
       {parsedRoute.section === 'services' && (

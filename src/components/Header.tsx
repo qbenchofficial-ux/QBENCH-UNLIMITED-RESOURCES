@@ -36,7 +36,7 @@ export default function Header({ activeSection, onNavigate, onOpenProjectDetail 
         </div>
 
         {/* Desktop Navigation */}
-        <nav id="desktop-nav" className="hidden lg:flex items-center space-x-6 xl:space-x-8">
+        <nav id="desktop-nav" className="hidden lg:flex items-center space-x-5 xl:space-x-7">
           {menuItems.map((item) => {
             const isActive = activeSection === item.id;
             return (
@@ -58,6 +58,21 @@ export default function Header({ activeSection, onNavigate, onOpenProjectDetail 
               </button>
             );
           })}
+
+          {/* Admin Portal Nav Item */}
+          <button
+            id="nav-item-admin"
+            type="button"
+            onClick={() => onNavigate('admin')}
+            className={`relative px-1 py-2 font-display text-sm font-semibold transition-colors duration-200 outline-none cursor-pointer ${
+              activeSection === 'admin' ? 'text-brand-primary' : 'text-brand-text-muted hover:text-brand-text'
+            }`}
+          >
+            Admin Portal
+            {activeSection === 'admin' && (
+              <span className="absolute bottom-0 left-0 h-0.5 w-full bg-brand-primary rounded-full" />
+            )}
+          </button>
         </nav>
 
         {/* Search Bar for Portfolio Projects & Services */}
@@ -153,19 +168,23 @@ export default function Header({ activeSection, onNavigate, onOpenProjectDetail 
                 </button>
               );
             })}
-            <PWAInstallButton mobileFullWidth />
+
+            {/* Mobile Admin Portal */}
             <button
-              id="mobile-admin-control-btn"
+              id="mobile-nav-item-admin"
               type="button"
               onClick={() => {
                 onNavigate('admin');
                 setIsOpen(false);
               }}
-              className="flex items-center justify-center gap-2 rounded-xl border border-brand-outline/30 bg-white py-3 text-center font-display text-sm font-semibold text-brand-text cursor-pointer"
+              className={`py-2 text-left font-display text-base font-semibold ${
+                activeSection === 'admin' ? 'text-brand-primary pl-2 border-l-2 border-brand-primary' : 'text-brand-text-muted'
+              }`}
             >
-              <ShieldCheck className="h-4 w-4 text-brand-primary" />
-              <span>Admin Control</span>
+              Admin Portal
             </button>
+
+            <PWAInstallButton mobileFullWidth />
             <button
               id="mobile-start-project-btn"
               onClick={() => {
