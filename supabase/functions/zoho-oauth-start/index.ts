@@ -25,6 +25,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+async function computeStateHash(token: string): Promise<string> {
+  const enc = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode(token));
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -79,13 +87,24 @@ serve(async (req) => {
 
     // Generate secure random state token
     const state = crypto.randomUUID();
+    const stateHash = await computeStateHash(state);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-    // Store state in public.zoho_oauth_states
-    await supabaseAdmin.from('zoho_oauth_states').insert({
-      state,
-      user_id: user.id,
-      redirect_uri: zohoRedirectUri,
+    // Store state_hash in public.zoho_oauth_states
+    const { error: insertError } = await supabaseAdmin.from('zoho_oauth_states').insert({
+      state_hash: stateHash,
+      admin_user_id: user.id,
+      expires_at: expiresAt,
+      consumed_at: null,
     });
+
+    if (insertError) {
+      console.error('Failed to insert oauth state:', insertError);
+      return new Response(JSON.stringify({ error: `Failed to store OAuth state: ${insertError.message}` }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const authUrl = new URL(`${ZOHO_ACCOUNTS_DOMAIN}/oauth/v2/auth`);
     authUrl.searchParams.set('client_id', zohoClientId);

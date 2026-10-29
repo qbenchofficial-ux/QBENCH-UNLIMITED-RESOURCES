@@ -20,18 +20,14 @@ CREATE TABLE IF NOT EXISTS public.zoho_connections (
 
 -- 2. Table for OAuth state verification (CSRF protection)
 CREATE TABLE IF NOT EXISTS public.zoho_oauth_states (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  state text NOT NULL UNIQUE,
-  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
-  redirect_uri text,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  expires_at timestamptz NOT NULL DEFAULT (now() + interval '10 minutes'),
+  state_hash text PRIMARY KEY,
+  admin_user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  expires_at timestamptz NOT NULL,
   consumed_at timestamptz
 );
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_zoho_connections_org_id ON public.zoho_connections(org_id);
-CREATE INDEX IF NOT EXISTS idx_zoho_oauth_states_state ON public.zoho_oauth_states(state);
 
 -- 3. Row Level Security (RLS)
 ALTER TABLE public.zoho_connections ENABLE ROW LEVEL SECURITY;

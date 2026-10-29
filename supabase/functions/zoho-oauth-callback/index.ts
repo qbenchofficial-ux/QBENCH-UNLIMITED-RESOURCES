@@ -33,6 +33,14 @@ async function encryptToken(plainText: string, secretKeyStr: string): Promise<{ 
   return { ciphertextHex, ivHex };
 }
 
+async function computeStateHash(token: string): Promise<string> {
+  const enc = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode(token));
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 serve(async (req) => {
   const url = new URL(req.url);
   const code = url.searchParams.get('code');
@@ -64,22 +72,39 @@ serve(async (req) => {
   try {
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // 1. Validate state from database (one-time consumption)
+    // 1. Validate state from database (look up by state_hash, check expiration and consumed_at)
+    const stateHash = await computeStateHash(state);
     const { data: stateRecord, error: stateError } = await supabaseAdmin
       .from('zoho_oauth_states')
-      .select('*')
-      .eq('state', state)
+      .select('state_hash, admin_user_id, expires_at, consumed_at')
+      .eq('state_hash', stateHash)
       .maybeSingle();
 
     if (stateError || !stateRecord) {
-      return returnRedirect('error', 'Invalid or expired OAuth state parameter');
+      return returnRedirect('error', 'Invalid OAuth state parameter');
     }
 
-    // Delete state token to prevent replay
-    await supabaseAdmin.from('zoho_oauth_states').delete().eq('state', state);
+    if (stateRecord.consumed_at) {
+      return returnRedirect('error', 'OAuth state parameter has already been used');
+    }
+
+    if (new Date(stateRecord.expires_at).getTime() < Date.now()) {
+      return returnRedirect('error', 'OAuth state parameter has expired');
+    }
+
+    // Single-use consumption: mark consumed_at without deleting existing data
+    const { error: consumeError } = await supabaseAdmin
+      .from('zoho_oauth_states')
+      .update({ consumed_at: new Date().toISOString() })
+      .eq('state_hash', stateHash)
+      .is('consumed_at', null);
+
+    if (consumeError) {
+      return returnRedirect('error', 'Failed to consume OAuth state');
+    }
 
     // 2. Exchange code for access_token & refresh_token
-    const redirectUri = stateRecord.redirect_uri || `${supabaseUrl}/functions/v1/zoho-oauth-callback`;
+    const redirectUri = Deno.env.get('ZOHO_REDIRECT_URI') || `${supabaseUrl}/functions/v1/zoho-oauth-callback`;
     const tokenParams = new URLSearchParams({
       code,
       client_id: zohoClientId,
@@ -145,7 +170,7 @@ serve(async (req) => {
         api_domain: ZOHO_API_DOMAIN,
         refresh_token_ciphertext: ciphertextHex,
         refresh_token_iv: ivHex,
-        created_by: stateRecord.user_id,
+        created_by: stateRecord.admin_user_id,
         connected_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }, { onConflict: 'org_id' });
