@@ -1,5 +1,5 @@
 -- ==============================================================================
--- Migration: 20261028_zoho_books_oauth_schema.sql
+-- Migration: 20261029_zoho_books_oauth_schema.sql
 -- Description: Schema and RLS for Zoho Books OAuth Connection & States
 -- Organization: QBENCH (Org ID: 60072580070)
 -- ==============================================================================
