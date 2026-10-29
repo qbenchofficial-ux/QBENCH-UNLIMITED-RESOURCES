@@ -107,7 +107,7 @@ export default function ZohoInventoryManager({ onNotify }: ZohoInventoryManagerP
       id: 'dashboard',
       label: 'Dashboard',
       icon: <BarChart3 className="h-4 w-4" />,
-      url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/home/dashboard`,
+      url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/home/dashboard?dashboard_id=defaultdashboard`,
     },
     {
       id: 'invoices',
@@ -150,9 +150,14 @@ export default function ZohoInventoryManager({ onNotify }: ZohoInventoryManagerP
   // Quick Action Shortcuts
   const quickActions = [
     {
+      label: 'Launch Zoho Books',
+      url: ZOHO_CONFIG.portalUrl,
+      primary: true,
+    },
+    {
       label: '+ New Invoice',
       url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/invoices/new`,
-      primary: true,
+      primary: false,
     },
     {
       label: '+ New Estimate',
@@ -434,25 +439,6 @@ export default function ZohoInventoryManager({ onNotify }: ZohoInventoryManagerP
 
             {/* Embedded iFrame workspace container */}
             <div className="relative w-full h-[750px] bg-slate-50">
-              
-              {/* Notice banner for browser cookie / third-party auth restrictions */}
-              <div className="p-3 bg-amber-50/90 border-b border-amber-200 text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Info className="h-4 w-4 text-amber-600 shrink-0" />
-                  <span>
-                    <strong>Zoho Authentication Notice:</strong> If Zoho Books prompts for login or restricts embedding due to your browser's third-party cookie policy, click "Launch Full Zoho Books" to authenticate your session in a single click.
-                  </span>
-                </div>
-                <a
-                  href={iframeUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-lg bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 font-bold text-[11px] shrink-0 inline-flex items-center gap-1"
-                >
-                  <span>Launch in New Window</span>
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </div>
 
               {/* The Live Iframe */}
               {iframeUrl && (

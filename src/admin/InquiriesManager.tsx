@@ -15,6 +15,7 @@ import {
   exportEnquiriesToCsv
 } from '../services/crmService';
 import { deleteProjectInquiry } from '../services/inquiryService';
+import EnquiryEditModal from './EnquiryEditModal';
 import {
   Search,
   Filter,
@@ -73,6 +74,7 @@ export default function InquiriesManager({
 
   // Modals & Slide-overs
   const [selectedEnquiry, setSelectedEnquiry] = useState<EnquiryRecord | null>(null);
+  const [editingEnquiry, setEditingEnquiry] = useState<EnquiryRecord | null>(null);
   const [activeDrawerTab, setActiveDrawerTab] = useState<'customer' | 'scope' | 'followup' | 'execution' | 'payments'>('customer');
   const [quickFollowupEnquiry, setQuickFollowupEnquiry] = useState<EnquiryRecord | null>(null);
   const [quickNote, setQuickNote] = useState('');
@@ -774,7 +776,19 @@ export default function InquiriesManager({
 
                     {/* Quotation Amount */}
                     <td className="py-3 px-3 font-mono font-bold whitespace-nowrap text-slate-900">
-                      {item.quotation_amount ? `₹${item.quotation_amount.toLocaleString('en-IN')}` : <span className="text-slate-400 font-mono text-[11px]">—</span>}
+                      {item.total_agreed_amount || item.quotation_amount ? (
+                        <div>
+                          <span>₹{(item.total_agreed_amount || item.quotation_amount || 0).toLocaleString('en-IN')}</span>
+                          {(Boolean(item.discount_amount) || Boolean(item.additional_charges)) && (
+                            <span className="block text-[9px] font-normal text-slate-500 font-sans">
+                              {item.discount_amount ? <span className="text-rose-600 font-semibold">-₹{item.discount_amount} </span> : null}
+                              {item.additional_charges ? <span className="text-blue-600 font-semibold">+₹{item.additional_charges}</span> : null}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 font-mono text-[11px]">—</span>
+                      )}
                     </td>
 
                     {/* Next Follow-up */}
@@ -790,6 +804,16 @@ export default function InquiriesManager({
                     {/* Actions */}
                     <td className="py-3 px-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1.5">
+                        {/* Edit Enquiry button (Reopen & Edit Modal) */}
+                        <button
+                          type="button"
+                          onClick={() => setEditingEnquiry(item)}
+                          className="p-1.5 rounded-lg border border-[#00685b]/30 bg-[#00685b]/10 hover:bg-[#00685b] text-[#00685b] hover:text-white transition-all cursor-pointer"
+                          title="Reopen & Edit Enquiry / Update Pricing"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                        </button>
+
                         {/* Quick Follow-up modal trigger */}
                         <button
                           type="button"
@@ -798,7 +822,7 @@ export default function InquiriesManager({
                             setQuickNote('');
                             setQuickNextDate(item.next_followup_at ? item.next_followup_at.split('T')[0] : '');
                           }}
-                          className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-[#00685b]/10 hover:text-[#00685b] text-slate-600 transition-colors cursor-pointer"
+                          className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 transition-colors cursor-pointer"
                           title="Quick Add Follow-up Note"
                         >
                           <Calendar className="h-3.5 w-3.5" />
@@ -825,9 +849,9 @@ export default function InquiriesManager({
                             setActiveDrawerTab('customer');
                           }}
                           className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 transition-colors cursor-pointer"
-                          title="View & Edit Full Details"
+                          title="View Details Drawer"
                         >
-                          <Edit3 className="h-3.5 w-3.5" />
+                          <ChevronRight className="h-3.5 w-3.5" />
                         </button>
 
                         {/* Delete button */}
@@ -894,13 +918,25 @@ export default function InquiriesManager({
                   {selectedEnquiry.name}
                 </h3>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedEnquiry(null)}
-                className="p-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 transition-colors cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingEnquiry(selectedEnquiry)}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#00685b] hover:bg-[#00544a] text-white px-3.5 py-1.5 font-display text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  title="Reopen and Edit this Enquiry & Pricing"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  <span>Edit Enquiry</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedEnquiry(null)}
+                  className="p-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 transition-colors cursor-pointer"
+                  title="Close Drawer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
             {/* Tab navigation */}
@@ -1203,64 +1239,108 @@ export default function InquiriesManager({
                 </div>
               )}
 
-              {/* TAB 5: Payment Ledger */}
+              {/* TAB 5: Payment Ledger & Pricing Breakdown */}
               {activeDrawerTab === 'payments' && (
                 <div className="space-y-5 text-xs">
+                  {/* Action Banner to Edit Pricing */}
+                  <div className="bg-[#00685b]/5 border border-[#00685b]/20 rounded-xl p-4 flex items-center justify-between">
+                    <div>
+                      <span className="font-tech text-[10px] font-bold text-[#00685b] uppercase block">
+                        PRICING SPECIFICATION & INVOICING
+                      </span>
+                      <p className="text-xs text-slate-600 mt-0.5">
+                        Update quotation numbers, add discounts, extra charges, and auto-calculate balances.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingEnquiry(selectedEnquiry)}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-[#00685b] hover:bg-[#00544a] text-white px-3.5 py-2 font-display text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                      <span>Edit Pricing & Scope</span>
+                    </button>
+                  </div>
+
+                  {/* Summary Metric Cards */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1">
-                      <span className="font-tech text-[10px] font-extrabold uppercase text-slate-500 block">Total Quotation</span>
-                      <input
-                        type="number"
-                        defaultValue={selectedEnquiry.quotation_amount || 0}
-                        onBlur={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          const paid = selectedEnquiry.advance_paid || 0;
-                          handleUpdateDrawerField({
-                            quotation_amount: val,
-                            balance_amount: Math.max(0, val - paid)
-                          });
-                        }}
-                        className="w-full font-mono text-base font-black text-slate-900 bg-white border border-slate-200 rounded px-2 py-1"
-                      />
+                      <span className="font-tech text-[10px] font-extrabold uppercase text-slate-500 block">Total Agreed</span>
+                      <div className="font-mono text-lg font-black text-slate-900 py-0.5">
+                        ₹{(selectedEnquiry.total_agreed_amount || selectedEnquiry.agreed_value || selectedEnquiry.quotation_amount || 0).toLocaleString('en-IN')}
+                      </div>
+                      <span className="text-[10px] text-slate-400 block font-mono">Ref: {selectedEnquiry.quotation_number || 'QB-QT-UNASSIGNED'}</span>
                     </div>
 
                     <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 space-y-1">
-                      <span className="font-tech text-[10px] font-extrabold uppercase text-emerald-700 block">Advance / Paid</span>
-                      <input
-                        type="number"
-                        defaultValue={selectedEnquiry.advance_paid || 0}
-                        onBlur={(e) => {
-                          const paid = parseFloat(e.target.value) || 0;
-                          const quote = selectedEnquiry.quotation_amount || 0;
-                          handleUpdateDrawerField({
-                            advance_paid: paid,
-                            balance_amount: Math.max(0, quote - paid)
-                          });
-                        }}
-                        className="w-full font-mono text-base font-black text-emerald-800 bg-white border border-emerald-200 rounded px-2 py-1"
-                      />
+                      <span className="font-tech text-[10px] font-extrabold uppercase text-emerald-700 block">Advance / Received</span>
+                      <div className="font-mono text-lg font-black text-emerald-800 py-0.5">
+                        ₹{(selectedEnquiry.advance_paid ?? selectedEnquiry.advance_amount ?? 0).toLocaleString('en-IN')}
+                      </div>
+                      <span className="text-[10px] text-emerald-600/80 block font-mono">Status: {selectedEnquiry.payment_status || 'Pending'}</span>
                     </div>
 
                     <div className="bg-blue-50 border border-blue-200 rounded-xl p-3.5 space-y-1">
-                      <span className="font-tech text-[10px] font-extrabold uppercase text-blue-700 block">Calculated Balance</span>
-                      <div className="font-mono text-base font-black text-blue-900 py-1">
-                        ₹{((selectedEnquiry.quotation_amount || 0) - (selectedEnquiry.advance_paid || 0)).toLocaleString('en-IN')}
+                      <span className="font-tech text-[10px] font-extrabold uppercase text-blue-700 block">Balance Due</span>
+                      <div className="font-mono text-lg font-black text-blue-900 py-0.5">
+                        ₹{Math.max(
+                          0,
+                          (selectedEnquiry.total_agreed_amount || selectedEnquiry.agreed_value || selectedEnquiry.quotation_amount || 0) -
+                            (selectedEnquiry.advance_paid ?? selectedEnquiry.advance_amount ?? 0)
+                        ).toLocaleString('en-IN')}
                       </div>
+                      <span className="text-[10px] text-blue-600/80 block font-mono">Pending Collection</span>
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-slate-500 font-tech uppercase text-[10px] font-bold block">Payment Status</label>
-                    <select
-                      value={selectedEnquiry.payment_status || 'Pending'}
-                      onChange={(e) => handleUpdateDrawerField({ payment_status: e.target.value as any })}
-                      className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-800 focus:border-[#00685b] focus:outline-none"
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="Partial">Partial Advance Paid</option>
-                      <option value="Paid">Fully Paid</option>
-                      <option value="Refunded">Refunded</option>
-                    </select>
+                  {/* Itemized Pricing Details */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2.5">
+                    <span className="font-tech text-[10px] font-extrabold uppercase text-slate-500 block">
+                      Pricing Breakdown Items
+                    </span>
+                    <div className="divide-y divide-slate-100 text-xs">
+                      <div className="py-2 flex justify-between items-center">
+                        <span className="text-slate-600">Base Quoted Amount:</span>
+                        <span className="font-mono font-bold text-slate-900">
+                          {selectedEnquiry.quotation_amount ? `₹${selectedEnquiry.quotation_amount.toLocaleString('en-IN')}` : '—'}
+                        </span>
+                      </div>
+                      {selectedEnquiry.package_price ? (
+                        <div className="py-2 flex justify-between items-center">
+                          <span className="text-slate-600">Standard Package Price:</span>
+                          <span className="font-mono text-slate-700">
+                            ₹{selectedEnquiry.package_price.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      ) : null}
+                      {Boolean(selectedEnquiry.discount_amount) && (
+                        <div className="py-2 flex justify-between items-center text-rose-600">
+                          <span>
+                            Discount Concession
+                            {selectedEnquiry.discount_reason ? ` (${selectedEnquiry.discount_reason})` : ''}:
+                          </span>
+                          <span className="font-mono font-bold">
+                            -₹{selectedEnquiry.discount_amount?.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      )}
+                      {Boolean(selectedEnquiry.additional_charges) && (
+                        <div className="py-2 flex justify-between items-center text-blue-600">
+                          <span>
+                            Additional Charges / Add-ons
+                            {selectedEnquiry.additional_charges_reason ? ` (${selectedEnquiry.additional_charges_reason})` : ''}:
+                          </span>
+                          <span className="font-mono font-bold">
+                            +₹{selectedEnquiry.additional_charges?.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      )}
+                      {selectedEnquiry.pricing_notes && (
+                        <div className="pt-2 text-[11px] text-slate-600">
+                          <strong>Terms & Notes:</strong> {selectedEnquiry.pricing_notes}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -1356,6 +1436,23 @@ export default function InquiriesManager({
           </div>
         </div>
       )}
+
+      {/* 7. DEDICATED RE-EDIT & PRICING SPECIFICATION MODAL */}
+      <EnquiryEditModal
+        enquiry={editingEnquiry}
+        isOpen={Boolean(editingEnquiry)}
+        onClose={() => setEditingEnquiry(null)}
+        onSaveSuccess={async (updated) => {
+          setCrmEnquiries((prev) =>
+            prev.map((item) => (item.id === updated.id ? updated : item))
+          );
+          if (selectedEnquiry?.id === updated.id) {
+            setSelectedEnquiry(updated);
+          }
+          await onRefresh();
+        }}
+        onNotify={onNotify}
+      />
 
     </div>
   );

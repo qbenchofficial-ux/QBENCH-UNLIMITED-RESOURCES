@@ -17,7 +17,7 @@ export interface ZohoCatalogItem {
 export const ZOHO_CONFIG = {
   orgId: '60072580070',
   orgName: 'QBENCH',
-  portalUrl: 'https://books.zoho.in/app/60072580070',
+  portalUrl: 'https://books.zoho.in/app/60072580070#/home/dashboard?dashboard_id=defaultdashboard',
   variantsUrl: 'https://books.zoho.in/app/60072580070#/inventory/product/variantslist?filter_by=Status.All&per_page=25&sort_column=name&sort_order=A',
   itemsListUrl: 'https://books.zoho.in/app/60072580070#/inventory/items',
   getItemUrl: (itemId: string) => `https://books.zoho.in/app/60072580070#/inventory/items/${itemId}`,

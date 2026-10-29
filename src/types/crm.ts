@@ -237,6 +237,16 @@ export interface EnquiryRecord {
   project_progress?: number | null;
   delivery_links?: string | null;
 
+  // Pricing & Quotation Breakdown
+  package_price?: number | null;
+  discount_amount?: number | null;
+  discount_percentage?: number | null;
+  discount_reason?: string | null;
+  additional_charges?: number | null;
+  additional_charges_reason?: string | null;
+  tax_amount?: number | null;
+  pricing_notes?: string | null;
+
   // Payment Tracking
   invoice_reference?: string | null;
   total_agreed_amount?: number | null;
