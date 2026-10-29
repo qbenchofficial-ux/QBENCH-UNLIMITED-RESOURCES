@@ -1,10 +1,14 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ZOHO_CONFIG,
   ZOHO_CATALOG_ITEMS,
   ZohoCatalogItem,
   formatINR,
 } from '../data/zohoCatalog';
+import {
+  getZohoConnectionStatus,
+  initiateZohoOAuth,
+} from '../services/zohoService';
 import {
   ExternalLink,
   Search,
@@ -20,9 +24,6 @@ import {
   Sparkles,
   Info,
   DollarSign,
-  Maximize2,
-  Minimize2,
-  RefreshCw,
   Plus,
   Receipt,
   FileText,
@@ -33,7 +34,8 @@ import {
   Check,
   Building2,
   Calculator,
-  Compass
+  Compass,
+  RefreshCw,
 } from 'lucide-react';
 
 interface ZohoInventoryManagerProps {
@@ -44,10 +46,7 @@ export default function ZohoInventoryManager({ onNotify }: ZohoInventoryManagerP
   // Navigation tabs inside Zoho Books Portal
   const [activeTab, setActiveTab] = useState<'portal' | 'catalog' | 'calculator' | 'config'>('portal');
 
-  // Portal frame controls
-  const [iframeUrl, setIframeUrl] = useState<string>(ZOHO_CONFIG.portalUrl);
-  const [iframeLoading, setIframeLoading] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  // Clipboard state
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Catalog search & filter state
@@ -101,49 +100,141 @@ export default function ZohoInventoryManager({ onNotify }: ZohoInventoryManagerP
     }, 3000);
   };
 
-  // Quick Zoho Books Navigation Modules
+  // Zoho OAuth backend integration state
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [oauthStatus, setOauthStatus] = useState<{
+    checked: boolean;
+    connected: boolean;
+    orgId?: string;
+    orgName?: string;
+    message?: string;
+    lastSynchronized?: string;
+  } | null>(null);
+
+  const handleCheckOAuth = async () => {
+    setOauthLoading(true);
+    try {
+      const res = await getZohoConnectionStatus();
+      setOauthStatus({
+        checked: true,
+        connected: res.connected,
+        orgId: res.orgId,
+        orgName: res.orgName,
+        message: res.message,
+        lastSynchronized: res.lastSynchronized,
+      });
+      if (onNotify) {
+        onNotify(
+          res.connected ? 'success' : 'error',
+          res.connected ? 'Zoho OAuth API integration verified.' : (res.message || 'Zoho OAuth is not currently connected.')
+        );
+      }
+    } catch (err: any) {
+      setOauthStatus({
+        checked: true,
+        connected: false,
+        message: err.message || 'Unable to check connection',
+      });
+      if (onNotify) {
+        onNotify('error', err.message || 'Failed to check Zoho OAuth connection');
+      }
+    } finally {
+      setOauthLoading(false);
+    }
+  };
+
+  const handleInitiateOAuth = async () => {
+    try {
+      if (onNotify) {
+        onNotify('success', 'Redirecting to secure Zoho Accounts authorization...');
+      }
+      await initiateZohoOAuth();
+    } catch (err: any) {
+      if (onNotify) {
+        onNotify('error', err.message || 'Could not initiate Zoho authorization');
+      }
+    }
+  };
+
+  // Verified Zoho Books Navigation Modules (Targeting Org ID: 60072580070)
   const zohoModules = [
     {
       id: 'dashboard',
       label: 'Dashboard',
-      icon: <BarChart3 className="h-4 w-4" />,
+      description: 'Real-time revenue, receivables, payables, cash flow & financial overview.',
+      icon: <BarChart3 className="h-5 w-5" />,
       url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/home/dashboard?dashboard_id=defaultdashboard`,
+      badge: 'Overview',
+      quickAction: null,
     },
     {
       id: 'invoices',
       label: 'Invoices',
-      icon: <Receipt className="h-4 w-4" />,
+      description: 'Create GST tax invoices, review client payment statuses & send reminders.',
+      icon: <Receipt className="h-5 w-5" />,
       url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/invoices`,
+      badge: 'Billing',
+      quickAction: {
+        label: '+ New Invoice',
+        url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/invoices/new`,
+      },
     },
     {
       id: 'estimates',
       label: 'Estimates & Quotes',
-      icon: <FileText className="h-4 w-4" />,
+      description: 'Create and track client project quotations, proposals & package approvals.',
+      icon: <FileText className="h-5 w-5" />,
       url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/estimates`,
+      badge: 'Proposals',
+      quickAction: {
+        label: '+ New Estimate',
+        url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/estimates/new`,
+      },
     },
     {
       id: 'items',
       label: 'Items & Inventory',
-      icon: <Package className="h-4 w-4" />,
-      url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/inventory/items`,
+      description: 'Manage turnkey service rates, package SKUs & production deliverables.',
+      icon: <Package className="h-5 w-5" />,
+      url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/items`,
+      badge: 'Catalog',
+      quickAction: {
+        label: '+ New Item',
+        url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/items/new`,
+      },
     },
     {
-      id: 'variants',
-      label: 'Product Variants',
-      icon: <Layers className="h-4 w-4" />,
-      url: ZOHO_CONFIG.variantsUrl,
-    },
-    {
-      id: 'contacts',
+      id: 'customers',
       label: 'Customers / Clients',
-      icon: <Users className="h-4 w-4" />,
-      url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/contacts`,
+      description: 'Manage client company profiles, billing addresses, GSTIN & primary contacts.',
+      icon: <Users className="h-5 w-5" />,
+      url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/customers`,
+      badge: 'Clients',
+      quickAction: {
+        label: '+ New Client',
+        url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/contacts/new`,
+      },
     },
     {
       id: 'payments',
       label: 'Payments Received',
-      icon: <CreditCard className="h-4 w-4" />,
+      description: 'Record customer settlements, bank transfers & generate payment receipts.',
+      icon: <CreditCard className="h-5 w-5" />,
       url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/customerpayments`,
+      badge: 'Receipts',
+      quickAction: {
+        label: '+ Record Payment',
+        url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/customerpayments/new`,
+      },
+    },
+    {
+      id: 'variants',
+      label: 'Product Variants',
+      description: 'Multi-option turnkey packages, service add-on tiers & custom rate configurations.',
+      icon: <Layers className="h-5 w-5" />,
+      url: ZOHO_CONFIG.variantsUrl,
+      badge: 'Tier Config',
+      quickAction: null,
     },
   ];
 
@@ -166,7 +257,12 @@ export default function ZohoInventoryManager({ onNotify }: ZohoInventoryManagerP
     },
     {
       label: '+ New Item',
-      url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/inventory/items/new`,
+      url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/items/new`,
+      primary: false,
+    },
+    {
+      label: '+ Record Payment',
+      url: `https://books.zoho.in/app/${ZOHO_CONFIG.orgId}#/customerpayments/new`,
       primary: false,
     },
   ];
@@ -201,7 +297,7 @@ export default function ZohoInventoryManager({ onNotify }: ZohoInventoryManagerP
   const draftGrandTotal = draftSubtotal + draftGst;
 
   return (
-    <div className={`space-y-6 ${isFullscreen ? 'fixed inset-0 z-50 bg-white p-6 overflow-y-auto' : ''}`}>
+    <div className="space-y-6">
       
       {/* 1. Top Header Banner with Org Details & Quick Links */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-xs">
@@ -210,7 +306,7 @@ export default function ZohoInventoryManager({ onNotify }: ZohoInventoryManagerP
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black bg-[#e6f4f1] text-[#00685b] tracking-wider uppercase">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Live Zoho Books Portal Active
+                One-Touch Access Active
               </span>
               <span className="text-xs text-slate-500 font-mono bg-slate-100 px-2.5 py-0.5 rounded-full">
                 Org ID: {ZOHO_CONFIG.orgId}
@@ -218,14 +314,17 @@ export default function ZohoInventoryManager({ onNotify }: ZohoInventoryManagerP
               <span className="text-xs text-slate-500 font-mono bg-slate-100 px-2.5 py-0.5 rounded-full">
                 QBENCH India ({ZOHO_CONFIG.currency})
               </span>
+              <span className="text-xs text-slate-500 font-mono bg-slate-100 px-2.5 py-0.5 rounded-full">
+                books.zoho.in
+              </span>
             </div>
             
             <h1 className="text-2xl sm:text-3xl font-display font-black text-slate-900 tracking-tight">
-              Zoho Books Portal & Financial Operations
+              Zoho Books Launcher & Financial Operations
             </h1>
             
             <p className="text-sm text-slate-600 max-w-3xl leading-relaxed">
-              Official QBENCH financial management suite. Access your live Zoho Books accounting workspace, manage turnkey packages, look up item codes, and build GST-compliant invoice drafts directly from the admin dashboard.
+              Official QBENCH financial management suite. Launch live Zoho Books accounting modules directly in dedicated browser tabs with one-touch session continuity. Manage turnkey packages, look up item codes, and build GST-compliant invoice drafts directly from the admin dashboard.
             </p>
           </div>
 
@@ -234,23 +333,12 @@ export default function ZohoInventoryManager({ onNotify }: ZohoInventoryManagerP
               href={ZOHO_CONFIG.portalUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#00685b] hover:bg-[#005147] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
-              title="Open full Zoho Books workspace in a new browser window"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#00685b] hover:bg-[#005147] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+              title="Open full Zoho Books workspace in a new browser tab"
             >
               <ExternalLink className="h-4 w-4" />
-              <span>Launch Full Zoho Books (New Window)</span>
+              <span>Launch Zoho Books (New Tab)</span>
             </a>
-
-            {isFullscreen && (
-              <button
-                type="button"
-                onClick={() => setIsFullscreen(false)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
-              >
-                <Minimize2 className="h-4 w-4" />
-                <span>Exit Fullscreen</span>
-              </button>
-            )}
           </div>
         </div>
 
@@ -266,7 +354,7 @@ export default function ZohoInventoryManager({ onNotify }: ZohoInventoryManagerP
             }`}
           >
             <Compass className="h-4 w-4" />
-            <span>1. Live Zoho Books Portal Workspace</span>
+            <span>1. Zoho Books Workspace Launcher</span>
           </button>
 
           <button
@@ -311,28 +399,33 @@ export default function ZohoInventoryManager({ onNotify }: ZohoInventoryManagerP
       </div>
 
       {/* ============================================================== */}
-      {/* TAB 1: LIVE ZOHO BOOKS PORTAL / WORKSPACE                      */}
+      {/* TAB 1: ZOHO BOOKS ONE-TOUCH LAUNCHER HUB                       */}
       {/* ============================================================== */}
       {activeTab === 'portal' && (
-        <div className="space-y-4">
-          
-          {/* Quick Module Navigation Toolbar */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
-              <span className="font-tech text-[10px] font-black uppercase text-slate-500 tracking-wider">
-                Direct Module Launchers (QBENCH Org ID: {ZOHO_CONFIG.orgId})
-              </span>
+        <div className="space-y-6">
 
-              <div className="flex items-center gap-2">
+          {/* Quick Action Bar */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <span className="font-tech text-[10px] font-black uppercase text-[#00685b] tracking-wider">
+                  QUICK ACTION SHORTCUTS (ORG ID: {ZOHO_CONFIG.orgId})
+                </span>
+                <h3 className="font-display font-bold text-sm text-slate-800">
+                  Instant Access to Common Accounting Operations
+                </h3>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
                 {quickActions.map((qa, idx) => (
                   <a
                     key={idx}
                     href={qa.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                       qa.primary
-                        ? 'bg-[#00685b] hover:bg-[#005147] text-white shadow-2xs'
+                        ? 'bg-[#00685b] hover:bg-[#005147] text-white shadow-xs'
                         : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                     }`}
                   >
@@ -342,118 +435,114 @@ export default function ZohoInventoryManager({ onNotify }: ZohoInventoryManagerP
                 ))}
               </div>
             </div>
+          </div>
 
-            {/* Quick module links grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-              {zohoModules.map((mod) => (
-                <button
-                  key={mod.id}
-                  type="button"
-                  onClick={() => {
-                    setIframeUrl(mod.url);
-                    setIframeLoading(true);
-                  }}
-                  className={`p-2.5 rounded-xl border text-left flex flex-col items-start gap-1 transition-all cursor-pointer ${
-                    iframeUrl === mod.url
-                      ? 'border-[#00685b] bg-[#e6f4f1] text-[#00685b] shadow-2xs font-bold'
-                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full">
-                    {mod.icon}
+          {/* One-Touch Access Info Notice */}
+          <div className="bg-gradient-to-r from-emerald-50/90 via-[#e6f4f1]/80 to-teal-50/90 border border-[#00685b]/20 rounded-2xl p-5 shadow-2xs">
+            <div className="flex items-start gap-3.5">
+              <div className="p-2.5 rounded-xl bg-[#00685b] text-white shrink-0 mt-0.5">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div className="space-y-1.5 text-xs text-slate-700">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-display font-black text-sm text-slate-900 tracking-tight">
+                    One-Touch Browser Access & Authentication Architecture
+                  </h4>
+                  <span className="bg-[#00685b]/10 text-[#00685b] text-[10px] font-bold px-2 py-0.5 rounded-md uppercase font-tech">
+                    Native Browser Isolation
+                  </span>
+                </div>
+                <p className="leading-relaxed">
+                  All launcher buttons open directly in a new browser tab targeting verified Zoho Books India (<code className="font-mono text-[#00685b] font-semibold">books.zoho.in</code>) modules under Organization ID <code className="font-mono font-semibold">{ZOHO_CONFIG.orgId}</code>.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 text-[11px]">
+                  <div className="bg-white/80 border border-emerald-200/60 rounded-xl p-2.5">
+                    <strong className="block text-slate-900 font-bold mb-0.5">Active Session Continuity</strong>
+                    If you are logged into Zoho in your browser, clicking any module launches instantly without re-entering credentials.
+                  </div>
+                  <div className="bg-white/80 border border-emerald-200/60 rounded-xl p-2.5">
+                    <strong className="block text-slate-900 font-bold mb-0.5">Secure Zoho Sign-In</strong>
+                    If your session expired or is unauthenticated, Zoho's official login screen will authenticate you and navigate directly to the target view.
+                  </div>
+                  <div className="bg-white/80 border border-emerald-200/60 rounded-xl p-2.5">
+                    <strong className="block text-slate-900 font-bold mb-0.5">Zero Token Exposure</strong>
+                    Browser links contain only clean URL routes. OAuth tokens, client secrets, and service keys remain strictly server-side.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Module Launcher Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {zohoModules.map((mod) => (
+              <div
+                key={mod.id}
+                className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs hover:shadow-md hover:border-[#00685b]/40 transition-all flex flex-col justify-between group"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="p-2.5 rounded-xl bg-slate-100 text-slate-700 group-hover:bg-[#e6f4f1] group-hover:text-[#00685b] transition-colors shrink-0">
+                      {mod.icon}
+                    </div>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">
+                      {mod.badge}
+                    </span>
+                  </div>
+
+                  <div>
+                    <h3 className="font-display font-black text-base text-slate-900 group-hover:text-[#00685b] transition-colors">
+                      {mod.label}
+                    </h3>
+                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                      {mod.description}
+                    </p>
+                  </div>
+
+                  <div className="text-[10px] font-mono text-slate-400 bg-slate-50 border border-slate-100 px-2 py-1 rounded truncate">
+                    books.zoho.in/app/{ZOHO_CONFIG.orgId}#{mod.url.split('#')[1] || ''}
+                  </div>
+                </div>
+
+                <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <a
+                    href={mod.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[#00685b] hover:bg-[#005147] text-white text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                  >
+                    <span>Open {mod.label}</span>
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+
+                  {mod.quickAction && (
                     <a
-                      href={mod.url}
+                      href={mod.quickAction.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-slate-400 hover:text-slate-700 p-0.5"
-                      title="Open in new window"
+                      className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
+                      title={`Directly create ${mod.label}`}
                     >
+                      <span>{mod.quickAction.label}</span>
                       <ArrowUpRight className="h-3 w-3" />
                     </a>
-                  </div>
-                  <span className="text-[11px] font-semibold leading-tight mt-0.5">
-                    {mod.label}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Embedded Zoho Books Workspace Portal Frame */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
-            
-            {/* Browser-like address / controls bar */}
-            <div className="bg-slate-100/80 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIframeLoading(true);
-                    const current = iframeUrl;
-                    setIframeUrl('');
-                    setTimeout(() => setIframeUrl(current), 100);
-                  }}
-                  className="p-1 rounded text-slate-500 hover:text-slate-800 transition-colors cursor-pointer ml-1"
-                  title="Reload Workspace"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${iframeLoading ? 'animate-spin' : ''}`} />
-                </button>
               </div>
-
-              {/* URL bar */}
-              <div className="flex-1 max-w-xl mx-auto bg-white border border-slate-200 rounded-lg px-3 py-1 font-mono text-[11px] text-slate-600 truncate flex items-center justify-between">
-                <span className="truncate">{iframeUrl}</span>
-                <span className="text-[9px] uppercase font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-tech">
-                  SSL / ZOHO.IN
-                </span>
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setIsFullscreen(!isFullscreen)}
-                  className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer"
-                  title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen Portal'}
-                >
-                  {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-                </button>
-
-                <a
-                  href={iframeUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer"
-                  title="Open this specific page in a new window"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-              </div>
-            </div>
-
-            {/* Embedded iFrame workspace container */}
-            <div className="relative w-full h-[750px] bg-slate-50">
-
-              {/* The Live Iframe */}
-              {iframeUrl && (
-                <iframe
-                  title="Zoho Books Portal"
-                  src={iframeUrl}
-                  onLoad={() => setIframeLoading(false)}
-                  className="w-full h-full border-0"
-                  allow="clipboard-write; camera; microphone; payment"
-                  sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
-                />
-              )}
-
-            </div>
+            ))}
           </div>
+
+          {/* Safe Architecture & Operational Guidelines Footer */}
+          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-5 text-xs text-slate-600 space-y-2">
+            <div className="flex items-center gap-2 text-slate-900 font-bold font-display">
+              <Info className="h-4 w-4 text-[#00685b]" />
+              <span>QBENCH Financial Architecture Notice</span>
+            </div>
+            <p className="leading-relaxed text-slate-500">
+              QBench enforces strict separation between client-side accounting management and server-side operations. All official accounting entries, customer GST invoicing, bank reconciliations, and tax statements are maintained in Zoho Books. QBench does not store credit card or banking details, and all launcher links are isolated from iframe injection or script interception.
+            </p>
+          </div>
+
         </div>
       )}
 
@@ -1026,6 +1115,76 @@ export default function ZohoInventoryManager({ onNotify }: ZohoInventoryManagerP
             <div>
               <strong>Security Protocol:</strong> Privileged Zoho API tokens, refresh tokens, and client secrets are never exposed in client bundles. Deep links safely authenticate through your existing active Zoho single sign-on session.
             </div>
+          </div>
+
+          {/* Zoho OAuth Backend Integration Status */}
+          <div className="border border-slate-200 rounded-2xl p-5 bg-slate-50 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <span className="font-tech text-[10px] font-black uppercase text-[#00685b] tracking-wider">
+                  BACKEND SYNC ARCHITECTURE
+                </span>
+                <h4 className="font-display font-black text-base text-slate-900 mt-0.5">
+                  Zoho OAuth API Integration (Supabase Edge Services)
+                </h4>
+                <p className="text-xs text-slate-600 mt-1 max-w-xl leading-relaxed">
+                  Backend API synchronization uses encrypted server-side OAuth 2.0 with Zoho Books India. Browser launcher buttons on Tab 1 operate independently via your browser session, with zero exposure of credentials.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={oauthLoading}
+                  onClick={handleCheckOAuth}
+                  className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all cursor-pointer shadow-2xs inline-flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${oauthLoading ? 'animate-spin' : ''}`} />
+                  <span>{oauthLoading ? 'Checking...' : 'Check OAuth Status'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleInitiateOAuth}
+                  className="px-4 py-2 rounded-xl bg-[#00685b] hover:bg-[#005147] text-white text-xs font-bold transition-all cursor-pointer shadow-2xs inline-flex items-center gap-1.5"
+                >
+                  <span>Authorize API Sync</span>
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {oauthStatus && (
+              <div className={`p-4 rounded-xl border text-xs ${
+                oauthStatus.connected
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-amber-50 border-amber-200 text-amber-900'
+              }`}>
+                <div className="flex items-center gap-2 font-bold mb-1">
+                  {oauthStatus.connected ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 text-emerald-700" />
+                      <span>Zoho OAuth API Connected to Organization {oauthStatus.orgId || ZOHO_CONFIG.orgId}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Info className="h-4 w-4 text-amber-700" />
+                      <span>Zoho OAuth Backend Not Connected</span>
+                    </>
+                  )}
+                </div>
+                <p className="text-[11px] opacity-90 leading-relaxed">
+                  {oauthStatus.message || (oauthStatus.connected
+                    ? 'Backend data synchronization edge function is active and authorized.'
+                    : 'Click "Authorize API Sync" if you wish to link Zoho Books API data with Supabase.')}
+                </p>
+                {oauthStatus.lastSynchronized && (
+                  <div className="mt-2 text-[10px] font-mono opacity-75">
+                    Last Checked: {new Date(oauthStatus.lastSynchronized).toLocaleString('en-IN')}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
