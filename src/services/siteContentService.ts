@@ -68,9 +68,11 @@ export interface CmsServiceItem {
   label: string;
   emoji: string;
   iconName: string;
-  desc: string;
+  desc?: string;
   startingPrice?: string;
   deliverables?: string[];
+  imageUrl?: string;
+  videoUrl?: string;
 }
 
 export interface CmsWebsiteContent {

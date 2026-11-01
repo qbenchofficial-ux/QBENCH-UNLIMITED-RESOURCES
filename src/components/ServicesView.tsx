@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ServiceTab, NavSection } from '../types';
 import { useProjects } from '../hooks/useProjects';
 import { motion, AnimatePresence } from 'motion/react';
@@ -14,10 +14,13 @@ import {
   PhoneCall, 
   CheckCircle2, 
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Send,
   type LucideIcon,
 } from 'lucide-react';
-import { DEFAULT_SERVICES_DATA } from '../services/siteContentService';
+import { DEFAULT_SERVICES_DATA, type CmsServiceItem } from '../services/siteContentService';
+import CategoryVisualRenderer from './serviceVisuals/CategoryVisualRenderer';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -30,14 +33,38 @@ const containerVariants = {
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 14 },
+  hidden: { opacity: 0, y: 12 },
   visible: {
     opacity: 1,
     y: 0,
     transition: {
       type: 'spring',
-      stiffness: 120,
-      damping: 16,
+      stiffness: 140,
+      damping: 18,
+    }
+  }
+};
+
+const listContainerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.04,
+      delayChildren: 0.05,
+    }
+  }
+};
+
+const listItemVariants = {
+  hidden: { opacity: 0, x: -10 },
+  visible: {
+    opacity: 1,
+    x: 0,
+    transition: {
+      type: 'spring',
+      stiffness: 150,
+      damping: 18,
     }
   }
 };
@@ -50,10 +77,13 @@ interface ServicesViewProps {
 export default function ServicesView({ initialTab, onNavigate }: ServicesViewProps) {
   const { services: cmsServices } = useProjects('public');
   const [activeTab, setActiveTab] = useState<ServiceTab>(initialTab || 'branding');
+  const [expandedCategory, setExpandedCategory] = useState<ServiceTab | null>(initialTab || 'branding');
+  const [hoveredCategory, setHoveredCategory] = useState<ServiceTab | null>(null);
 
   useEffect(() => {
     if (initialTab) {
       setActiveTab(initialTab);
+      setExpandedCategory(initialTab);
     }
   }, [initialTab]);
 
@@ -70,29 +100,34 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
     }
   };
 
-  const servicesList = useMemo(() => {
+  const servicesList: CmsServiceItem[] = useMemo(() => {
     if (cmsServices && cmsServices.length > 0) {
       return cmsServices.map((s) => ({
         id: s.id,
-        icon: resolveIcon(s.iconName),
         title: s.title,
+        label: s.label || s.title,
+        emoji: s.emoji || '✨',
+        iconName: s.iconName,
         deliverables: s.deliverables || [],
+        imageUrl: s.imageUrl,
+        videoUrl: s.videoUrl,
       }));
     }
-    return DEFAULT_SERVICES_DATA.map((s) => ({
-      id: s.id,
-      icon: resolveIcon(s.iconName),
-      title: s.title,
-      deliverables: s.deliverables || [],
-    }));
+    return DEFAULT_SERVICES_DATA;
   }, [cmsServices]);
 
   const activeCategory = useMemo(() => {
     return servicesList.find((s) => s.id === activeTab) || servicesList[0];
   }, [servicesList, activeTab]);
 
-  const handleTabSelect = (tabId: ServiceTab) => {
+  const handleCategoryToggle = (tabId: ServiceTab) => {
     setActiveTab(tabId);
+    setExpandedCategory((prev) => (prev === tabId ? null : tabId));
+  };
+
+  const handleSelectDeepDive = (tabId: ServiceTab) => {
+    setActiveTab(tabId);
+    setExpandedCategory(tabId);
     const elem = document.getElementById('services-detail-section');
     if (elem) {
       elem.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -137,16 +172,16 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
     window.open(`https://wa.me/917356525932?text=${encoded}`, '_blank');
   };
 
-  const ActiveIcon = activeCategory?.icon || Layers;
+  const ActiveIcon = activeCategory ? resolveIcon(activeCategory.iconName) : Layers;
 
   return (
     <div id="services-view-root" className="w-full">
-      {/* 1. SERVICES HEADER */}
+      {/* 1. SERVICES HERO */}
       <section id="services-hero" className="mx-auto max-w-7xl px-6 pt-12 pb-12 lg:px-12 lg:pt-16 lg:pb-16 text-center">
         <div className="max-w-3xl mx-auto space-y-4">
           <span
             id="services-hero-badge"
-            className="font-tech text-xs tracking-widest text-[#00685b] font-extrabold uppercase inline-flex items-center gap-2 bg-[#00685b]/10 px-3 py-1 rounded-full"
+            className="font-tech text-xs tracking-widest text-[#00685b] font-extrabold uppercase inline-flex items-center gap-2 bg-[#00685b]/10 px-3.5 py-1 rounded-full"
           >
             <span className="h-1.5 w-1.5 rounded-full bg-[#00685b] animate-pulse" />
             Our Services
@@ -156,88 +191,221 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
             id="services-hero-title"
             className="font-display text-4xl sm:text-5xl lg:text-6xl font-black text-brand-text tracking-tight"
           >
-            Services & Capabilities
+            Services &amp; Capabilities
           </h1>
+
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                const elem = document.getElementById('services-offerings');
+                if (elem) elem.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="rounded-xl bg-[#00685b] text-white px-6 py-3 font-display text-xs font-bold uppercase tracking-wider hover:bg-[#178373] transition-all duration-200 shadow-md flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Explore All 7 Categories</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (onNavigate) onNavigate('contact');
+              }}
+              className="rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 px-5 py-3 font-display text-xs font-bold uppercase tracking-wider transition-all duration-200 shadow-2xs flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <PhoneCall className="h-3.5 w-3.5 text-[#00685b]" />
+              <span>Contact Us</span>
+            </button>
+          </div>
         </div>
       </section>
 
-      {/* 2. THE SEVEN SERVICE CATEGORIES */}
-      <section id="services-categories" className="bg-white border-y border-brand-outline/20 py-16 px-6 lg:px-12">
-        <div className="mx-auto max-w-7xl">
-          <div className="text-center max-w-2xl mx-auto mb-10">
+      {/* 2. OUR SERVICE OFFERINGS – INTERACTIVE EXPANDABLE CARDS WITH UNIQUE MOTION VISUALS */}
+      <section id="services-offerings" className="bg-white border-y border-brand-outline/20 py-16 px-6 lg:px-12 scroll-mt-16">
+        <div className="mx-auto max-w-7xl space-y-10">
+          <div className="text-center max-w-2xl mx-auto space-y-2">
             <span className="font-tech text-[10px] tracking-widest text-[#00685b] font-extrabold uppercase bg-[#00685b]/10 px-3 py-1 rounded-full inline-block">
-              SERVICE CATALOGUE
+              WHAT WE DO
             </span>
-            <h2 className="font-display text-2xl sm:text-3xl font-black text-brand-text tracking-tight mt-2">
-              Select a Category
+            <h2 id="services-offerings-title" className="font-display text-3xl sm:text-4xl font-black text-brand-text tracking-tight">
+              Our Service Offerings
             </h2>
           </div>
 
+          {/* 7 Categories Grid with Expandable Service Names */}
           <motion.div
             id="services-grid"
             variants={containerVariants}
             initial="hidden"
             whileInView="visible"
-            viewport={{ once: true, margin: '-40px' }}
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5"
+            viewport={{ once: true, margin: '-50px' }}
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
           >
             {servicesList.map((category, idx) => {
-              const IconComp = category.icon;
+              const IconComp = resolveIcon(category.iconName);
               const isSelected = activeTab === category.id;
-              const serviceCount = category.deliverables.length;
+              const isExpanded = expandedCategory === category.id;
+              const serviceCount = category.deliverables?.length || 0;
+              const isHovered = hoveredCategory === category.id;
 
               return (
                 <motion.div
-                  id={`srv-cat-${category.id}`}
+                  id={`srv-card-${category.id}`}
                   key={category.id}
+                  layout
                   variants={itemVariants}
-                  whileHover={{ y: -4, transition: { duration: 0.2 } }}
-                  onClick={() => handleTabSelect(category.id)}
-                  className={`group rounded-2xl p-5 transition-all duration-200 cursor-pointer border flex flex-col justify-between ${
+                  onMouseEnter={() => setHoveredCategory(category.id)}
+                  onMouseLeave={() => setHoveredCategory(null)}
+                  className={`group rounded-2xl bg-white border transition-all duration-300 flex flex-col justify-between overflow-hidden shadow-xs hover:shadow-md ${
                     isSelected
-                      ? 'bg-[#00685b] text-white border-[#00685b] shadow-md ring-2 ring-[#00685b]/20'
-                      : 'bg-[#faf9f9]/80 border-brand-outline/15 hover:bg-white hover:border-[#00685b]/40 hover:shadow-sm text-brand-text'
+                      ? 'border-[#00685b] ring-2 ring-[#00685b]/20'
+                      : 'border-brand-outline/20 hover:border-[#00685b]/50'
                   }`}
                 >
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={`p-2.5 rounded-xl flex items-center justify-center transition-colors ${
-                          isSelected
-                            ? 'bg-white/15 text-white'
-                            : 'bg-[#00685b]/5 text-[#00685b] group-hover:bg-[#00685b] group-hover:text-white'
-                        }`}
-                      >
-                        <IconComp className="h-5 w-5" />
-                      </span>
-                      <span
-                        className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                          isSelected
-                            ? 'bg-white/20 text-white'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        0{idx + 1}
-                      </span>
-                    </div>
-
-                    <h3 className="font-display text-base font-bold tracking-tight">
-                      {category.title}
-                    </h3>
+                  {/* Category Visual Container (16:9 Standard Dimensions) */}
+                  <div
+                    onClick={() => handleCategoryToggle(category.id)}
+                    className="cursor-pointer"
+                  >
+                    <CategoryVisualRenderer
+                      categoryId={category.id}
+                      imageUrl={category.imageUrl}
+                      videoUrl={category.videoUrl}
+                      isHovered={isHovered}
+                    />
                   </div>
 
-                  <div className="flex items-center justify-between pt-5 border-t border-current/10 mt-2 text-xs font-medium">
-                    <span className={isSelected ? 'text-white/80' : 'text-brand-text-muted'}>
-                      {serviceCount} {serviceCount === 1 ? 'Service' : 'Services'}
-                    </span>
-                    <span
-                      className={`inline-flex items-center font-display font-bold text-[11px] uppercase tracking-wider ${
-                        isSelected ? 'text-white' : 'text-[#00685b]'
-                      }`}
+                  {/* Card Content Area */}
+                  <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                    {/* Category Title & Badge Header */}
+                    <div
+                      onClick={() => handleCategoryToggle(category.id)}
+                      className="cursor-pointer flex items-center justify-between gap-3 border-b border-brand-outline/10 pb-3"
                     >
-                      <span>View</span>
-                      <ChevronRight className="h-3.5 w-3.5 ml-0.5 transition-transform group-hover:translate-x-0.5" />
-                    </span>
+                      <div className="flex items-center gap-2.5">
+                        <span className="p-2 rounded-xl bg-[#00685b]/10 text-[#00685b] shrink-0">
+                          <IconComp className="h-4 w-4" />
+                        </span>
+                        <div>
+                          <span className="font-mono text-[10px] text-slate-400 font-bold block">
+                            0{idx + 1}
+                          </span>
+                          <h3 className="font-display text-base font-bold text-brand-text leading-tight group-hover:text-[#00685b] transition-colors">
+                            {category.title}
+                          </h3>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-mono text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full">
+                          {serviceCount} Services
+                        </span>
+                        <span
+                          className={`p-1.5 rounded-lg border transition-colors ${
+                            isExpanded
+                              ? 'bg-[#00685b] text-white border-[#00685b]'
+                              : 'bg-white border-slate-200 text-slate-500 hover:text-slate-900'
+                          }`}
+                        >
+                          {isExpanded ? (
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          ) : (
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          )}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Expandable Services List (Only actual service names) */}
+                    <AnimatePresence>
+                      {isExpanded && (
+                        <motion.div
+                          layout
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                          className="overflow-hidden space-y-2"
+                        >
+                          <motion.div
+                            variants={listContainerVariants}
+                            initial="hidden"
+                            animate="visible"
+                            className="space-y-1.5 pt-1"
+                          >
+                            {(category.deliverables || []).map((serviceName, sIdx) => (
+                              <motion.div
+                                key={sIdx}
+                                variants={listItemVariants}
+                                className="flex items-center justify-between p-2 rounded-xl bg-slate-50 hover:bg-[#00685b]/5 border border-slate-200/60 hover:border-[#00685b]/30 transition-all text-xs group/item"
+                              >
+                                <div className="flex items-center gap-2 min-w-0 pr-2">
+                                  <span className="font-mono text-[10px] text-[#00685b] font-bold shrink-0">
+                                    {sIdx + 1 < 10 ? `0${sIdx + 1}` : sIdx + 1}
+                                  </span>
+                                  <span className="font-display font-bold text-brand-text truncate">
+                                    {serviceName}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleInquireService(serviceName, category.title);
+                                    }}
+                                    title={`Inquire about ${serviceName}`}
+                                    className="px-2 py-1 rounded-md bg-[#00685b] hover:bg-[#178373] text-white text-[10px] font-display font-bold transition-colors cursor-pointer"
+                                  >
+                                    Inquire
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleWhatsAppService(serviceName, category.title);
+                                    }}
+                                    title="Inquire on WhatsApp"
+                                    className="p-1 rounded-md bg-emerald-100 hover:bg-emerald-600 hover:text-white text-emerald-800 transition-colors cursor-pointer"
+                                  >
+                                    <MessageSquare className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              </motion.div>
+                            ))}
+                          </motion.div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Card Footer Action */}
+                    <div className="pt-2 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => handleCategoryToggle(category.id)}
+                        className="font-display text-xs font-bold text-[#00685b] hover:text-[#178373] flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>{isExpanded ? 'Collapse Services' : 'Expand Services'}</span>
+                        {isExpanded ? (
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSelectDeepDive(category.id)}
+                        className="font-mono text-[10px] text-slate-500 hover:text-[#00685b] flex items-center gap-0.5 cursor-pointer uppercase"
+                      >
+                        <span>Deep Dive</span>
+                        <ChevronRight className="h-3 w-3" />
+                      </button>
+                    </div>
+
                   </div>
                 </motion.div>
               );
@@ -246,12 +414,22 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
         </div>
       </section>
 
-      {/* 3. REVEALED SERVICE NAMES (ONLY) FOR ACTIVE CATEGORY */}
+      {/* 3. INTERACTIVE CATEGORY DEEP-DIVE WORKSPACE */}
       <section
         id="services-detail-section"
-        className="mx-auto max-w-7xl px-6 py-16 lg:px-12 scroll-mt-20"
+        className="mx-auto max-w-7xl px-6 py-20 lg:px-12 scroll-mt-20"
       >
+        <div className="space-y-4 text-center max-w-2xl mx-auto mb-12">
+          <span className="font-tech text-[10px] tracking-widest text-[#00685b] font-extrabold uppercase bg-[#00685b]/10 px-3 py-1 rounded-full inline-block">
+            CAPABILITIES SHOWCASE
+          </span>
+          <h2 className="font-display text-3xl sm:text-4xl font-black text-brand-text tracking-tight">
+            Interactive Category Explorer
+          </h2>
+        </div>
+
         <div id="services-hub" className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+          
           {/* Left Category Navigation Sidebar */}
           <div
             id="services-sidebar"
@@ -265,12 +443,17 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
 
             {servicesList.map((category) => {
               const isActive = activeTab === category.id;
-              const IconComp = category.icon;
+              const IconComp = resolveIcon(category.iconName);
+              const serviceCount = category.deliverables?.length || 0;
+
               return (
                 <button
                   id={`service-tab-btn-${category.id}`}
                   key={category.id}
-                  onClick={() => setActiveTab(category.id)}
+                  onClick={() => {
+                    setActiveTab(category.id);
+                    setExpandedCategory(category.id);
+                  }}
                   className={`relative py-3 px-4 text-left text-xs font-bold font-display rounded-xl transition-all duration-200 flex items-center justify-between shrink-0 cursor-pointer ${
                     isActive
                       ? 'bg-[#00685b] text-white shadow-sm'
@@ -286,23 +469,23 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
                       isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
                     }`}
                   >
-                    {category.deliverables.length}
+                    {serviceCount}
                   </span>
                 </button>
               );
             })}
           </div>
 
-          {/* Right Area: Displays Corresponding Service Names Only */}
-          <div id="services-main-body" className="lg:col-span-8 min-h-[400px]">
+          {/* Right Area: Displays Motion Visual + Corresponding Service Names Only */}
+          <div id="services-main-body" className="lg:col-span-8 min-h-[440px]">
             <AnimatePresence mode="wait">
               {activeCategory && (
                 <motion.div
                   key={activeCategory.id}
-                  initial={{ opacity: 0, y: 12 }}
+                  initial={{ opacity: 0, y: 14 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -12 }}
-                  transition={{ duration: 0.2 }}
+                  exit={{ opacity: 0, y: -14 }}
+                  transition={{ duration: 0.25, ease: 'easeOut' }}
                   className="space-y-6"
                 >
                   {/* Category Header */}
@@ -316,7 +499,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
                           {activeCategory.title}
                         </h2>
                         <span className="font-mono text-xs text-brand-text-muted">
-                          {activeCategory.deliverables.length} Services in this Category
+                          {activeCategory.deliverables?.length || 0} Services in this Category
                         </span>
                       </div>
                     </div>
@@ -331,53 +514,78 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
                     </button>
                   </div>
 
-                  {/* Service Names Only List/Grid */}
-                  <div
-                    id={`service-names-grid-${activeCategory.id}`}
-                    className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4"
-                  >
-                    {activeCategory.deliverables.map((serviceName, idx) => (
-                      <div
-                        id={`service-item-${activeCategory.id}-${idx}`}
-                        key={idx}
-                        className="bg-white border border-brand-outline/15 hover:border-[#00685b]/40 rounded-xl p-4.5 transition-all duration-200 hover:shadow-sm flex items-center justify-between gap-3 group"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="font-mono text-xs font-bold text-[#00685b] bg-[#00685b]/10 rounded-lg h-7 w-7 flex items-center justify-center shrink-0">
-                            {idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
-                          </span>
-                          <span className="font-display text-sm font-bold text-brand-text truncate">
-                            {serviceName}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleInquireService(serviceName, activeCategory.title)}
-                            title={`Inquire about ${serviceName}`}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-[#00685b] hover:text-white text-slate-700 text-xs font-bold font-display transition-colors cursor-pointer"
-                          >
-                            <span>Inquire</span>
-                            <Send className="h-3 w-3" />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleWhatsAppService(serviceName, activeCategory.title)}
-                            title={`WhatsApp inquiry for ${serviceName}`}
-                            className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 transition-colors cursor-pointer"
-                          >
-                            <MessageSquare className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                  {/* 16:9 Animated Motion Graphics Visual Showcase */}
+                  <div className="w-full">
+                    <CategoryVisualRenderer
+                      categoryId={activeCategory.id}
+                      imageUrl={activeCategory.imageUrl}
+                      videoUrl={activeCategory.videoUrl}
+                    />
                   </div>
+
+                  {/* Staggered Service Names Only List */}
+                  <div className="space-y-3 pt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-tech text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
+                        SERVICE DELIVERABLES
+                      </span>
+                      <span className="font-mono text-[10px] text-[#00685b] font-bold">
+                        {activeCategory.deliverables?.length || 0} STANDARD OFFERINGS
+                      </span>
+                    </div>
+
+                    <motion.div
+                      variants={listContainerVariants}
+                      initial="hidden"
+                      animate="visible"
+                      className="grid grid-cols-1 sm:grid-cols-2 gap-3"
+                    >
+                      {(activeCategory.deliverables || []).map((serviceName, idx) => (
+                        <motion.div
+                          id={`deep-dive-service-${activeCategory.id}-${idx}`}
+                          key={idx}
+                          variants={listItemVariants}
+                          className="bg-white border border-brand-outline/15 hover:border-[#00685b]/40 rounded-xl p-4 transition-all duration-200 hover:shadow-sm flex items-center justify-between gap-3 group"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="font-mono text-xs font-bold text-[#00685b] bg-[#00685b]/10 rounded-lg h-7 w-7 flex items-center justify-center shrink-0">
+                              {idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
+                            </span>
+                            <span className="font-display text-sm font-bold text-brand-text truncate">
+                              {serviceName}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleInquireService(serviceName, activeCategory.title)}
+                              title={`Inquire about ${serviceName}`}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-[#00685b] hover:text-white text-slate-700 text-xs font-bold font-display transition-colors cursor-pointer"
+                            >
+                              <span>Inquire</span>
+                              <Send className="h-3 w-3" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleWhatsAppService(serviceName, activeCategory.title)}
+                              title={`WhatsApp inquiry for ${serviceName}`}
+                              className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 transition-colors cursor-pointer"
+                            >
+                              <MessageSquare className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </motion.div>
+                  </div>
+
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
+
         </div>
       </section>
 
@@ -400,7 +608,7 @@ export default function ServicesView({ initialTab, onNavigate }: ServicesViewPro
 
               <div className="space-y-2">
                 <span className="font-tech text-xs tracking-widest text-[#88f8c5] font-bold uppercase block">
-                  QBENCH SERVICES
+                  QBENCH CREATIVE AGENCY
                 </span>
                 <h3 className="font-display text-xl sm:text-2xl font-black leading-snug tracking-tight">
                   Start a project across any of our 7 service categories.
