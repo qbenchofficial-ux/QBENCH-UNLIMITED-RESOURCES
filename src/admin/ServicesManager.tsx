@@ -29,6 +29,7 @@ const ICON_OPTIONS = [
   'Target',
   'Code',
   'Sparkles',
+  'Palette',
   'TrendingUp',
   'Briefcase',
   'Laptop',
@@ -39,9 +40,10 @@ const TAB_ID_OPTIONS: { id: ServiceTab; label: string }[] = [
   { id: 'social-media', label: 'social-media (Social Media Design)' },
   { id: 'video-editing', label: 'video-editing (Video Editing)' },
   { id: 'digital-marketing', label: 'digital-marketing (Digital Marketing)' },
-  { id: 'uiux', label: 'uiux (UI/UX Design)' },
   { id: 'webdev', label: 'webdev (Website Development)' },
   { id: 'motion', label: 'motion (Motion Graphics)' },
+  { id: 'creative-design', label: 'creative-design (Creative Design)' },
+  { id: 'uiux', label: 'uiux (UI/UX Design)' },
   { id: 'growth', label: 'growth (Creative Strategy)' },
   { id: 'business-support', label: 'business-support (Creative Support)' },
 ];
@@ -347,24 +349,50 @@ export default function ServicesManager({
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="block font-tech text-[10px] font-bold uppercase text-slate-700">
-                  Key Deliverables / Highlights (comma-separated)
-                </label>
-                <input
-                  type="text"
-                  value={(srv.deliverables || []).join(', ')}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block font-tech text-[10px] font-bold uppercase text-slate-700">
+                    Service Names in this Category ({srv.deliverables?.length || 0})
+                  </label>
+                  <span className="text-[10px] text-slate-400">Comma-separated or one per line</span>
+                </div>
+                <textarea
+                  rows={3}
+                  value={(srv.deliverables || []).join('\n')}
                   onChange={(e) =>
                     handleUpdateItem(idx, {
                       deliverables: e.target.value
-                        .split(',')
+                        .split(/[\n,]+/)
                         .map((s) => s.trim())
                         .filter(Boolean),
                     })
                   }
-                  placeholder="Logo Design, Brand Guidelines, Social Kit"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 text-xs text-slate-700 focus:border-[#00685b] focus:bg-white focus:outline-none"
+                  placeholder="Logo Design&#10;Brand Identity Design&#10;Brand Guidelines"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2 font-sans text-xs text-slate-800 focus:border-[#00685b] focus:bg-white focus:outline-none"
                 />
+                {srv.deliverables && srv.deliverables.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {srv.deliverables.map((item, sIdx) => (
+                      <span
+                        key={sIdx}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200"
+                      >
+                        <span>{item}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = srv.deliverables?.filter((_, i) => i !== sIdx) || [];
+                            handleUpdateItem(idx, { deliverables: updated });
+                          }}
+                          className="hover:text-red-500 font-bold ml-0.5 cursor-pointer"
+                          title="Remove service"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

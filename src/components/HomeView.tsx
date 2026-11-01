@@ -179,13 +179,15 @@ export default function HomeView({
     emoji: string; 
     title: string; 
     desc: string; 
+    deliverables?: string[];
   }[] = useMemo(() => {
     if (cmsServices && cmsServices.length > 0) {
       return cmsServices.map((s) => ({
         id: s.id,
         emoji: s.emoji || '✨',
         title: s.title,
-        desc: s.desc,
+        desc: s.desc || '',
+        deliverables: s.deliverables,
       }));
     }
     return [
@@ -193,56 +195,102 @@ export default function HomeView({
         id: 'branding',
         emoji: '🎨',
         title: 'Branding & Identity',
-        desc: 'Logos, brand identity systems, visual guidelines, and brand assets that create a lasting impression.'
+        desc: '',
+        deliverables: [
+          'Logo Design',
+          'Brand Identity Design',
+          'Brand Guidelines',
+          'Business Card Design',
+          'Letterhead Design',
+          'Packaging Design',
+          'Brand Collateral Design',
+        ],
       },
       {
         id: 'social-media',
         emoji: '📱',
         title: 'Social Media Design',
-        desc: 'Creative social media designs that strengthen your brand across every platform.'
+        desc: '',
+        deliverables: [
+          'Social Media Post Design',
+          'Instagram Story Design',
+          'Carousel Design',
+          'Social Media Ad Creatives',
+          'Festival Creatives',
+          'Social Media Campaign Design',
+        ],
       },
       {
         id: 'video-editing',
         emoji: '🎬',
         title: 'Video Editing',
-        desc: 'Professional editing for promotional videos, product showcases, reels, and brand stories.'
-      },
-      {
-        id: 'webdev',
-        emoji: '🌐',
-        title: 'Website Development',
-        desc: 'Modern, responsive websites designed for performance, usability, and great user experiences.'
+        desc: '',
+        deliverables: [
+          'Promotional Video Editing',
+          'Corporate Video Editing',
+          'Advertisement Video Editing',
+          'Reels Editing',
+          'Product Video Editing',
+          'Event Video Editing',
+        ],
       },
       {
         id: 'digital-marketing',
         emoji: '📈',
         title: 'Digital Marketing',
-        desc: 'Creative campaigns and digital solutions that help brands build a stronger online presence.'
+        desc: '',
+        deliverables: [
+          'Social Media Management',
+          'Social Media Advertising',
+          'Google Ads Management',
+          'Search Engine Optimization (SEO)',
+          'Digital Campaign Management',
+          'Content Strategy',
+        ],
+      },
+      {
+        id: 'webdev',
+        emoji: '🌐',
+        title: 'Website Development',
+        desc: '',
+        deliverables: [
+          'Business Website Development',
+          'Portfolio Website Development',
+          'E-commerce Website Development',
+          'Landing Page Development',
+          'Website Maintenance',
+          'Website Redesign',
+        ],
       },
       {
         id: 'motion',
         emoji: '✨',
         title: 'Motion Graphics',
-        desc: 'Eye-catching animations and motion visuals that bring ideas to life.'
+        desc: '',
+        deliverables: [
+          '2D Animation',
+          'Motion Graphics',
+          'Logo Animation',
+          'Product Animation',
+          'Explainer Videos',
+          'Animated Social Media Creatives',
+        ],
       },
       {
-        id: 'uiux',
-        emoji: '🖥️',
-        title: 'UI/UX Design',
-        desc: 'User-centered interfaces designed for intuitive, engaging, and seamless digital experiences.'
+        id: 'creative-design',
+        emoji: '📐',
+        title: 'Creative Design',
+        desc: '',
+        deliverables: [
+          'Poster Design',
+          'Brochure Design',
+          'Flyer Design',
+          'Catalogue Design',
+          'Presentation Design',
+          'Advertising Creative Design',
+          'Digital and Print Design',
+        ],
       },
-      {
-        id: 'growth',
-        emoji: '🚀',
-        title: 'Creative Strategy',
-        desc: 'Creative direction and digital solutions that help brands communicate with clarity and confidence.'
-      },
-      {
-        id: 'business-support',
-        emoji: '💼',
-        title: 'Creative Support',
-        desc: 'Ongoing design support for presentations, marketing materials, print media, and creative content.'
-      }
     ];
   }, [cmsServices]);
 

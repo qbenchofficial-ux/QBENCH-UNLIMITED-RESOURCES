@@ -512,13 +512,15 @@ export const DEFAULT_SERVICES_DATA: CmsServiceItem[] = [
     label: 'Branding & Identity',
     emoji: '🎨',
     iconName: 'Layers',
-    desc: 'Logos, brand identity systems, visual guidelines, and brand assets that create a lasting impression.',
-    startingPrice: '₹5,000',
+    desc: '',
     deliverables: [
-      'Logo Design & Variations',
-      'Color Palette & Typography',
-      'Brand Style Guidelines',
-      'Stationery & Social Brand Kit',
+      'Logo Design',
+      'Brand Identity Design',
+      'Brand Guidelines',
+      'Business Card Design',
+      'Letterhead Design',
+      'Packaging Design',
+      'Brand Collateral Design',
     ],
   },
   {
@@ -527,13 +529,14 @@ export const DEFAULT_SERVICES_DATA: CmsServiceItem[] = [
     label: 'Social Media Design',
     emoji: '📱',
     iconName: 'MessageSquare',
-    desc: 'Creative social media designs that strengthen your brand across every platform.',
-    startingPrice: '₹500',
+    desc: '',
     deliverables: [
-      'Custom Feed & Grid Posts',
-      'Engaging Stories & Carousels',
-      'Branded Social Templates',
-      'Monthly Content Visuals',
+      'Social Media Post Design',
+      'Instagram Story Design',
+      'Carousel Design',
+      'Social Media Ad Creatives',
+      'Festival Creatives',
+      'Social Media Campaign Design',
     ],
   },
   {
@@ -542,13 +545,14 @@ export const DEFAULT_SERVICES_DATA: CmsServiceItem[] = [
     label: 'Video Editing',
     emoji: '🎬',
     iconName: 'Video',
-    desc: 'Professional editing for promotional videos, product showcases, reels, and brand stories.',
-    startingPrice: '₹1,200',
+    desc: '',
     deliverables: [
-      'Reels & Short-Form Cuts',
-      'Promotional & Product Videos',
-      'Color Grading & Sound Design',
-      'High-Retention Ad Creatives',
+      'Promotional Video Editing',
+      'Corporate Video Editing',
+      'Advertisement Video Editing',
+      'Reels Editing',
+      'Product Video Editing',
+      'Event Video Editing',
     ],
   },
   {
@@ -557,28 +561,14 @@ export const DEFAULT_SERVICES_DATA: CmsServiceItem[] = [
     label: 'Digital Marketing',
     emoji: '📈',
     iconName: 'Target',
-    desc: 'Creative campaigns and digital solutions that help brands build a stronger online presence.',
-    startingPrice: '₹5,000',
+    desc: '',
     deliverables: [
       'Social Media Management',
-      'Performance Ad Campaigns',
-      'Search & Content Optimization',
-      'Monthly Analytics Reports',
-    ],
-  },
-  {
-    id: 'uiux',
-    title: 'UI/UX Design',
-    label: 'UI/UX Design',
-    emoji: '🖥️',
-    iconName: 'Layers',
-    desc: 'User-centered interfaces designed for intuitive, engaging, and seamless digital experiences.',
-    startingPrice: '₹15,000',
-    deliverables: [
-      'User Flows & Wireframing',
-      'High-Fidelity Figma Interfaces',
-      'Interactive Prototypes',
-      'Scalable Design Systems',
+      'Social Media Advertising',
+      'Google Ads Management',
+      'Search Engine Optimization (SEO)',
+      'Digital Campaign Management',
+      'Content Strategy',
     ],
   },
   {
@@ -587,13 +577,14 @@ export const DEFAULT_SERVICES_DATA: CmsServiceItem[] = [
     label: 'Website Development',
     emoji: '🌐',
     iconName: 'Code',
-    desc: 'Modern, responsive websites designed for performance, usability, and great user experiences.',
-    startingPrice: '₹25,000',
+    desc: '',
     deliverables: [
-      'Responsive Web Architecture',
-      'CMS & Dynamic Portfolio Setup',
-      'Technical SEO & Speed Optimization',
-      'Lead Capture & CRM Integration',
+      'Business Website Development',
+      'Portfolio Website Development',
+      'E-commerce Website Development',
+      'Landing Page Development',
+      'Website Maintenance',
+      'Website Redesign',
     ],
   },
   {
@@ -602,46 +593,89 @@ export const DEFAULT_SERVICES_DATA: CmsServiceItem[] = [
     label: 'Motion Graphics',
     emoji: '✨',
     iconName: 'Sparkles',
-    desc: 'Eye-catching animations and motion visuals that bring ideas to life.',
-    startingPrice: '₹800',
+    desc: '',
     deliverables: [
-      '2D & 3D Brand Animations',
-      'Logo Reveals & Title Sequences',
-      'Explainer & Product Motion',
-      'Storyboarding & Visual Direction',
+      '2D Animation',
+      'Motion Graphics',
+      'Logo Animation',
+      'Product Animation',
+      'Explainer Videos',
+      'Animated Social Media Creatives',
     ],
   },
   {
-    id: 'growth',
-    title: 'Creative Strategy',
-    label: 'Creative Strategy',
-    emoji: '🚀',
-    iconName: 'TrendingUp',
-    desc: 'Creative direction and digital solutions that help brands communicate with clarity and confidence.',
-    startingPrice: '₹10,000',
+    id: 'creative-design',
+    title: 'Creative Design',
+    label: 'Creative Design',
+    emoji: '📐',
+    iconName: 'Palette',
+    desc: '',
     deliverables: [
-      'Brand Positioning & Audit',
-      'Competitor & Market Analysis',
-      'Conversion Funnel Architecture',
-      'Quarterly Growth Roadmaps',
-    ],
-  },
-  {
-    id: 'business-support',
-    title: 'Creative Support',
-    label: 'Creative Support',
-    emoji: '💼',
-    iconName: 'Briefcase',
-    desc: 'Ongoing design support for presentations, marketing materials, print media, and creative content.',
-    startingPrice: '₹4,999/mo',
-    deliverables: [
-      'Pitch Decks & Presentations',
-      'Print & Packaging Collateral',
-      'Back-Office & MIS Reporting',
-      'Dedicated Creative Operations',
+      'Poster Design',
+      'Brochure Design',
+      'Flyer Design',
+      'Catalogue Design',
+      'Presentation Design',
+      'Advertising Creative Design',
+      'Digital and Print Design',
     ],
   },
 ];
+
+/**
+ * Reconciles existing services with the default catalogue:
+ * - Preserves administrator-customized categories and services.
+ * - Prevents duplicates.
+ * - Reconciles missing items without overwriting existing data.
+ */
+export function reconcileServicesWithDefaults(
+  existingServices: CmsServiceItem[]
+): { reconciled: CmsServiceItem[]; hasChanges: boolean } {
+  if (!existingServices || !Array.isArray(existingServices) || existingServices.length === 0) {
+    return { reconciled: DEFAULT_SERVICES_DATA, hasChanges: true };
+  }
+
+  let hasChanges = false;
+  const reconciled: CmsServiceItem[] = [];
+  const handledIds = new Set<string>();
+
+  for (const existing of existingServices) {
+    const defaultMatch = DEFAULT_SERVICES_DATA.find((d) => d.id === existing.id);
+    if (defaultMatch) {
+      const currentDeliverables = Array.isArray(existing.deliverables) ? [...existing.deliverables] : [];
+      let deliverablesChanged = false;
+
+      for (const defItem of defaultMatch.deliverables || []) {
+        const itemLower = defItem.trim().toLowerCase();
+        if (!currentDeliverables.some((cd) => cd.trim().toLowerCase() === itemLower)) {
+          currentDeliverables.push(defItem);
+          deliverablesChanged = true;
+        }
+      }
+
+      if (deliverablesChanged) {
+        hasChanges = true;
+      }
+
+      reconciled.push({
+        ...existing,
+        deliverables: currentDeliverables,
+      });
+    } else {
+      reconciled.push(existing);
+    }
+    handledIds.add(existing.id);
+  }
+
+  for (const defaultCat of DEFAULT_SERVICES_DATA) {
+    if (!handledIds.has(defaultCat.id)) {
+      reconciled.push(defaultCat);
+      hasChanges = true;
+    }
+  }
+
+  return { reconciled, hasChanges };
+}
 
 export const DEFAULT_WEBSITE_CONTENT: CmsWebsiteContent = {
   heroBadge: 'WE DESIGN BRANDS THAT PEOPLE REMEMBER',
@@ -890,9 +924,19 @@ export async function fetchAllCmsSiteContent(): Promise<{
           } else if (row.setting_key === DB_KEYS.businessSupport && parsed && typeof parsed === 'object') {
             businessSupport = { ...DEFAULT_BUSINESS_SUPPORT_CONFIG, ...parsed };
             writeLocalCache(STORAGE_KEYS.businessSupport, businessSupport);
-          } else if (row.setting_key === DB_KEYS.services && Array.isArray(parsed) && parsed.length > 0) {
-            services = parsed;
-            writeLocalCache(STORAGE_KEYS.services, services);
+          } else if (row.setting_key === DB_KEYS.services && Array.isArray(parsed)) {
+            if (parsed.length > 0) {
+              const { reconciled, hasChanges } = reconcileServicesWithDefaults(parsed);
+              services = reconciled;
+              writeLocalCache(STORAGE_KEYS.services, services);
+              if (hasChanges) {
+                upsertSiteSettingKey(DB_KEYS.services, services).catch(() => {});
+              }
+            } else {
+              services = DEFAULT_SERVICES_DATA;
+              writeLocalCache(STORAGE_KEYS.services, services);
+              upsertSiteSettingKey(DB_KEYS.services, services).catch(() => {});
+            }
           } else if (row.setting_key === DB_KEYS.websiteContent && parsed && typeof parsed === 'object') {
             websiteContent = { ...DEFAULT_WEBSITE_CONTENT, ...parsed };
             writeLocalCache(STORAGE_KEYS.websiteContent, websiteContent);
@@ -900,6 +944,16 @@ export async function fetchAllCmsSiteContent(): Promise<{
         } catch {
           // Ignore malformed JSON row
         }
+      }
+
+      // If services key is missing from Supabase, safely seed initial catalogue
+      const servicesRowFound = (data || []).some(
+        (r: any) => r.setting_key === DB_KEYS.services
+      );
+      if (!servicesRowFound) {
+        services = DEFAULT_SERVICES_DATA;
+        writeLocalCache(STORAGE_KEYS.services, services);
+        upsertSiteSettingKey(DB_KEYS.services, services).catch(() => {});
       }
     }
   } catch {
